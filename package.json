@@ -1,0 +1,12 @@
+{
+  "name": "sitrep",
+  "version": "1.0.0",
+  "private": true,
+  "description": "SITREP OSINT console — news wire, social monitor, incident globe, market, live TV",
+  "scripts": {
+    "start": "bash start.sh"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
