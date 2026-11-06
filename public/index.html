@@ -3159,7 +3159,13 @@ setInterval(() => {
 /* ============================================================
    04 · CCTV
    ============================================================ */
-const camStream = c => API != null && !/jakcctv\.jakarta\.go\.id/i.test(c.s) ? API + '/hls?u=' + encodeURIComponent(c.s) : c.s;   // jakcctv geo-block IP datacenter → browser direct (CORS *)
+const camStream = c => c.s;   // semua host kirim ACAO:* → direct dari browser (IP user, bukan DC Railway)
+const camProxy = c => API != null ? API + '/hls?u=' + encodeURIComponent(c.s) : c.s;   // fallback bila direct mentok CORS
+// jakcctv butuh ?proto=hls di SEMUA request (playlist & segmen) — loader nambahin otomatis
+const JakLoader = (window.Hls && Hls.DefaultLoader) ? class extends Hls.DefaultLoader {
+  load(ctx, cfg, cb){ try{ if(/jakcctv\.jakarta\.go\.id/i.test(ctx.url) && !/[?&]proto=/.test(ctx.url)) ctx.url += (ctx.url.includes('?')?'&':'?')+'proto=hls'; }catch(e){} return super.load(ctx,cfg,cb); }
+} : null;
+const hlsJak = cfg => JakLoader ? Object.assign({loader:JakLoader}, cfg) : cfg;
 let aliveMap = null, district = 'Semua', camList = [];
 const MAXL = 8, MAXP = 24;
 const P = new Map();
@@ -3173,7 +3179,7 @@ function upd(){
   $('#ccount').textContent = ok + '/' + P.size + ' · ' + live + ' live' + (off ? ' · ' + off + ' off' : '');
   $('#f-cams').textContent = live + '/' + P.size;
 }
-function startCell(cell){
+function startCell(cell, viaProxy){
   const p = P.get(cell); if (!p || p.dead) return;
   const v = vid(cell);
   if (p.h) {
@@ -3182,16 +3188,18 @@ function startCell(cell){
     v.play().catch(() => {}); return;
   }
   p.loading = true; p.t0 = Date.now(); badge(cell, 'wait', 'Memuat');
-  const url = camStream(camList[+cell.dataset.i]);
+  const c = camList[+cell.dataset.i];
+  const url = viaProxy ? camProxy(c) : camStream(c);
   if (window.Hls && Hls.isSupported()) {
-    const h = new Hls({ startLevel:0, capLevelToPlayerSize:true, maxBufferLength:4, maxMaxBufferLength:8,
-      liveSyncDurationCount:2, manifestLoadingMaxRetry:4, levelLoadingMaxRetry:3, fragLoadingMaxRetry:4 });
+    const h = new Hls(hlsJak({ startLevel:0, capLevelToPlayerSize:true, maxBufferLength:4, maxMaxBufferLength:8,
+      liveSyncDurationCount:2, manifestLoadingMaxRetry:4, levelLoadingMaxRetry:3, fragLoadingMaxRetry:4 }));
     p.h = h; h.loadSource(url); h.attachMedia(v);
     h.on(Hls.Events.MANIFEST_PARSED, () => v.play().catch(() => {}));
     h.on(Hls.Events.ERROR, (ev, d) => {
       if (!d || !d.fatal) return;
       if (d.type === Hls.ErrorTypes.NETWORK_ERROR && (p.nerr = (p.nerr || 0) + 1) < 3) h.startLoad();
       else if (d.type === Hls.ErrorTypes.MEDIA_ERROR && (p.merr = (p.merr || 0) + 1) < 3) h.recoverMediaError();
+      else if (!p.px && API != null) { p.px = 1; try { h.destroy(); } catch (e) {} p.h = null; startCell(cell, true); }
       else kill(cell);
     });
   } else if (v.canPlayType('application/vnd.apple.mpegurl')) {
@@ -3199,7 +3207,7 @@ function startCell(cell){
   } else { kill(cell); return; }
   v.onloadeddata = () => {
     if (p.loaded) return;
-    p.loaded = true; p.loading = false; p.nerr = p.merr = p.tries = 0;
+    p.loaded = true; p.loading = false; p.nerr = p.merr = p.tries = p.px = 0;
     if (p.vis) badge(cell, 'live', 'Live'); else stopCell(cell);
     pump(); upd();
   };
@@ -3313,7 +3321,7 @@ function openLightbox(url, nama, kota, embed, raw){
   lb.hidden = false; document.body.style.overflow = 'hidden';
   $('#glb-cap').innerHTML = `${esc(nama)} · ${esc(kota)} · <a href="${esc(raw)}" target="_blank" rel="noopener">stream asli${ic('out')}</a>${embed ? ` · <a href="${esc(embed)}" target="_blank" rel="noopener">player JSC${ic('out')}</a>` : ''}`;
   if (window.Hls && Hls.isSupported()) {
-    glbHls = new Hls({ liveSyncDurationCount:2 }); glbHls.loadSource(url); glbHls.attachMedia(v);
+    glbHls = new Hls(hlsJak({ liveSyncDurationCount:2 })); glbHls.loadSource(url); glbHls.attachMedia(v);
     glbHls.on(Hls.Events.MANIFEST_PARSED, () => v.play().catch(() => {}));
   } else { v.src = url; v.play().catch(() => {}); }
 }
@@ -4399,7 +4407,7 @@ const TV_CH = [
   { n:'BTV',            s:'https://lnd0t3b922.tenbytecdn.com/ta-sg1/90369cf5-6ac2-411d-b3d0-15fae10a2e2c/master.m3u8', src:'tenbyte',
     pg:'https://www.beritasatu.com/beritasatu-live-streaming' }
 ];
-let tvOn = false, tvIx = 0, tvHls = null, tvDrag = null, tvRz = null, tvIdleT = null;
+let tvOn = false, tvIx = 0, tvHls = null, tvDrag = null, tvRz = null, tvIdleT = null, tvPx = false, tvTry = 0;
 
 function tvPaint(){
   const c = TV_CH[tvIx];
@@ -4423,15 +4431,23 @@ function tvStop(){
 }
 function tvPlay(){
   const c = TV_CH[tvIx], v = $('#tv-video'), body = $('#tv-body');
-  const src = API != null ? API + '/hls?u=' + encodeURIComponent(c.s) : c.s;
+  const src = (tvPx && API != null) ? API + '/hls?u=' + encodeURIComponent(c.s) : c.s;   // direct dulu — semua host ACAO:*; proxy hanya fallback
   tvPaint();
   tvWake();
   tvStop();
   body.dataset.state = 'load';
   $('#tv-msg-t').textContent = 'Menghubungkan…';
   v.muted = $('#tv-mute').getAttribute('aria-pressed') === 'true';
+  const retryPx = () => {
+    if (tvPx || API == null || tvTry >= 3) return false;
+    tvPx = true; tvTry++;
+    if (tvHls === h) { try { h.destroy(); } catch (e) {} tvHls = null; }
+    setTimeout(() => { if (tvOn) tvPlay(); }, 700);
+    return true;
+  };
+  let h = null;
   if (window.Hls && Hls.isSupported()) {
-    const h = new Hls({ liveSyncDurationCount: 2, maxBufferLength: 6, capLevelToPlayerSize: true });
+    h = new Hls(hlsJak({ liveSyncDurationCount: 2, maxBufferLength: 6, capLevelToPlayerSize: true }));
     tvHls = h;
     h.on(Hls.Events.MANIFEST_PARSED, () => {
       body.dataset.state = 'ok';
@@ -4439,6 +4455,8 @@ function tvPlay(){
     });
     h.on(Hls.Events.ERROR, (ev, d) => {
       if (!d || !d.fatal) return;
+      if (retryPx()) return;
+      tvPx = false; tvTry = 0;
       tvFail(d.details);
       if (tvHls === h) { try { h.destroy(); } catch (e) {} tvHls = null; }
     });
@@ -4449,7 +4467,7 @@ function tvPlay(){
       body.dataset.state = 'ok';
       v.play().catch(() => {});
     }, { once: true });
-    v.addEventListener('error', () => tvFail('stream mati'), { once: true });
+    v.addEventListener('error', () => { if (!retryPx()) { tvPx = false; tvTry = 0; tvFail('stream mati'); } }, { once: true });
     v.src = src;
   } else {
     tvFail('HLS tidak didukung browser ini');
@@ -4465,6 +4483,7 @@ function tvMute(on){
 }
 function tvStep(d){
   tvIx = (tvIx + d + TV_CH.length) % TV_CH.length;
+  tvPx = false; tvTry = 0;
   if (tvOn) tvPlay(); else tvPaint();
 }
 function tvPlace(x, y){
@@ -4632,7 +4651,7 @@ async function detectApi(){
   const qp = new URLSearchParams(location.search).get('api');
   const c = [qp, '', 'http://localhost:8787'].filter(x => x != null);
   try {
-    API = await Promise.any(c.map(async b => { const d = await getJson(b + '/api/ping', 2000); if (d && d.ok) return b; throw 0; }));
+    API = await Promise.any(c.map(async b => { const d = await getJson(b + '/api/ping', 4000); if (d && d.ok) return b; throw 0; }));
   } catch (e) {}
 }
 
