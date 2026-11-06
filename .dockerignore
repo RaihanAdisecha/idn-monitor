@@ -1,0 +1,10 @@
+.git
+.venv
+node_modules
+data
+fxhist.json
+.playwright-mcp
+credentials.txt
+.env
+.DS_Store
+About this file. This is Muse's persona.
