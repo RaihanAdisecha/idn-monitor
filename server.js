@@ -1760,6 +1760,7 @@ const camList = () => { try { return JSON.parse(fs.readFileSync(HTML, 'utf8').ma
 const alive = () => memo('alive', 150000, async () => {
   const cams = camList(), res = new Array(cams.length).fill(false); let i = 0;
   await Promise.all(Array.from({ length: 12 }, async () => { while (i < cams.length) { const k = i++;
+    if (/jakcctv\.jakarta\.go\.id/i.test(cams[k].s)) { res[k] = true; continue; }   // geo-block DC IP — client playback direct
     try { const r = await get(cams[k].s, { headers: { referer: 'https://smartcity.jakarta.go.id/' } }, 6000);
       res[k] = r.ok && (await r.text()).includes('#EXTM3U'); } catch (e) {} } }));
   return { alive: res, at: Date.now() };

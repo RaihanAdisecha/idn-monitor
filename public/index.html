@@ -3159,7 +3159,7 @@ setInterval(() => {
 /* ============================================================
    04 · CCTV
    ============================================================ */
-const camStream = c => API != null ? API + '/hls?u=' + encodeURIComponent(c.s) : c.s;
+const camStream = c => API != null && !/jakcctv\.jakarta\.go\.id/i.test(c.s) ? API + '/hls?u=' + encodeURIComponent(c.s) : c.s;   // jakcctv geo-block IP datacenter → browser direct (CORS *)
 let aliveMap = null, district = 'Semua', camList = [];
 const MAXL = 8, MAXP = 24;
 const P = new Map();
