@@ -1,0 +1,18 @@
+# secrets — jangan pernah commit
+.env
+credentials.txt
+config.local.json
+
+# runtime state
+data/
+fxhist.json
+
+# python venv & tooling
+.venv/
+.playwright-mcp/
+__pycache__/
+*.pyc
+
+# os junk
+.DS_Store
+About this file. This is Muse's persona.

@@ -1,0 +1,64 @@
+{
+  "port": 8787,
+  "x": {
+    "queries": [
+      "demo indonesia",
+      "unjuk rasa",
+      "aksi massa",
+      "kebakaran",
+      "banjir",
+      "karhutla",
+      "gempa",
+      "kecelakaan",
+      "penembakan",
+      "pencurian",
+      "penangkapan",
+      "phk",
+      "rupiah",
+      "listrik padam",
+      "wabah",
+      "pemilu",
+      "ransomware",
+      "bssn",
+      "serangan siber",
+      "akun dibajak",
+      "ihsg"
+    ]
+  },
+  "cctv_hosts": [
+    "balitower.co.id",
+    "jakarta.go.id"
+  ],
+  "tv_hosts": [
+    "edge.medcom.id",
+    "video.detik.com",
+    "ott-balancer.tvri.go.id",
+    "lnd0t3b922.tenbytecdn.com"
+  ],
+  "threads": {
+    "queries": [
+      "demo indonesia",
+      "unjuk rasa",
+      "kebakaran",
+      "banjir",
+      "karhutla",
+      "gempa",
+      "kecelakaan",
+      "penembakan",
+      "pencurian",
+      "penangkapan",
+      "phk",
+      "rupiah",
+      "listrik padam",
+      "wabah",
+      "pemilu",
+      "pilkada",
+      "ransomware",
+      "serangan siber",
+      "akun dibajak",
+      "bssn"
+    ]
+  },
+  "tomtom": {},
+  "insecure_tls": false
+}
