@@ -166,16 +166,20 @@ function cleanTitle(t) {
   let s0 = String(t || '').trim();
   const pp = s0.indexOf(' | ');
   if (pp > 15) s0 = s0.slice(0, pp).trim();   // "Judul | NamaSitus" — pipe selalu suffix publisher
-  const s = s0.replace(/\s[-–—]\s*(?:https?|www)\b[^\s]*(?:\)[^\s]*)?$/i, '').trim();
-  const m = s.match(/^(.{8,}?)\s[-–—]\s([A-Za-z0-9][A-Za-z0-9.&'®™ ()]{1,60})$/);
-  if (!m) return s;
-  const tail = m[2].trim();
-  const words = tail.split(/\s+/).map(w => w.replace(/[®™]/g, '')).filter(Boolean);
-  if (words.length > 5) return s;                 // kelanjutkalimat panjang, bukan label sumber
-  if (!/[,;.:?!]/.test(tail) && words.every(w => /^[A-Z0-9]/.test(w))) return m[1].trim(); // title-case = label sumber
-  if (!/[,;.:?!]/.test(tail) && words.length <= 3 && tail.length <= 30 && words.every(w => /^[a-z0-9]/.test(w))) return m[1].trim(); // lowercase pendek = publisher kecil
-  if (/\.(com|id|net|co\.id|go\.id|org|tv|info|media)$/i.test(tail)) return m[1].trim();   // domain/TLD
-  if (SRC_TAIL.test(tail)) return m[1].trim();                                              // institusi/media dikenal
+  let s = s0.replace(/\s[-–—]\s*(?:https?|www)\b[^\s]*(?:\)[^\s]*)?$/i, '').trim();
+  for (let i = 0; i < 3; i++) {   // GN kadang dobel suffix: "judul - domain.id - PENERBIT"
+    const m = s.match(/^(.{8,}?)\s[-–—]\s([A-Za-z0-9][A-Za-z0-9.&'®™ ()]{1,60})$/);
+    if (!m) break;
+    const tail = m[2].trim();
+    const words = tail.split(/\s+/).map(w => w.replace(/[®™]/g, '')).filter(Boolean);
+    if (words.length > 5) break;                    // kelanjutkalimat panjang, bukan label sumber
+    const isPub = (!/[,;.:?!]/.test(tail) && words.every(w => /^[A-Z0-9]/.test(w)))   // title-case = label sumber
+      || (!/[,;.:?!]/.test(tail) && words.length <= 3 && tail.length <= 30 && words.every(w => /^[a-z0-9]/.test(w)))  // lowercase pendek = publisher kecil
+      || /\.(com|id|net|co\.id|go\.id|org|tv|info|media)$/i.test(tail)                  // domain/TLD
+      || SRC_TAIL.test(tail);                                                          // institusi/media dikenal
+    if (!isPub) break;
+    s = m[1].trim();
+  }
   return s;
 }
 const news = () => Promise.all(NEWS.map(([id, url]) => memo('n:' + id, 55000, async () => {
