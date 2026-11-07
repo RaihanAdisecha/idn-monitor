@@ -92,11 +92,32 @@
     for (const token of left) if (right.has(token)) overlap++;
     const union = left.size + right.size - overlap;
     const jac = union ? overlap / union : 0;
-    if (anchorStrong && overlap >= 2 && jac >= 0.18) return 'strong';
-    if (overlap >= 1 && jac >= 0.08) return 'weak';
+    // Strong butuh anchor + evidence — headline vs tweet wajar beda diksi jadi jac
+    // ketat dibuang; sebagai gantinya tipe kejadian langka (gempa/erupsi/tsunami/
+    // ransomware/dll) di tempat spesifik (POI/kab/kota) boleh strong dengan
+    // overlap >= 1. Tipe umum (kebakaran/demo) di tempat umum butuh overlap >= 2.
+    const precA = normalize(a.location && a.location.prec), precB = normalize(b.location && b.location.prec);
+    const specific = (placeA && placeA === placeB && /^(poi|kab|kota|kodya|city|district|kecamatan)/.test(precA || precB || '')) ||
+      (targetA && targetA === targetB);
+    const rare = /gempa|earthquake|tsunami|erupsi|eruption|letusan|ransomware|data_breach|ddos|wabah|outbreak|penembakan|pembunuhan|homicide|longsor|landslide|karhutla|karhutla|tenggelam|ambruk|collapse|maritime|narkoba|penculian|perkosaan|rudapaksa/i.test(normalize(a.type));
+    if (anchorStrong && (overlap >= 2 || (overlap >= 1 && jac >= 0.18) || (overlap >= 1 && specific && rare))) return 'strong';
+    if ((anchorStrong || anchorWeak) && overlap >= 1) return 'weak';
     return null;
   }
-  function matches(a, b) { return relation(a, b) === 'strong'; }
+  // matches() strict: hanya 'strong' DAN anchor exact + overlap minimal —
+  // dipakai grouping sinyal/klaster, jangan dilonggarkan.
+  function matches(a, b) {
+    if (relation(a, b) !== 'strong') return false;
+    const placeA = locationOf(a), placeB = locationOf(b);
+    const targetA = targetOf(a), targetB = targetOf(b);
+    const anchorStrict = (placeA && placeA === placeB) || (targetA && targetA === targetB);
+    if (!anchorStrict) return false;
+    const left = new Set(tokens(a.evidence)), right = new Set(tokens(b.evidence));
+    let overlap = 0;
+    for (const token of left) if (right.has(token)) overlap++;
+    const union = left.size + right.size - overlap;
+    return overlap >= 2 && union > 0 && overlap / union >= 0.18;
+  }
 
   function platform(post) { return normalize(post.from); }
   function textOf(post) { return typeof post.text === 'string' ? post.text : post.title || ''; }
