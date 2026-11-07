@@ -33,7 +33,15 @@
     "edge.medcom.id",
     "video.detik.com",
     "ott-balancer.tvri.go.id",
-    "lnd0t3b922.tenbytecdn.com"
+    "lnd0t3b922.tenbytecdn.com",
+    "thehlive.com",
+    "akamaized.net",
+    "bloomberg.com",
+    "france24.com",
+    "cloudfront.net",
+    "nhkworld.jp",
+    "trt.com.tr",
+    "siar.us"
   ],
   "threads": {
     "queries": [
