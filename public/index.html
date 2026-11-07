@@ -1816,6 +1816,7 @@ const SEEN_KEY = 'sitrep.seenIds';
 const seenIds = new Set((() => { try { return JSON.parse(sessionStorage.getItem(SEEN_KEY) || '[]'); } catch (e) { return []; } })());
 const seenWasEmpty = seenIds.size === 0;   // sesi baru: backlog awal ditandai seen diam-diam
 const bootUntil = seenWasEmpty ? Date.now() + 150e3 : 0;   // suppress backlog hanya ~150 dtk pertama setelah load
+const focusHoldUntil = Date.now() + 20000;   // 20 dtk pertama: antrian diisi tapi globe tidak langsung terbang
 const saveSeen = () => { try { sessionStorage.setItem(SEEN_KEY, JSON.stringify([...seenIds].slice(-800))); } catch (e) {} };
 const itemIdOf = p => p.url || ((p.title || '') + '|' + (p.src || ''));
 const focusQueue = [];        // item fresh yang belum sempat diumumkan — tidak ditelan, diuras satu per evaluasi
@@ -1849,8 +1850,7 @@ function doFocus(t, silent){
   lastAutoFocus = Date.now();
   focusedHome = false;
   flyTo(t.la, t.lo, Math.max(view.zoom, 5));
-  setLinkItem(t);
-  if (!silent) showSitAlert(t);   // rotasi idle = ambient, tidak boleh spam toast
+  if (!silent) { setLinkItem(t); showSitAlert(t); }   // rotasi senyap tidak boleh sentuh linkItem — dim akan stuck
 }
 function maybeFocusFresh(){
   const now = Date.now();
@@ -1872,6 +1872,7 @@ function maybeFocusFresh(){
   }
   if (seenIds.size > 800) { const keep = [...seenIds].slice(-800); seenIds.clear(); keep.forEach(x => seenIds.add(x)); }
   saveSeen();
+  if (now < focusHoldUntil) return;                        // boot hold: antrian terisi, fokus menunggu
   if (performance.now() - lastGestEnd < 25000) return;   // jangan rebut globe dari user
   if (now - lastAutoFocus < FOCUS_COOLDOWN) return;       // throttle: satu fokus per 90 detik
   if (focusQueue.length) {
