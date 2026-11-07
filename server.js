@@ -2874,7 +2874,7 @@ async function rdReadYouTube(id, raw) {
   const v = playable === false ? null : { url: 'https://www.youtube.com/embed/' + id, kind: 'iframe', poster: '' };
   const vblocks = v ? [{ k: 'v', v }] : [];
   return { ok: true, url: raw, final: watch, title: title || 'Video YouTube', site: 'YouTube', byline: author, time: time ? String(time) : '',
-    img: '', desc, paras, thin: false, videos: v ? [v] : [], blocks: [...vblocks, ...paras.map(t => ({ k: 'p', t }))], via: 'youtube' };
+    img: '', desc, paras, thin: false, videos: v ? [v] : [], blocks: [...vblocks, ...paras.map(t => ({ k: 'p', t }))], via: 'youtube', t: { via: 'youtube' } };
 }
 async function rdRead(raw) {
   const x = publicURL(raw);
@@ -2897,8 +2897,23 @@ async function rdRead(raw) {
       if (!blocked && metaScore(d) > (metaD ? metaScore(metaD) : -1)) metaD = d;
       return (d.paras.length < 2 || blocked) ? null : d;
     };
-    // 1) direct + redirect manual
-    try {
+    // timing per tahap — terlihat di response (.t) dan log Railway, jadi optimasi
+    // berikutnya pakai data bukan feeling
+    let fetchMs = 0;
+    const fin = async (d, url, html, via) => {
+      const m0 = Date.now();
+      const r = await rdFinish(d, url, html);
+      r.t = { ms: Date.now() - t0, fetch: fetchMs, media: Date.now() - m0, via };
+      console.log('[read]', via, r.t.ms + 'ms', 'fetch:' + fetchMs, 'media:' + r.t.media);
+      return r;
+    };
+    // first-valid-wins: semua extractor jalan paralel, yang pertama hasilkan
+    // artikel valid menang. Dulu tangga serial (direct→Jina→proxy) — situs yang
+    // rewel makan 10-20s per anak tangga. Firecrawl tetap jalur terakhir
+    // (mahal, render browser) sebelum fallback meta.
+    const jobs = [];
+    // direct + redirect manual
+    jobs.push((async () => {
       const { r, url } = await rdSafeGet(target, Math.min(12000, left()));
       if (!r.ok) throw new Error('HTTP ' + r.status);
       const ct = r.headers.get('content-type') || '';
@@ -2908,27 +2923,41 @@ async function rdRead(raw) {
       let html = await r.text();
       if (html.length > 3e6) html = html.slice(0, 3e6);
       const d = tryHtml(html, url);
-      if (d) return await rdFinish(d, url, html);
-      lastErr = new Error('halaman challenge/block');
-    } catch (e) { lastErr = e; }
-    // 2) Jina reader — paling andal, dicoba sebelum rantai proxy publik yang lambat
-    try {
+      if (!d) throw new Error('halaman challenge/block');
+      return { d, html, url };
+    })());
+    // Jina reader — markdown, bukan html → thumb() fallback di rdFinish
+    jobs.push((async () => {
       const r = await get('https://r.jina.ai/' + target, { headers: { accept: 'text/plain' } }, Math.min(10000, left()));
-      if (r.ok) {
-        const txt = await r.text();
-        if (txt && txt.length > 200) {
-          const d = rdJinaMd(txt, target);
-          if (d.paras.length >= 2 && !BLOCKED_RE.test(d.title + ' ' + txt.slice(0, 3000)) && rdOnTopic(d.title, '', d.paras)) {
-            if (metaD) {                                   // timpa field kosong dengan meta dari fetch langsung
-              if (!d.img && metaD.img) d.img = metaD.img;
-              if (!d.videos || !d.videos.length) d.videos = metaD.videos || [];
-              if (!d.time && metaD.time) d.time = metaD.time;
-            }
-            return await rdFinish(d, target, null);   // Jina = markdown, bukan html — jangan fetch ulang untuk thumb
-          }
-        }
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      const txt = await r.text();
+      if (!txt || txt.length <= 200) throw new Error('jina kosong');
+      const d = rdJinaMd(txt, target);
+      if (!(d.paras.length >= 2 && !BLOCKED_RE.test(d.title + ' ' + txt.slice(0, 3000)) && rdOnTopic(d.title, '', d.paras))) throw new Error('jina tidak valid');
+      if (metaD) {                                   // timpa field kosong dengan meta dari fetch langsung
+        if (!d.img && metaD.img) d.img = metaD.img;
+        if (!d.videos || !d.videos.length) d.videos = metaD.videos || [];
+        if (!d.time && metaD.time) d.time = metaD.time;
       }
-    } catch (e) { lastErr = e; }
+      return { d, html: null, url: target };
+    })());
+    for (const px of RD_PROXIES) jobs.push((async () => {
+      const r = await get(px(target), {}, Math.min(12000, left()));
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      const ct = r.headers.get('content-type') || '';
+      if (!/text\/html|application\/xhtml/i.test(ct)) throw new Error('bukan html');
+      let html = await r.text();
+      if (html.length > 3e6) html = html.slice(0, 3e6);
+      const d = tryHtml(html, target);
+      if (!d) throw new Error('proxy tidak valid');
+      return { d, html, url: target };
+    })());
+    const win = await new Promise(res => {
+      let n = jobs.length, settled = false;
+      const done = v => { if (!settled) { settled = true; res(v); } };
+      for (const j of jobs) j.then(v => done(v), () => {}).finally(() => { if (--n === 0) done(null); });
+    });
+    if (win) { fetchMs = Date.now() - t0; return await fin(win.d, win.url, win.html, 'race'); }
     // 2.5) Firecrawl — render browser asli, tembus Cloudflare/challenge yang memukul direct+Jina+proxy
     const FC_KEY = process.env.FIRECRAWL_API_KEY || CFG.firecrawl_key || '';
     if (FC_KEY && Date.now() - t0 < 30000) {
@@ -2950,29 +2979,12 @@ async function rdRead(raw) {
               if (!d.desc && (md.ogDescription || md['og:description'])) d.desc = md.ogDescription || md['og:description'];
               if (!d.byline && md.author) d.byline = md.author;
               if (!d.time && md['article:published_time']) d.time = md['article:published_time'];
-              return await rdFinish(d, target, String(html));
+              fetchMs = Date.now() - t0;
+              return await fin(d, target, String(html), 'firecrawl');
             }
           }
         }
       } catch (e) { lastErr = e; }
-    }
-    // 3) proxy chain — race paralel: semua proxy ditembak bersamaan, yang pertama
-    // menghasilkan artikel valid menang. Sequential chain dulu membuang ~24s saat proxy awal timeout.
-    if (Date.now() - t0 <= 26000) {
-      const pxResults = await Promise.all(RD_PROXIES.map(async px => {
-        try {
-          const r = await get(px(target), {}, Math.min(12000, left()));
-          if (!r.ok) return null;
-          const ct = r.headers.get('content-type') || '';
-          if (!/text\/html|application\/xhtml/i.test(ct)) return null;
-          let html = await r.text();
-          if (html.length > 3e6) html = html.slice(0, 3e6);
-          const d = tryHtml(html, target);
-          return d ? { d, html } : null;
-        } catch (e) { lastErr = e; return null; }
-      }));
-      const win = pxResults.find(Boolean);
-      if (win) return await rdFinish(win.d, target, win.html);
     }
     // semua jalur gagal → tetap sajikan meta (judul/gambar/video/deskripsi) daripada error kosong
     if (metaD) {
@@ -2980,7 +2992,8 @@ async function rdRead(raw) {
       const d = { ...metaD, paras, thin: paras.length < 2, via: 'meta' };
       d.blocks = (metaD.blocks && metaD.blocks.length ? metaD.blocks : paras.map(t => ({ k: 'p', t })))
         .filter(b => b.k !== 'p' || paras.includes(b.t));
-      return await rdFinish(d, target, null);   // semua fetch gagal — thumb() juga akan gagal, jangan buang waktu
+      fetchMs = Date.now() - t0;
+      return await fin(d, target, null, 'meta');   // semua fetch gagal — thumb() juga akan gagal, jangan buang waktu
     }
     throw lastErr || new Error('fetch failed');
   });
