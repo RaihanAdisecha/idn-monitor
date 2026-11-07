@@ -1765,6 +1765,26 @@ async function hls(u, res) {
   }
   res.writeHead(200, { ...base, 'content-type': ct || 'video/mp2t' }); res.end(Buffer.from(await r.arrayBuffer()));
 }
+// proxy video untuk instant reader: CDN berita (vod.detik dll) menolak Referer localhost → 403.
+// Server fetch tanpa referer; playlist m3u8 ditulis ulang rekursif lewat endpoint yang sama.
+const vhsPx = u => '/vhs?u=' + encodeURIComponent(u);
+async function vhs(u, res) {
+  let href;
+  try { href = new URL(u).href; if (!/^https?:$/.test(new URL(href).protocol)) throw 0; } catch (e) { res.writeHead(400); return res.end('url tidak valid'); }
+  const r = await get(href, { headers: {} }, 15000);
+  const ct = r.headers.get('content-type') || '';
+  const base = { 'access-control-allow-origin': '*', 'cache-control': 'no-store' };
+  if (!r.ok) { res.writeHead(r.status, base); return res.end(); }
+  if (/mpegurl/i.test(ct) || /\.m3u8(\?|#|$)/.test(href)) {
+    const txt = (await r.text()).split('\n').map(l => {
+      const t = l.trim(); if (!t) return l;
+      if (t[0] === '#') return t.replace(/URI="([^"]+)"/g, (m, p) => 'URI="' + vhsPx(new URL(p, href).href) + '"');
+      return vhsPx(new URL(t, href).href);
+    }).join('\n');
+    res.writeHead(200, { ...base, 'content-type': 'application/vnd.apple.mpegurl' }); return res.end(txt);
+  }
+  res.writeHead(200, { ...base, 'content-type': ct || 'video/mp4' }); res.end(Buffer.from(await r.arrayBuffer()));
+}
 const camList = () => { try { return JSON.parse(fs.readFileSync(HTML, 'utf8').match(/id="cam-data">([\s\S]*?)<\/script>/)[1]); } catch (e) { return []; } };
 const alive = () => memo('alive', 150000, async () => {
   const cams = camList(), res = new Array(cams.length).fill(false); let i = 0;
@@ -2992,6 +3012,7 @@ http.createServer(async (req, res) => {
       return await ttTile(m[1].toLowerCase(), m[2], m[3], m[4], res);
     }
     if (u.pathname === '/hls') return await hls(u.searchParams.get('u') || '', res);
+    if (u.pathname === '/vhs') return await vhs(u.searchParams.get('u') || '', res);
     if (u.pathname === '/img') return await img(u.searchParams.get('u') || '', res);
     if (u.pathname === '/api/read') {
       try { return json(await rdRead(u.searchParams.get('u') || '')); }

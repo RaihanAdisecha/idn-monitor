@@ -5407,7 +5407,12 @@ function rdArticle(d, url) {
   const hero = d.img && !posters.has(d.img) ? d.img : '';   // server sudah memvalidasi (gambar RSS ikut gerbang ukuran/duplikat); jangan fallback mentah
   const img = hero ? `<img class="rd-hero" src="${esc(hero)}" alt="" loading="eager" referrerpolicy="no-referrer" onerror="this.remove()">` : '';
   const rdVidHtml = v => {
-    if (v.kind === 'video') return `<video class="rd-vid" controls playsinline preload="metadata" src="${esc(v.url)}"${v.poster ? ` poster="${esc(v.poster)}"` : ''}></video>`;
+    if (v.kind === 'video') {
+      // CDN berita tolak Referer localhost → proxy lewat /vhs (server fetch tanpa referer)
+      const src = API != null ? API + '/vhs?u=' + encodeURIComponent(v.url) : v.url;
+      const hlsFlag = /\.m3u8(\?|#|$)/i.test(v.url) ? ' data-hls="1"' : '';
+      return `<video class="rd-vid" controls playsinline preload="metadata" src="${esc(src)}"${hlsFlag}${v.poster ? ` poster="${esc(v.poster)}"` : ''}></video>`;
+    }
     if (v.kind !== 'iframe') return '';
     const yid = (String(v.url).match(/embed\/([\w-]{6,15})/i) || [])[1];
     if (!yid) return `<div class="rd-vid"><iframe src="${esc(v.url)}" title="Video" loading="lazy" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe></div>`;
@@ -5447,11 +5452,10 @@ function rdArticle(d, url) {
 }
 // video langsung: m3u8 butuh hls.js di Chrome (Safari native); mp4 langsung jalan
 function rdMountVideo(v) {
-  const src = v.getAttribute('src') || '';
-  if (!/\.m3u8(\?|#|$)/i.test(src)) return;
+  if (!v.hasAttribute('data-hls')) return;
   if (window.Hls && Hls.isSupported()) {
     const h = new Hls({ maxBufferLength: 30 });
-    h.loadSource(src); h.attachMedia(v);
+    h.loadSource(v.getAttribute('src')); h.attachMedia(v);
     v.addEventListener('error', () => { try { h.destroy(); } catch (e) {} }, { once: true });
   }
 }
