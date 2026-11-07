@@ -60,14 +60,15 @@ function histMerge(map, posts, max, file) {
   const kept = SOC.socBalance(arr, max, histUser);   // cap per topik + per akun, biar karhutla nggak makan buffer
   map.clear();
   for (const p of kept) map.set(histKey(p), p);
-  histSave(file, map, max);
+  histMarkDirty(file, map, max);
 }
 // klasifikasi ulang history yang dimuat dari disk: buang post lama yang nggak lolos aturan sekarang
 function histRetag(map, keep) { HISTORY.retag(map, keep, ADHOC); }
 const histSaveAt = {};
-function histSave(file, map, max) {
+const histDirty = new Map();   // file -> {map, max}: ada update yang belum tentu tersimpan
+function histSave(file, map, max, force) {
   const now = Date.now();
-  if (now - (histSaveAt[file] || 0) < 60000) return;
+  if (!force && now - (histSaveAt[file] || 0) < 60000) return;
   histSaveAt[file] = now;
   try {
     fs.mkdirSync(HIST_DIR, { recursive: true });
@@ -75,8 +76,15 @@ function histSave(file, map, max) {
     const tmp = file + '.tmp';
     fs.writeFileSync(tmp, JSON.stringify({ classifierVersion: SOC.CLASSIFIER_VERSION, posts }));
     fs.renameSync(tmp, file);
-  } catch (e) {}
+    histDirty.delete(file);
+  } catch (e) { console.error('[hist] gagal simpan ' + file + ': ' + (e.message || e)); }
 }
+function histMarkDirty(file, map, max) { histDirty.set(file, { map, max }); histSave(file, map, max); }
+// flush berkala untuk update yang tertahan throttle 60 dtk + flush paksa saat shutdown
+setInterval(() => { for (const [f, m] of histDirty) histSave(f, m.map, m.max, true); }, 30000).unref();
+const histFlushAll = () => { for (const [f, m] of histDirty) histSave(f, m.map, m.max, true); };
+process.on('SIGINT', () => { histFlushAll(); process.exit(0); });
+process.on('SIGTERM', () => { histFlushAll(); process.exit(0); });
 function histLoad(file, map) {
   try {
     const j = JSON.parse(fs.readFileSync(file, 'utf8'));
@@ -87,18 +95,26 @@ histLoad(path.join(HIST_DIR, 'x-history.json'), xHist);
 histLoad(path.join(HIST_DIR, 'threads-history.json'), tHist);
 histRetag(xHist, SOC.socKeepX); histRetag(tHist, SOC.socKeepTh);
 const memoRetry = new Map();   // k -> jumlah retry gagal beruntun
-const memo = (k, ttl, fn) => {
+// good(v): predikat "payload ini layak jadi data". Hasil fetch yang resolve tapi
+// gagal (mis. {ok:false}) TIDAK boleh menghapus last-good — diperlakukan seperti throw.
+const memo = (k, ttl, fn, good) => {
+  const isGood = good || (v => true);
   const kick = () => {   // refresh background + auto-retry backoff bila gagal (self-heal tanpa nunggu request)
     const cur = cache.get(k);
     if (!cur || cur.p) return;
-    cur.p = fn().then(v => { cache.set(k, { at: Date.now(), v }); memoRetry.delete(k); },
-      () => {
-        const now = cache.get(k);
-        cache.set(k, { at: Date.now() - ttl + 15000, v: now && now.v });
-        const n = (memoRetry.get(k) || 0) + 1;
-        memoRetry.set(k, n);
-        if (n <= 5) setTimeout(kick, Math.min(90000, 15000 * n)).unref();
-      });
+    cur.p = fn().then(v => accept(v), () => fail());
+  };
+  const fail = () => {
+    const cur = cache.get(k), now = Date.now();
+    cache.set(k, { at: now - ttl + 15000, v: cur && cur.v });
+    const n = (memoRetry.get(k) || 0) + 1;
+    memoRetry.set(k, n);
+    if (n <= 5) setTimeout(kick, Math.min(90000, 15000 * n)).unref();
+  };
+  const accept = v => {
+    const cur = cache.get(k);
+    if (cur && cur.v !== undefined && isGood(cur.v) && !isGood(v)) return fail();
+    cache.set(k, { at: Date.now(), v }); memoRetry.delete(k); return v;
   };
   const c = cache.get(k);
   if (c && c.v !== undefined) {
@@ -107,10 +123,32 @@ const memo = (k, ttl, fn) => {
     return Promise.resolve(c.v);
   }
   if (c && c.p) return c.p;
-  const p = fn().then(v => { cache.set(k, { at: Date.now(), v }); memoRetry.delete(k); return v; },
+  const p = fn().then(v => accept(v),
     e => { cache.delete(k); memoRetry.delete(k); throw e; });
   cache.set(k, { at: 0, v: undefined, p }); return p;
 };
+// semaphore kecil: batasi konkurensi ke upstream yang sama (X GraphQL, worker Threads).
+// Lazy fetch antre di slot yang sama dengan sweep utama — lebih baik menunggu daripada kena 429.
+const makeSem = max => {
+  let n = 0; const q = [];
+  return fn => new Promise((res, rej) => {
+    const run = () => {
+      n++;
+      Promise.resolve().then(fn).then(res, rej).finally(() => { n--; const nx = q.shift(); if (nx) nx(); });
+    };
+    if (n < max) run(); else q.push(run);
+  });
+};
+// last-good untuk cache manual: payload gagal tidak menghapus data valid.
+// `at` dimundurkan supaya request berikutnya retry cepat, data lama tetap tersaji.
+function cacheFail(cache, ttl, data) {
+  const bad = !data || data.ok === false;
+  if (bad && cache.data && cache.data.ok) {
+    cache.at = Date.now() - ttl + 30000;
+    return cache.data;
+  }
+  cache.at = Date.now(); cache.data = data; return data;
+}
 async function get(url, opt = {}, ms = 10000) {
   const ctl = new AbortController(), t = setTimeout(() => ctl.abort(), ms);
   try {
@@ -236,7 +274,7 @@ const news = () => Promise.all(NEWS.map(([id, url]) => memo('n:' + id, 55000, as
     }
   }
   return { id, ok: false, err: ('gagal direct + proxy: ' + lastErr).slice(0, 140), items: [] };
-})));
+}, v => v.ok === true)));
 
 /* ---------- taksonomi: insiden fisik (geo) + topik sosial ---------- */
 // geo:true = kejadian fisik/lokal → boleh jadi pin peta, node globe, dan masuk marquee.
@@ -407,7 +445,8 @@ function bottomCursor(j) {
   walk(j);
   return c;
 }
-async function xSearch(q, cursor) {
+const xSem = makeSem(4);   // maks 4 SearchTimeline paralel — lazy & sweep berbagi slot yang sama
+async function xSearchGo(q, cursor) {
   const id = await xQueryId();
   const vars = { rawQuery: q + ' since_time:' + Math.floor((Date.now() - 46 * 3600e3) / 1000), count: 20, querySource: 'typed_query', product: 'Latest' };
   if (cursor) vars.cursor = cursor;   // halaman berikut: rawQuery wajib tetap ada, kalau tidak 422
@@ -434,6 +473,7 @@ async function xSearch(q, cursor) {
   if (j.errors && j.errors.length && !out.size) throw new Error(JSON.stringify(j.errors).slice(0, 200));
   return { posts: [...out.values()].map(p => ({ ...p, q })), cursor: bottomCursor(j) };
 }
+const xSearch = (q, cursor) => xSem(() => xSearchGo(q, cursor));
 /* ---------- query adaptif: frasa yang sedang naik dari headline ---------- */
 const TSTOP = new Set(('yang dan di ke dari untuk pada dengan adalah ini itu ada tidak akan juga telah sudah bisa lebih sangat para dia kami kita mereka sebuah seorang suatu saat ketika setelah sebelum hingga oleh karena maka jika hari minggu senin selasa rabu kamis jumat sabtu minggu januari februari maret april mei juni juli agustus september oktober november desember breaking news terbaru update foto video live hasil wib wit daring online pemerintah menteri presiden indonesia daerah warga polisi damkar bpbd dishub pasar korban evakuasi massa jumlah ribu juta ratusan ribuan jutaan miliar triliun total resmi viral heboh terduga diduga kini paling orang persen masyarakat pihak oknum pelaku tersangka ibu bapak kali pemkot polda polres kejaksaan kemensos kemenkeu kemendagri').split(' '));
 const TBLK = new Set(('detik cnn tempo liputan6 republika tribun cnbc antara jawapos okezone kumparan suara merdeka sindonews jpnn tvri inews media news kompas viva metrotvnews rmol infopublik jabarprov korankaltim tvone merahputih poskota beritasatu gridoto wowkeren bola bolaoverza mediaindonesia faktualnews berita foto video gallery wawancara investigasi khusus daerah nasional internasional ekonomi hiburan selebriti olahraga dishub cumplik').split(' '));
@@ -555,7 +595,7 @@ const xposts = () => memo('x', 300000, async () => {
   let err = errs.join(' | ');
   if (!posts.length && !err) err = '0 post lolos filter: ' + rawN + ' tweet dari ' + queries.length + ' query (drop ts:' + dropTs + ' topik:' + dropTag + ', tweet terbaru=' + (newest ? new Date(newest).toISOString() : '-') + ', qid=' + (X.query_id ? 'env/config:' + X.query_id : 'auto') + ')' + (dropSample ? ' | contoh ts=' + dropSample.ts + ' created_at="' + dropSample.ca + '" "' + dropSample.txt + '"' : '');
   return { ok: errs.length < queries.length, err, posts, ...socMeta(), at: Date.now(), partial: errs.length > 0 };
-});
+}, v => (v.posts || []).length > 0);
 /* ---------- X lazy: satu topik on-demand (klik chip yang masih kosong) ---------- */
 const xqLazy = q => memo('xq:' + String(q).toLowerCase(), 600000, async () => {
   if (!xHas()) throw new Error('auth_token / ct0 belum diisi');
@@ -582,7 +622,8 @@ const PY_BIN = [
   'python3'
 ].filter(Boolean).find(p => p === 'python3' || fs.existsSync(p));
 // spec bisa array query (kompat lama) atau {searches:[...], profiles:[...]}
-const runTh = (spec, timeout) => new Promise((resolve, reject) => {
+const thSem = makeSem(3);   // maks 3 worker Threads paralel — lazy thq antre di slot yang sama
+const runThRaw = (spec, timeout) => new Promise((resolve, reject) => {
   execFile(PY_BIN, [path.join(__dirname, 'vendor', 'threads_worker.py'), JSON.stringify(spec)],
     { timeout, maxBuffer: 12 << 20 },
     (err, stdout, stderr) => {
@@ -590,6 +631,7 @@ const runTh = (spec, timeout) => new Promise((resolve, reject) => {
       try { resolve(JSON.parse(stdout)); } catch (e) { reject(new Error('worker bukan JSON valid')); }
     });
 });
+const runTh = (spec, timeout) => thSem(() => runThRaw(spec, timeout));
 function thCollect(rs, extra) {
   const now = Date.now(), batch = [], errs = [];
   for (const r of rs) {
@@ -657,7 +699,7 @@ const threads = () => memo('threads', 300000, async () => {
   histMerge(tHist, batch, HIST_MAX.th, path.join(HIST_DIR, 'threads-history.json'));
   const posts = [...tHist.values()].sort((a, b) => histTs(b) - histTs(a));
   return { ok: rs.some(r => r.status === 'fulfilled' && (r.value.posts?.length > 0 || !r.value.errs?.length)), posts, errs, ...socMeta(), at: Date.now(), partial: errs.length > 0 };
-});
+}, v => (v.posts || []).length > 0);
 /* ---------- Threads lazy: topik on-demand (sebelumnya nggak ada, makanya chip kosong) ---------- */
 const thqLazy = q => memo('thq:' + String(q).toLowerCase(), 600000, async () => {
   if (!PY_BIN) throw new Error('Python tidak ditemukan');
@@ -1143,7 +1185,7 @@ async function weather(){
       pressure: w.current?.pressure_msl, humidity: w.current?.relative_humidity_2m,
       visibility: w.current?.visibility }));
     wxCache.at = Date.now(); wxCache.data = { ok: true, items, at: Date.now() };
-  } catch(e) { wxCache.at = Date.now(); wxCache.data = { ok: false, err: String(e.message||e).slice(0,150), items: [] }; }
+  } catch(e) { return cacheFail(wxCache, 600000, { ok: false, err: String(e.message||e).slice(0,150), items: [] }); }
   return wxCache.data;
 }
 const radarCache = { at: 0, data: null };
@@ -1216,9 +1258,7 @@ async function fires(){
     }
   }
   out.sort((a,b) => b.time - a.time);
-  fireCache.at = Date.now();
-  fireCache.data = { ok: sourceStatus.some(s => s.ok), items: out, sources: sourceStatus, at: Date.now() };
-  return fireCache.data;
+  return cacheFail(fireCache, 600000, { ok: sourceStatus.some(s => s.ok), items: out, sources: sourceStatus, at: Date.now() });
 }
 
 const modelRunCache = { at: 0, data: null };
@@ -1297,7 +1337,7 @@ async function windGrid(){
       { header: mkHeader(2), data: uData },
       { header: mkHeader(3), data: vData }
     ], at: Date.now() };
-  } catch(e) { windCache.at = Date.now(); windCache.data = { ok: false, err: String(e.message||e).slice(0,150), data: null }; }
+  } catch(e) { return cacheFail(windCache, 900000, { ok: false, err: String(e.message||e).slice(0,150), data: null }); }
   return windCache.data;
 }
 
@@ -1379,8 +1419,7 @@ async function alerts(){
     alertCache.at = Date.now();
     alertCache.data = { ok: true, items: out, at: Date.now() };
   } catch(e) {
-    alertCache.at = Date.now();
-    alertCache.data = { ok: false, err: String(e.message||e).slice(0,150), items: [] };
+    return cacheFail(alertCache, 300000, { ok: false, err: String(e.message||e).slice(0,150), items: [] });
   }
   return alertCache.data;
 }
