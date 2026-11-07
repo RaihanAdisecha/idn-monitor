@@ -1,5 +1,7 @@
 // node server.js  (Node 18+, tanpa dependency)
 const SOC = require('./social');
+const HISTORY = require('./social-history');
+const ASSESS = require('./assessment');
 const http = require('http'), fs = require('fs'), path = require('path'), dns = require('dns').promises;
 // muat .env sederhana (satu baris KEY=VALUE) agar TOMTOM_API_KEY bisa dari env
 try {
@@ -46,27 +48,22 @@ const cache = new Map();
 /* ---------- history buffer sosial: post lama tetap ada antar-sync & restart ---------- */
 const HIST_DIR = path.join(__dirname, 'data');
 const xHist = new Map(), tHist = new Map();
-const histKey = p => p.url || p.text || p.code || '';
-const histTs = p => p.ts || Date.parse(p.created_at || '') || 0;
+const histKey = HISTORY.keyOf, histTs = HISTORY.tsOf;
 const HIST_MAX = { x: 600, th: 300 }, HIST_AGE = 24 * 3600e3;
 let ADHOC = [];   // topik dinamis dari berita yang lagi naik (nama kasus), in-memory
 const histUser = p => String(p.handle || p.username || '').toLowerCase();
 function histMerge(map, posts, max, file) {
   for (const p of posts) { const k = histKey(p); if (k) map.set(k, p); }
   const now = Date.now();
-  const arr = [...map.values()].filter(p => now - histTs(p) <= HIST_AGE).sort((a, b) => histTs(b) - histTs(a));
+  histRetag(map, map === xHist ? SOC.socKeepX : SOC.socKeepTh);
+  const arr = [...map.values()].filter(p => histTs(p) > 0 && histTs(p) <= now && now - histTs(p) <= HIST_AGE).sort((a, b) => histTs(b) - histTs(a));
   const kept = SOC.socBalance(arr, max, histUser);   // cap per topik + per akun, biar karhutla nggak makan buffer
   map.clear();
   for (const p of kept) map.set(histKey(p), p);
   histSave(file, map, max);
 }
 // klasifikasi ulang history yang dimuat dari disk: buang post lama yang nggak lolos aturan sekarang
-function histRetag(map, keep) {
-  for (const [k, p] of [...map.entries()]) {
-    p.topics = SOC.socTopics(p.text);
-    if (!p.topics.length || !keep(p)) map.delete(k);
-  }
-}
+function histRetag(map, keep) { HISTORY.retag(map, keep, ADHOC); }
 const histSaveAt = {};
 function histSave(file, map, max) {
   const now = Date.now();
@@ -75,7 +72,9 @@ function histSave(file, map, max) {
   try {
     fs.mkdirSync(HIST_DIR, { recursive: true });
     const posts = [...map.values()].sort((a, b) => histTs(b) - histTs(a)).slice(0, max);
-    fs.writeFileSync(file, JSON.stringify({ posts }));
+    const tmp = file + '.tmp';
+    fs.writeFileSync(tmp, JSON.stringify({ classifierVersion: SOC.CLASSIFIER_VERSION, posts }));
+    fs.renameSync(tmp, file);
   } catch (e) {}
 }
 function histLoad(file, map) {
@@ -256,7 +255,18 @@ const CATS = [
 ];
 const SKIP_RE = /(pascabencana|pascagempa|pascabanjir|mitigasi|kesiapsiagaan|potensi bencana|rawan bencana|risiko bencana|kajian risiko|simulasi|edukasi|sosialisasi|pelatihan|antisipasi|siaga bencana|hadapi bencana|menghadapi bencana|peringatan dini|early warning|asuransi|operasi patuh|imbau|himbau|ingatkan|waspada|waspadai|ranperda|perda|godok|korupsi|dana bencana|tas bencana|go[- ]?bag|pusdalops|kebutuhan darurat|peralatan bencana|salurkan bantuan|menyalurkan|penyaluran|modus|ruu|boikot dirinya|joget|liga|top skor|voli|sepak bola|piala|kualifikasi|gaun|mahalini|fashion|penghargaan|jasa raharja|warisan|turun-temurun|sepanjang 20\d\d|berdampak ke ekonomi|brasil|brazil|amerika serikat|filipina|thailand|malaysia|korea|jepang|tiongkok|china|inggris|prancis|jerman|australia|india|pakistan|iran|israel|palestina|ukraina|rusia|gaza)/i;
 const catMeta = id => CATS.find(c => c.id === id) || { id:'', label:'Insiden', sev:0.5, geo:true };
-const catOf = t => SKIP_RE.test(t) ? '' : ((CATS.find(c => c.re.test(t)) || {}).id || '');
+const assessNews = t => SOC.socAssess(t);
+const catOf = t => {
+  const a = assessNews(t);
+  // Feed categorization = topic relevance, BUKAN signal eligibility.
+  // events[] hanya untuk alarm/klaster; headline berita jarang punya EVENT_ACTION
+  // jadi events kosong untuk sebagian besar judul legit.
+  if (!a.topics.length || SKIP_RE.test(t)) return '';
+  if (a.findings.length && a.findings.every(f => f.scope === 'foreign')) return '';
+  const ids = new Set(a.topics.map(tp => ASSESS.CATEGORY[tp]).filter(Boolean));
+  const hit = CATS.find(c => ids.has(c.id));
+  return hit ? hit.id : '';
+};
 const INCIDENT_RE = new RegExp(CATS.map(c => c.re.source).join('|'), 'i');
 // feed topik menjamin tabnya tidak kosong: item GNEWS·SIBER yang lolos SKIP_RE tapi
 // tidak kena regex tetap masuk kategori feed-nya
@@ -279,10 +289,10 @@ const breaking = () => memo('breaking', 25000, async () => {
       seen.add(k);
       matched++;
       const age = it.ts ? Math.max(0, now - it.ts) : 12 * 3600e3;
-      if (age > 36 * 3600e3) continue;
+      if (!Number.isFinite(it.ts) || it.ts <= 0 || it.ts > now || age > 36 * 3600e3) continue;
       const recency = Math.max(0.12, Math.exp(-age / (16 * 3600e3)));
       const meta = catMeta(cat);
-      items.push({ ...it, src: s.id, cat, label: meta.label, score: +(meta.sev * recency).toFixed(3) });
+      items.push({ ...it, assessment: assessNews(it.title), src: s.id, cat, label: meta.label, score: +(meta.sev * recency).toFixed(3) });
     }
   }
   // Kandidat diambil stabil: per kategori terbaru, dedupe tajuk (content-key, bukan URL mentah).
@@ -459,8 +469,8 @@ const adhocRefresh = async () => {
   return ADHOC;
 };
 const topicOf = q => SOC.SOC_TOPICS.concat(ADHOC).find(t => t.id === String(q).toLowerCase());
-const tagX = (p, extra) => { p.topics = SOC.socTopics(p.text, extra || ADHOC); return p.topics.length > 0 && SOC.socKeepX(p); };
-const tagTh = (p, extra) => { p.topics = SOC.socTopics(p.text, extra || ADHOC); return p.topics.length > 0 && SOC.socKeepTh(p); };
+const tagX = (p, extra) => HISTORY.tag(p, extra || ADHOC) && SOC.socKeepX(p);
+const tagTh = (p, extra) => HISTORY.tag(p, extra || ADHOC) && SOC.socKeepTh(p);
 const socPosts = () => [
   ...[...xHist.values()].map(p => ({ topics: p.topics, platform: 'x', user: p.handle, ts: histTs(p) })),
   ...[...tHist.values()].map(p => ({ topics: p.topics, platform: 'th', user: p.username, ts: histTs(p) }))];
@@ -502,7 +512,7 @@ const xposts = () => memo('x', 300000, async () => {
   const posts = [...xHist.values()].sort((a, b) => histTs(b) - histTs(a));
   let err = errs.join(' | ');
   if (!posts.length && !err) err = '0 post lolos filter: ' + rawN + ' tweet dari ' + queries.length + ' query (drop ts:' + dropTs + ' topik:' + dropTag + ', tweet terbaru=' + (newest ? new Date(newest).toISOString() : '-') + ', qid=' + (X.query_id ? 'env/config:' + X.query_id : 'auto') + ')' + (dropSample ? ' | contoh ts=' + dropSample.ts + ' created_at="' + dropSample.ca + '" "' + dropSample.txt + '"' : '');
-  return { ok: posts.length > 0, err, posts, ...socMeta(), at: Date.now() };
+  return { ok: errs.length < queries.length, err, posts, ...socMeta(), at: Date.now(), partial: errs.length > 0 };
 });
 /* ---------- X lazy: satu topik on-demand (klik chip yang masih kosong) ---------- */
 const xqLazy = q => memo('xq:' + String(q).toLowerCase(), 600000, async () => {
@@ -563,7 +573,7 @@ const threads = () => memo('threads', 240000, async () => {
   const { batch, errs } = thCollect(rs);
   histMerge(tHist, batch, HIST_MAX.th, path.join(HIST_DIR, 'threads-history.json'));
   const posts = [...tHist.values()].sort((a, b) => histTs(b) - histTs(a));
-  return { ok: posts.length > 0, posts, errs, ...socMeta(), at: Date.now() };
+  return { ok: rs.some(r => r.status === 'fulfilled' && (r.value.posts?.length > 0 || !r.value.errs?.length)), posts, errs, ...socMeta(), at: Date.now(), partial: errs.length > 0 };
 });
 /* ---------- Threads lazy: topik on-demand (sebelumnya nggak ada, makanya chip kosong) ---------- */
 const thqLazy = q => memo('thq:' + String(q).toLowerCase(), 600000, async () => {
@@ -575,6 +585,14 @@ const thqLazy = q => memo('thq:' + String(q).toLowerCase(), 600000, async () => 
   histMerge(tHist, batch, HIST_MAX.th, path.join(HIST_DIR, 'threads-history.json'));
   return [...tHist.values()].sort((a, b) => histTs(b) - histTs(a));
 });
+
+let socialSnapshotAt = 0;
+function socialResponse(result, map, keep) {
+  histRetag(map, keep);
+  socialSnapshotAt = Math.max(Date.now(), socialSnapshotAt + 1);
+  return { ...result, ...HISTORY.snapshot(map, Date.now()), ...socMeta(),
+    ok: result.ok === true, snapshotAt: socialSnapshotAt, partial: !!result.partial };
+}
 
 /* ---------- THREAD: post + balasan (X via search conversation, Threads via worker) ---------- */
 function tweetId(u) {
@@ -681,7 +699,7 @@ const incidents = () => memo('incidents', 55000, async () => {
       const cat = catOf(it.title);
       if (!cat || catMeta(cat).geo === false) continue;
       const age = it.ts ? Math.max(0, now - it.ts) : 12 * 3600e3;
-      if (age > GEO_WINDOW) continue;                       // jendela sama dengan /api/situation → angka sinkron
+      if (!Number.isFinite(it.ts) || it.ts <= 0 || it.ts > now || age > GEO_WINDOW) continue;                       // jendela sama dengan /api/situation → angka sinkron
       const k = breakNorm(it.title).slice(0, 56);
       if (!k || seen.has(k)) continue;
       if (!plotOk(it.title, cat)) continue;
@@ -695,7 +713,7 @@ const incidents = () => memo('incidents', 55000, async () => {
       for (const pl of places)
         out.push({ name: pl.name, la: pl.la, lo: pl.lo, prec: pl.prec, prov: pl.prov, kind: cat,
           label: catMeta(cat).label, title: it.title, multi: places.length > 1 || undefined,
-          src: s.id, url: it.url, ts: it.ts || now, weight: +(heat / Math.sqrt(places.length)).toFixed(3) });
+          assessment: assessNews(it.title), src: s.id, url: it.url, ts: it.ts, weight: +(heat / Math.sqrt(places.length)).toFixed(3) });
     }
   }
   out.sort((a, b) => b.ts - a.ts);
@@ -718,14 +736,14 @@ const situation = () => memo('situation', 45000, async () => {
       const cat = catOf(it.title);
       if (!cat) continue;
       const age = it.ts ? now - it.ts : 12 * 3600e3;
-      if (age > GEO_WINDOW) continue;
+      if (!Number.isFinite(it.ts) || it.ts <= 0 || it.ts > now || age > GEO_WINDOW) continue;
       const k = breakNorm(it.title).slice(0, 56);
       if (!k || seen.has(k)) continue;
       seen.add(k);
       const place = placeOf(it.title);
       const recency = Math.max(0.12, Math.exp(-age / (24 * 3600e3)));
       const meta = catMeta(cat);
-      items.push({ title: it.title, url: it.url, src: s.id, ts: it.ts || now,
+      items.push({ title: it.title, url: it.url, src: s.id, ts: it.ts, assessment: assessNews(it.title),
         cat, label: meta.label, place: place ? place.name : '',
         weight: +(meta.sev * recency).toFixed(3) });
       stats[cat]++;
@@ -2862,7 +2880,8 @@ http.createServer(async (req, res) => {
   try {
     if (u.pathname === '/' || u.pathname === '/index.html') { res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' }); return res.end(fs.readFileSync(HTML)); }
     if (u.pathname === '/idn.geo.json' || u.pathname === '/idn-context.geo.json' || u.pathname === '/idn-prov.geo.json' || u.pathname === '/world110.geo.json') { res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store', 'access-control-allow-origin': '*' }); return res.end(fs.readFileSync(path.join(__dirname, 'public', u.pathname.slice(1)))); }
-    if (u.pathname === '/api/ping') return json({ ok: true, x: xHas() });
+    if (u.pathname === '/signals.js') { res.writeHead(200, { 'content-type': 'application/javascript; charset=utf-8', 'cache-control': 'no-store' }); return res.end(fs.readFileSync(path.join(__dirname, 'public', 'signals.js'))); }
+    if (u.pathname === '/api/ping') return json({ ok: true, x: xHas(), classifierVersion: SOC.CLASSIFIER_VERSION });
     if (u.pathname === '/api/news') {
       const srcs = await news();
       { // gambar yang sama dipakai >1 headline berbeda = aset situs/placeholder → kosongkan semua
@@ -2871,8 +2890,8 @@ http.createServer(async (req, res) => {
         for (const s of srcs) for (const i of s.items) if (i.img && cnt.get(rdImgKey(i.img)).size > 1) i.img = '';
       }
       return json({ sources: srcs.map(s => ({ ...s, items: s.items.map(i => {
-        const cat = catOf(i.title) || feedCatOf(s.id);
-        return { ...i, cat, label: cat ? catMeta(cat).label : '' };
+        const cat = catOf(i.title);
+        return { ...i, cat, feedTopic: feedCatOf(s.id), assessment: assessNews(i.title), label: cat ? catMeta(cat).label : '' };
       }) })), at: Date.now() });
     }
     if (u.pathname === '/api/breaking') {
@@ -2883,7 +2902,7 @@ http.createServer(async (req, res) => {
       }
       return json(await breaking());
     }
-    if (u.pathname === '/api/x') return json(await xposts());
+    if (u.pathname === '/api/x') return json(socialResponse(await xposts(), xHist, SOC.socKeepX));
     if (u.pathname === '/api/xdiag') {   // bandingkan bentuk query: mana yang dapat hasil basi di host ini
       const SQ = require('./social.js').socQueries('x', []); const tests = u.searchParams.get('all') ? SQ.map(e => e.q) : ['kebakaran', 'kebakaran lang:id', 'kebakaran -filter:replies', 'kebakaran lang:id -filter:replies', '(kebakaran OR damkar) lang:id -filter:replies', 'kebakaran since_time:' + Math.floor((Date.now() - 46 * 3600e3) / 1000)];
       const out = [];
@@ -2897,13 +2916,13 @@ http.createServer(async (req, res) => {
     if (u.pathname === '/api/xq') {
       const q = (u.searchParams.get('q') || '').trim().slice(0, 60);
       if (!q) return json({ ok: false, err: 'query kosong' });
-      try { return json({ ok: true, posts: await xqLazy(q), ...socMeta(), at: Date.now() }); }
+      try { await xqLazy(q); return json(socialResponse({ ok: true }, xHist, SOC.socKeepX)); }
       catch (e) { return json({ ok: false, err: String(e.message || e).slice(0, 200) }); }
     }
     if (u.pathname === '/api/thq') {
       const q = (u.searchParams.get('q') || '').trim().slice(0, 60);
       if (!q) return json({ ok: false, err: 'query kosong' });
-      try { return json({ ok: true, posts: await thqLazy(q), ...socMeta(), at: Date.now() }); }
+      try { await thqLazy(q); return json(socialResponse({ ok: true }, tHist, SOC.socKeepTh)); }
       catch (e) { return json({ ok: false, err: String(e.message || e).slice(0, 200) }); }
     }
     if (u.pathname === '/api/thread') {
@@ -2914,9 +2933,9 @@ http.createServer(async (req, res) => {
       const c = cache.get('threads');
       if (c && c.v) {
         if (!c.p && Date.now() - c.at > 90000) threads().catch(() => {});
-        return json(c.v);
+        return json(socialResponse(c.v, tHist, SOC.socKeepTh));
       }
-      return json(await threads());
+      return json(socialResponse(await threads(), tHist, SOC.socKeepTh));
     }
     if (u.pathname === '/api/incidents') return json(await incidents());
     if (u.pathname === '/api/situation') return json(await situation());
