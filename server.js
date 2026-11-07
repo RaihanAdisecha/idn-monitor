@@ -374,7 +374,7 @@ function collect(o, out) {
 }
 async function xSearch(q) {
   const id = await xQueryId();
-  const vars = { rawQuery: q, count: 20, querySource: 'typed_query', product: 'Latest' };
+  const vars = { rawQuery: q + ' since_time:' + Math.floor((Date.now() - 46 * 3600e3) / 1000), count: 20, querySource: 'typed_query', product: 'Latest' };
   const url = `https://api.x.com/graphql/${id}/SearchTimeline`;
   const r = await get(url, { method: 'POST', headers: { 'content-type': 'application/json',
     authorization: 'Bearer ' + (X.bearer || BEARER), cookie: `auth_token=${X.auth_token}; ct0=${X.ct0}`,
@@ -467,7 +467,7 @@ const xposts = () => memo('x', 300000, async () => {
   const hotTop = meta0.trending.slice(0, 2);
   for (const e of all) if (ADHOC.some(a => a.id === e.t) || hotTop.includes(e.t)) sel.set(e.q, e);
   const queries = [...sel.values()], errs = [], batch = [], now = Date.now();
-  let rawN = 0, dropTs = 0, dropTag = 0, dropSample = null;
+  let rawN = 0, dropTs = 0, dropTag = 0, dropSample = null, newest = 0;
   for (let i = 0; i < queries.length; i += 5) {
     const chunk = queries.slice(i, i + 5);
     const rs = await Promise.allSettled(chunk.map(e => xSearch(e.q)));
@@ -475,7 +475,7 @@ const xposts = () => memo('x', 300000, async () => {
       const e = chunk[j];
       if (r.status === 'rejected') { errs.push(e.t + ': ' + String(r.reason && r.reason.message || r.reason)); return; }
       for (const p of r.value) {
-        rawN++;
+        rawN++; if (p.ts > newest) newest = p.ts;
         if (!p.ts || now - p.ts > 48 * 3600e3) { dropTs++; if (!dropSample) dropSample = { ts: p.ts, ca: p.created_at, txt: String(p.text || '').slice(0, 60) }; continue; }
         if (!tagX(p)) { dropTag++; continue; }
         p.q = e.t; p.qs = p.topics.slice();
@@ -486,7 +486,7 @@ const xposts = () => memo('x', 300000, async () => {
   histMerge(xHist, batch, HIST_MAX.x, path.join(HIST_DIR, 'x-history.json'));
   const posts = [...xHist.values()].sort((a, b) => histTs(b) - histTs(a));
   let err = errs.join(' | ');
-  if (!posts.length && !err) err = '0 post lolos filter: ' + rawN + ' tweet dari ' + queries.length + ' query (drop ts:' + dropTs + ' topik:' + dropTag + ')' + (dropSample ? ' | contoh ts=' + dropSample.ts + ' created_at="' + dropSample.ca + '" "' + dropSample.txt + '"' : '');
+  if (!posts.length && !err) err = '0 post lolos filter: ' + rawN + ' tweet dari ' + queries.length + ' query (drop ts:' + dropTs + ' topik:' + dropTag + ', tweet terbaru=' + (newest ? new Date(newest).toISOString() : '-') + ', qid=' + (X.query_id ? 'env/config:' + X.query_id : 'auto') + ')' + (dropSample ? ' | contoh ts=' + dropSample.ts + ' created_at="' + dropSample.ca + '" "' + dropSample.txt + '"' : '');
   return { ok: posts.length > 0, err, posts, ...socMeta(), at: Date.now() };
 });
 /* ---------- X lazy: satu topik on-demand (klik chip yang masih kosong) ---------- */
