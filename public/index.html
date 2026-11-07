@@ -4854,6 +4854,7 @@ function startWindAnim(){
   bindVelocityInteractionEvents();
   if (windVelocityLayer && map.hasLayer(windVelocityLayer)) {
     try { windVelocityLayer.setData(windData); } catch(e){}
+    windBarbEnsure();
     return;
   }
   try {
@@ -4877,6 +4878,7 @@ function startWindAnim(){
       opacity: 0.95
     });
     windVelocityLayer.addTo(map);
+    windBarbEnsure();
   } catch(e) {}
 }
 function stopWindAnim(){
@@ -4884,6 +4886,75 @@ function stopWindAnim(){
     try { map.removeLayer(windVelocityLayer); } catch(e){}
   }
   windVelocityLayer = null;
+  if (windBarbLayer && map) {
+    try { map.removeLayer(windBarbLayer); } catch(e){}
+  }
+  windBarbLayer = null;
+}
+
+/* ---------- WIND BARBS: panah + km/h di tiap grid point, selalu terlihat.
+   leaflet-velocity hanya menampilkan angka di kartu yang ikut kursor — layer
+   ini menggambar ulang data u/v yang sama ke canvas per tile (viewport culling
+   gratis dari GridLayer), jadi biaya render ~nol dan tidak ada animasi per-frame. */
+const WindBarbLayer = L.GridLayer.extend({
+  createTile(coords){
+    const size = this.getTileSize(), dpr = window.devicePixelRatio || 1;
+    const tile = document.createElement('canvas');
+    tile.width = size.x * dpr; tile.height = size.y * dpr;
+    tile.style.width = size.x + 'px'; tile.style.height = size.y + 'px';
+    const ctx = tile.getContext('2d');
+    ctx.scale(dpr, dpr);
+    if (windData && windData.length >= 2) drawWindBarbs(ctx, coords, size, this._map);
+    return tile;
+  }
+});
+let windBarbLayer = null;
+function windBarbEnsure(){
+  if (!windBarbLayer) windBarbLayer = new WindBarbLayer({ tileSize: 256 });
+  if (!map.hasLayer(windBarbLayer)) windBarbLayer.addTo(map);
+  else windBarbLayer.redraw();
+}
+function drawWindBarbs(ctx, coords, size, map){
+  const [gu, gv] = windData, hdr = gu.header || {};
+  const u = gu.data || [], v = gv.data || [], nx = hdr.nx || 0, ny = hdr.ny || 0;
+  if (!nx || !ny) return;
+  const origin = coords.scaleBy(size);                    // pojok kiri-atas tile, layer px
+  const R = 6378137, D2R = Math.PI / 180, font = '600 10px ui-monospace,SFMono-Regular,Menlo,monospace';
+  ctx.font = font; ctx.textBaseline = 'middle';
+  for (let r = 0; r < ny; r++){
+    const lat = hdr.la1 - r * hdr.dy;
+    for (let c = 0; c < nx; c++){
+      const i = r * nx + c, su = u[i] || 0, sv = v[i] || 0, sp = Math.hypot(su, sv);
+      const p = map.latLngToLayerPoint([lat, hdr.lo1 + c * hdr.dx]).subtract(origin);
+      if (p.x < -40 || p.y < -40 || p.x > size.x + 40 || p.y > size.y + 40) continue;
+      const kmh = Math.round(sp * 3.6);
+      const col = kmh >= 50 ? '#f87171' : kmh >= 30 ? '#fbbf24' : kmh >= 12 ? '#38bdf8' : '#94a3b8';
+      if (sp < 0.3){                                       // calm: titik + 0
+        ctx.beginPath(); ctx.arc(p.x, p.y, 2, 0, 7); ctx.fillStyle = col; ctx.fill();
+        ctx.fillStyle = 'rgba(2,6,23,.8)'; ctx.fillText('0', p.x + 5, p.y);
+        ctx.fillStyle = col; ctx.fillText('0', p.x + 4, p.y - 0.5);
+        continue;
+      }
+      // arah gerak angin → layer px, lewat rumus destination (distorsi cos(lat) benar)
+      const brg = Math.atan2(su, sv), d = 1000, la1 = lat * D2R, lo1 = (hdr.lo1 + c * hdr.dx) * D2R;
+      const la2 = Math.asin(Math.sin(la1) * Math.cos(d / R) + Math.cos(la1) * Math.sin(d / R) * Math.cos(brg));
+      const lo2 = lo1 + Math.atan2(Math.sin(brg) * Math.sin(d / R) * Math.cos(la1), Math.cos(d / R) - Math.sin(la1) * Math.sin(la2));
+      const q = map.latLngToLayerPoint([la2 / D2R, lo2 / D2R]).subtract(origin);
+      const vx = q.x - p.x, vy = q.y - p.y, vl = Math.hypot(vx, vy) || 1, ux = vx / vl, uy = vy / vl;
+      const alen = 8 + Math.min(sp, 25) * 0.45;            // 8–19px, saturasi di 25 m/s
+      const ex = p.x + ux * alen, ey = p.y + uy * alen;
+      ctx.strokeStyle = col; ctx.lineWidth = 1.6; ctx.lineCap = 'round';
+      ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(ex, ey); ctx.stroke();
+      for (const s of [-1, 1]){                            // kepala panah
+        const ba = Math.atan2(uy, ux) + s * 2.5;
+        ctx.beginPath(); ctx.moveTo(ex, ey);
+        ctx.lineTo(ex - Math.cos(ba) * 5, ey - Math.sin(ba) * 5); ctx.stroke();
+      }
+      const tx = ex + ux * 4 + 2, ty = ey + uy * 4;
+      ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(2,6,23,.85)'; ctx.strokeText(kmh, tx, ty);
+      ctx.fillStyle = col; ctx.fillText(kmh, tx, ty - 0.5);
+    }
+  }
 }
 
 /* ---------- RADAR BMKG (WMS) ---------- */
@@ -5414,6 +5485,7 @@ async function refreshAll(manual){
   } finally {
     busy = false;
     remain = CYCLE; paintCountdown();
+    rdPrefetchVisible();
   }
   if (manual) {
     $('#countdown').textContent = 'Baru sync';
@@ -5682,14 +5754,34 @@ function rdPrefetch(url) {
     .finally(() => rdPrefetching.delete(url));
 }
 const RD_PREF_SEL = 'a.lead, a.nw, a.si, a.tk, a.th-link, a.srcl, a.tw-txt a, a.th-txt a';
+const rdPrefetchAnchor = a => { if (a && a.href && a.target === '_blank') rdPrefetch(a.href); };
 document.addEventListener('pointerover', e => {
   const a = e.target.closest && e.target.closest(RD_PREF_SEL);
-  if (a && a.href && a.target === '_blank') rdPrefetch(a.href);
+  rdPrefetchAnchor(a);
 });
 document.addEventListener('focusin', e => {
   const a = e.target.closest && e.target.closest(RD_PREF_SEL);
-  if (a && a.href) rdPrefetch(a.href);
+  rdPrefetchAnchor(a);
 });
+// touch tidak punya hover — prefetch saat jari menyentuh, ~100-300ms sebelum click
+document.addEventListener('pointerdown', e => {
+  const a = e.target.closest && e.target.closest(RD_PREF_SEL);
+  rdPrefetchAnchor(a);
+}, { passive: true });
+// prefetch link yang sedang visible — klik berikutnya langsung render dari cache.
+// dibatasi 4 link per siklus; server memo 10 menit menyerap request berulang.
+function rdPrefetchVisible() {
+  if (API == null) return;
+  const seen = new Set(), out = [];
+  for (const a of document.querySelectorAll(RD_PREF_SEL)) {
+    const h = a.href;
+    if (!h || !/^https?:/i.test(h) || isSocialPost(h) || a.offsetParent === null) continue;
+    if (seen.has(h) || rdCache.has(h) || rdPrefetching.has(h)) continue;
+    seen.add(h); out.push(h);
+    if (out.length >= 4) break;
+  }
+  out.forEach(rdPrefetch);
+}
 async function rdOpen(url, trigger, push = true, hero = '') {
   if (!/^https?:/i.test(url)) return;
   if (isSocialPost(url)) return rdOpenSocial(url, trigger, push);
