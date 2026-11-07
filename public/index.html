@@ -2207,11 +2207,11 @@ function showSitAlert(p){
     el.classList.add('hide');
     setTimeout(() => {
       el.hidden = true; el.classList.remove('hide','show'); setLinkItem(null);
-      // zoom-out hanya kalau tidak ada antrian menunggu & user tidak baru berinteraksi — jangan tarik view yang baru difokuskan
-      // zoom-out hanya kalau view benar-benar dalam — clamp bawah 0.9, jangan
-      // paksa zoom 3 yang malah MENDekatkan overview (dulu lower bound 3)
-      if (globeReady && !focusQueue.length && performance.now() - lastGestEnd > 10000 && view.zoom > 5)
-        flyTo(view.lat, view.lon, clampN(view.zoom - 2.2, 0.9, ZOOM_MAX));   // zoom dalam user tetap survive
+      // toast selesai → pulang ke overview, bukan zoom-out parsial — tapi hanya kalau
+      // queue kosong, user idle >10dtk, dan view masih hasil fokus otomatis
+      // (zoom >20 = user zoom in sengaja, jangan ditarik balik)
+      if (globeReady && !focusQueue.length && performance.now() - lastGestEnd > 10000 && view.zoom > 5 && view.zoom <= 20)
+        flyTo(HOME_VIEW.lat, HOME_VIEW.lon, HOME_VIEW.zoom);
     }, 320);
   }, 10000);
 }
@@ -2629,7 +2629,8 @@ function ptrEnd(e){
       if (gesture.mode === 'rotate' && gesture.vx !== undefined && Math.hypot(gesture.vx, gesture.vy) > 0.08)
         globeVel = { vx: -gesture.vx * 0.32, vy: gesture.vy * 0.30 };
     }
-    lastGestEnd = performance.now();
+    // klik tanpa drag (moved<=8) bukan interaksi — tap-to-open-reader jangan reset idle clock
+    if (gesture && gesture.moved > 8) lastGestEnd = performance.now();
     gesture = null;
     if (c) c.style.cursor = 'grab';
     hideGlobeTip();
@@ -3104,6 +3105,14 @@ let xSignalCurrent = false, tSignalCurrent = false;
 function assessmentLabel(p){
   const a = p.assessment;
   if (!a || a.version !== SitrepSignals.VERSION) return 'Klasifikasi lama';
+  // Post yang hanya cocok topik feed-only (transport, hukum, dst) bukan laporan
+  // insiden — tampilkan nama topiknya, bukan label reportType yang menyesatkan.
+  if (!a.signalEligible && a.findings && a.findings.length && a.findings.every(f => f.feedOnly)) {
+    const topics = [...new Set(a.findings.map(f => f.topic))]
+      .map(t => t.replace(/(^|\s)(\S)/g, (m, x, y) => x + y.toUpperCase())).join(', ');
+    const scopeTxt = a.scope === 'Indonesia' ? ' · Indonesia' : a.scope === 'foreign' ? ' · Luar Indonesia' : '';
+    return topics + scopeTxt;
+  }
   const kind = { reported:'Laporan belum terverifikasi', warning:'Peringatan belum terverifikasi', denied:'Penyangkalan', educational:'Edukasi', response:'Respons/pemulihan', historical:'Historis', commentary:'Komentar', unverified_question:'Pertanyaan/rumor', irrelevant:'Tidak relevan' };
   const scopeTxt = a.scope === 'Indonesia' ? ' · Indonesia' : a.scope === 'foreign' ? ' · Luar Indonesia' : '';
   return (kind[a.reportType] || 'Kandidat topik') + scopeTxt;

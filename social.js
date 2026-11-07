@@ -11,6 +11,11 @@ const SOC_NOISE_RE = /(kebakaran jenggot|banjir (order|orderan|diskon|promo|puji
 
 // spam/farming/phishing: engagement-bait & jualan, bukan konten kejadian.
 // pola: "Vote for X", rantai "Follow A. Follow B.", "DM untuk order", "link di bio", hashtag stuffing.
+// Listing properti/jual-beli: butuh KEDUA sisi — kata benda properti DAN bahasa
+// deal/harga — supaya berita insiden yang kebetulan menyebut "rumah"/"tanah"
+// tidak ikut terbuang. Hanya men-skip topik FEED_ONLY (lihat assessment.js).
+const SOC_LISTING_RE = /(rumah|propert\w*|tanah|kavling|ruko|rukan|kost|apartemen|villa|cluster|dagung|bengkel|gudang|kios|petak)/i;
+const SOC_LISTING_DEAL = /(dijual|disewakan|disewa|menjual|menyewakan|kpr|dp\s?(nol|0)?\b|cash\s?(keras|cepat|bertahap)|nego|furnish|siap (huni|tempati|pakai|lanjut)|strategis|prime location|turun harga|ngotak|pinang|worth+|hemat\s+\d|buruan|mumpung|bonus\s+(car|cash)|cashback|payment plan|cicilan|booking fee|unit (tinggal|tersedia|ready)|hubungi (wa|whatsapp))/i;
 const SOC_SPAM_RE = /(vote for|follow\s+[\w.@-]+\s*[+.&]?\s*follow|like\s*(dan|&|\+)\s*(follow|rt)|rt\s*(dan|&|\+)\s*follow|dm\s+(untuk|di|ke)\s*(order|harga|promo|info|respon|detail|ticket|tiket)|dm\s+ke\s+@|link\s+(di|ada di)\s+bio|cek\s+(link\s+)?di\s+bio|order\s+(via|melalui|di)\s+(wa|whatsapp|dm|bio|link)|order\s+(di|via)\s+bio|linktree|lynk\.?id|beacons\.?ai|taplink|bio\.?link|kasih\s+follow|follow\s+balik|jangan\s+lupa\s+follow|\bfyp\b|foryou|new\s+followers?|boost\s+followers?|giveaway|gifted|berhadiah|klaim\s+(hadiah|reward|bonus)|winner\s+dm|pemenang\s+(dm|di\s+(comment|komentar))|tag\s+(teman|orang|friend)|sebutkan\s+\d+\s*teman|tag\s+\d+\s*teman|(like|comment|share|follow)\s*(dan|&|\+)\s*(like|comment|share|follow|rt)|\b\d{1,2}\s*\/\s*(thread|bagian|part|lanjutan)|thread\s*\/|🧵|lanjut\s+di\s+thread|baca\s+sampai\s+habis|qris[^.\n]{0,40}order|order[^.\n]{0,40}qris|binary\s+option|robot\s+trading|signal\s+(trading|emas|crypto|kripto|saham)|rekomendasi\s+(saham|crypto|kripto)|cuan\s+tiap\s+hari|airdrop|seed\s+phrase|private\s+key|withdraw\s+(cepat|instan|kilat)|pinjol|investasi bodong|\bwtb\b|\bwts\b|jasa titip|\bjastip\b|jasa war|war tiket|titip (tiket|beli))/i;
 // aksara non-Latin (Hangul, Thai, CJK, Kiril, Arab, Devanagari) dominan = konten luar negeri
 // yang tidak tertangkap nama-negara Latin — misal spam tiket Korea full Hangul
@@ -306,7 +311,9 @@ function socFixEvents(res) {
   return res;
 }
 function socAssess(text, extra) {
-  return socFixEvents(ASSESS.assess(text, SOC_TOPICS.concat(extra || []), { noise: SOC_NOISE_RE, spam: SOC_SPAM_RE }));
+  const t = String(text || '');
+  const listing = SOC_LISTING_RE.test(t) && SOC_LISTING_DEAL.test(t);
+  return socFixEvents(ASSESS.assess(t, SOC_TOPICS.concat(extra || []), { noise: SOC_NOISE_RE, spam: SOC_SPAM_RE, listing }));
 }
 function socTopics(text, extra) { return socAssess(text, extra).topics; }
 
@@ -401,4 +408,4 @@ function socHot(posts, now = Date.now()) {
 
 // patch bump di atas VERSION assessment.js: registry/klasifikasi di file ini berubah
 const SOC_CLASSIFIER_VERSION = ASSESS.VERSION;
-module.exports = { CLASSIFIER_VERSION: SOC_CLASSIFIER_VERSION, SOC_TOPICS, socAssess, socTopics, socAdhoc, socKeepX, socKeepTh, socBalance, socQueries, socHot, socNonLatin, socVi, socHashJunk, astroturfSig, socForeignLang, SOC_FOREIGN_RE, SOC_LOCAL_RE };
+module.exports = { CLASSIFIER_VERSION: SOC_CLASSIFIER_VERSION, SOC_TOPICS, socAssess, socTopics, socAdhoc, socKeepX, socKeepTh, socBalance, socQueries, socHot, socNonLatin, socVi, socHashJunk, astroturfSig, socForeignLang, SOC_FOREIGN_RE, SOC_LOCAL_RE, SOC_LISTING_RE, SOC_LISTING_DEAL };

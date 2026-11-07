@@ -107,3 +107,36 @@ test('geocode aliases NTB / DIY / DKI resolve to the expected regions', () => {
   assert.equal(GEO.locate('DIY')?.name, 'DI Yogyakarta');
   assert.equal(GEO.locate('DKI')?.name, 'Jakarta');
 });
+
+test('real-estate listing posts are dropped from the social feed', () => {
+  // Threads listing: house for sale, transit amenities, price slang. The
+  // transport topic (KRL/TransJakarta) must NOT keep it feed-eligible.
+  const listing = 'Yang cari rumah di Jakarta merapat !!\n\n' +
+    'Lokasi rumah di Jalan Jatinegara Raya, Bali Mester, Jatinegara, punya akses ke:\n' +
+    ' Stasiun KRL Jatinegara\n TransJakarta Koridor 5 & 11\n Mikrotrans JakLingko\n' +
+    ' LT 66m LB 200m\n\n' +
+    'Turun harganya ga ngotak, bener2 hemat 700juta woy Kata gue mh buruan dah pinang, wortthhhh banget banget banget !';
+  const r = S.socAssess(listing);
+  assert.deepEqual(r.topics, [], 'listing post must not carry any topic');
+  assert.equal(r.feedEligible, false);
+  assert.equal(r.signalEligible, false);
+
+  // Deal words without a property noun, or a property noun without deal words,
+  // must not trigger listing detection.
+  const incident = S.socAssess('Kebakaran rumah di Jatinegara Jakarta hari ini, damkar padamkan api');
+  assert.ok(incident.topics.includes('kebakaran'), 'real incident mentioning "rumah" must survive');
+  const noDeal = S.socAssess('Longsor menutup rumah warga di Sukabumi, 3KK terdampak');
+  assert.ok(noDeal.topics.length > 0, 'incident without deal language must stay feed-eligible');
+});
+
+test('listing only suppresses FEED_ONLY topics; real incident topics survive', () => {
+  const r = S.socAssess('Kebakaran ruko di Jakarta, ruko itu kabarnya dijual tahun lalu');
+  assert.ok(r.topics.includes('kebakaran'), 'non-feed-only topic must survive listing detection');
+});
+
+test('geocode: street name "Bali Mester" does not outvote the Jatinegara POI', () => {
+  const loc = GEO.locate('Lokasi rumah di Jalan Jatinegara Raya, Bali Mester, Jatinegara, ' +
+    'punya akses ke Stasiun KRL Jatinegara TransJakarta Koridor 5 11 Mikrotrans JakLingko LT 66m LB 200m');
+  assert.equal(loc?.name, 'Jatinegara');
+  assert.equal(loc?.prov, 'DKI Jakarta');
+});

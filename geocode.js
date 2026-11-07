@@ -206,6 +206,7 @@ cpoi('kembangan', 'Kembangan', -6.1914, 106.7406, J, ['kembangan'], true);
 cpoi('pondok-labu', 'Pondok Labu', -6.3088, 106.7979, J, ['pondok labu']);
 cpoi('lubang-buaya', 'Lubang Buaya', -6.2929, 106.9031, J, ['lubang buaya']);
 cpoi('jatinegara', 'Jatinegara', -6.2149, 106.8703, J, ['jatinegara']);
+cpoi('bali-mester', 'Bali Mester, Jatinegara', -6.2135, 106.8725, J, ['bali mester']);
 cpoi('pulo-gadung', 'Pulo Gadung', -6.1911, 106.8906, J, ['pulo gadung']);
 cpoi('cipayung', 'Cipayung', -6.3294, 106.9037, J, ['cipayung']);
 cpoi('klender', 'Klender', -6.2133, 106.8994, J, ['klender']);
@@ -508,8 +509,11 @@ function locate(title) {
     // HANYA level poi yang boleh dibuang — kab/kec/prov yang menang skor
     // (mis. "di Cilegon" dapat cue) tidak boleh dikalahkan kandidat prov lain.
     if (!top || top.e.level !== 'poi' || top.e.id[0] === 'V' || !top.e.prov) break;
+    // Provinsi tanpa cue lokatif ('di bali') terlalu lemah untuk membunuh POI:
+    // "Bali Mester" adalah nama jalan di Jatinegara, bukan provinsi Bali.
     const alt = cands.find(c => c !== top &&
-      (c.e.level === 'kab' || c.e.level === 'prov' || c.e.level === 'village') &&
+      (c.e.level === 'kab' || c.e.level === 'village' ||
+       (c.e.level === 'prov' && (c.cue || 0) > 0)) &&
       c.e.prov && provKey(c.e.prov) !== provKey(top.e.prov));
     if (!alt) break;
     cands.splice(cands.indexOf(top), 1);

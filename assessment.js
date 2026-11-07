@@ -1,7 +1,7 @@
 'use strict';
 // Conservative, auditable rules. Topic relevance is not incident confirmation.
 const GEO = require('./geocode');
-const VERSION = '2026-11-07.4';
+const VERSION = '2026-11-08.1';
 const CATEGORY = { demo:'demo', kebakaran:'fire', karhutla:'fire', banjir:'flood', gempa:'disaster', kecelakaan:'insiden', penembakan:'kriminal', pencurian:'kriminal', penangkapan:'kriminal', phk:'ekonomi', rupiah:'ekonomi', ihsg:'ekonomi', 'listrik padam':'ekonomi', wabah:'kesehatan', pemilu:'politik', politik:'politik', konflik:'politik', ransomware:'siber', 'serangan siber':'siber', 'akun dibajak':'siber', insiden:'insiden', kriminal:'kriminal', kesehatan:'kesehatan',
   // topik feed-only: punya kategori supaya finding tidak null, tapi TIDAK PERNAH
   // signalEligible — lihat FEED_ONLY di bawah.
@@ -100,7 +100,12 @@ function assess(text, registry, options = {}) {
   const raw = String(text || '');
   const spans = clauses(raw), findings = [], topics = new Set(), reasons = new Set();
   const spam = options.spam && options.spam.test(raw);
+  // Listing properti/jual-beli: topik feed-only (transport, hukum, dst) adalah
+  // kurasi topik, bukan insiden — iklan rumah yang menyebut "akses KRL/TransJakarta"
+  // bukan konten transport. Topik non-feed-only tetap dinilai normal.
+  const listing = !!options.listing;
   for (const tp of registry) {
+    if (listing && FEED_ONLY.has(tp.id)) continue;
     for (const span of spans) {
       if (!tp.pos.test(span)) continue;
       const metaphor = METAPHOR.test(span) || (options.noise && options.noise.test(span)) || (tp.neg && tp.neg.test(span));
