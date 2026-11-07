@@ -290,21 +290,21 @@ a{color:inherit;text-decoration:none;text-underline-offset:2px}
 .sit-alert.hide{transition:opacity .3s,visibility .3s;opacity:0;visibility:hidden}
 .sa-box{position:relative;isolation:isolate;padding:10px 12px}
 .sa-t{text-shadow:0 1px 6px rgba(0,0,0,.7)}
-@keyframes alertpulse{0%,100%{opacity:1}50%{opacity:.55}}
-.sa-cr{position:absolute;width:9px;height:9px;pointer-events:none;border:1.75px solid var(--warn);animation:alertpulse 2s ease-in-out infinite}
-.sa-cr.tl{top:-3px;left:-3px;border-right:none;border-bottom:none}
-.sa-cr.tr{top:-3px;right:-3px;border-left:none;border-bottom:none}
-.sa-cr.bl{bottom:-3px;left:-3px;border-right:none;border-top:none}
-.sa-cr.br{bottom:-3px;right:-3px;border-left:none;border-top:none}
-.sa-sev{display:flex;gap:2px;flex:none}
-.sa-sev i{width:5px;height:3px;background:rgba(255,255,255,.16)}
-.sa-sev i.on{background:var(--sa-c,var(--warn))}
-.sa-co{margin:5px 0 6px;font:500 8.5px/1 var(--mono);letter-spacing:.04em;color:var(--text3);font-variant-numeric:tabular-nums;white-space:nowrap}
+@keyframes saDrain{from{transform:scaleX(1)}to{transform:scaleX(0)}}
+.sa-box{display:grid;grid-template-columns:auto minmax(0,1fr);gap:0 12px}
+.sa-tm{display:flex;flex-direction:column;align-items:flex-start;gap:6px;padding-right:12px;border-right:1px solid rgba(255,255,255,.14)}
+.sa-tm b{font:600 22px/1 var(--sans);letter-spacing:-.03em;color:#f4f4f4;font-variant-numeric:tabular-nums;text-shadow:0 1px 6px rgba(0,0,0,.7)}
+.sa-ago{font:600 7.5px/1 var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--accent);white-space:nowrap}
+.sa-cd{width:100%;min-width:30px;height:3px;margin-top:auto;background:rgba(218,30,40,.22);pointer-events:none}
+.sa-cd i{display:block;height:100%;background:#da1e28;transform-origin:left;animation:saDrain 7s linear forwards}
+.sa-k2{display:block;margin-bottom:5px;font:600 8px/1 var(--mono);letter-spacing:.1em;text-transform:uppercase;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sa-ft{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:6px}
+.sa-ft .sa-m{margin-top:0}
 .sa-h{display:flex;align-items:center;gap:7px}
 .sa-g{width:11px;height:11px;flex:none;stroke:var(--text3);stroke-width:1.1;fill:none}
 .sa-k{flex:1;min-width:0;font:600 8px/1 var(--mono);letter-spacing:.1em;text-transform:uppercase;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.sa-go{font:600 7.5px/1 var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--text3);opacity:.7;transition:opacity .15s,color .15s}
-.sit-alert:hover .sa-go{opacity:1;color:#f4f4f4}
+.sa-go{font:600 7.5px/1 var(--mono);letter-spacing:.1em;text-transform:uppercase;color:#f4f4f4;opacity:.75;white-space:nowrap;transition:opacity .15s}
+.sit-alert:hover .sa-go{opacity:1}
 
 
 .sa-t{font:400 11.5px/1.4 var(--sans);color:#f4f4f4;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
@@ -1761,18 +1761,15 @@ function showSitAlert(p){
   const el = $('#sit-alert'); if (!el) return;
   const cat = p.kind || 'insiden';
   const color = CAT_COLOR[cat] || '#8d8d8d';
-  const SEV = { disaster: 1, fire: .96, flood: .86, demo: .82, kriminal: .78, insiden: .62, kesehatan: .6, siber: .55, politik: .55, ekonomi: .5 };   // sama dengan CATS di server
-  const lit = Math.max(1, Math.min(5, Math.round((SEV[cat] || .5) * 5)));
-  const co = (typeof p.la === 'number' && typeof p.lo === 'number')
-    ? `${Math.abs(p.la).toFixed(2)}°${p.la < 0 ? 'S' : 'N'} · ${Math.abs(p.lo).toFixed(2)}°${p.lo < 0 ? 'W' : 'E'}` : '';
+  const ageMin = p.ts ? Math.max(0, Math.floor((Date.now() - p.ts) / 60000)) : -1;
+  const ago = ageMin < 0 ? '' : ageMin < 1 ? 'baru saja' : ageMin < 60 ? ageMin + ' mnt lalu' : ageMin < 1440 ? Math.floor(ageMin / 60) + ' jam lalu' : Math.floor(ageMin / 1440) + ' hari lalu';
   el.innerHTML = `<div class="sa-box" style="--sa-c:${color}">
-    <i class="sa-cr tl"></i><i class="sa-cr tr"></i><i class="sa-cr bl"></i><i class="sa-cr br"></i>
-    <div class="sa-h"><svg class="sa-g" viewBox="0 0 12 12" aria-hidden="true"><circle cx="6" cy="6" r="3.1"/><path d="M6 .8v2M6 9.2v2M.8 6h2M9.2 6h2"/></svg>
-      <span class="sa-k" style="color:${color}">${esc(p.label || CAT_LABEL[cat])}${p.name ? ' · ' + esc(p.name) : ''}</span>
-      <span class="sa-sev" title="Tingkat keparahan kategori">${[0, 1, 2, 3, 4].map(i => `<i${i < lit ? ' class="on"' : ''}></i>`).join('')}</span></div>
-    ${co ? `<div class="sa-co">${co}${p.prec === 'prov' ? ' · perkiraan' : ''}</div>` : '<div style="height:5px"></div>'}
-    <div class="sa-t">${esc(deEmoji(p.title || ''))}</div>
-    <div class="sa-m">${esc(p.src || '')}${p.ts ? ' · ' + esc(wibTime(p.ts)) + ' WIB' : ''} · <span class="sa-go">Buka ↗</span></div>
+    <div class="sa-tm"><b>${p.ts ? esc(wibTime(p.ts)) : '--:--'}</b>${ago ? `<span class="sa-ago">${esc(ago)}</span>` : ''}<span class="sa-cd" aria-hidden="true"><i></i></span></div>
+    <div>
+      <span class="sa-k2" style="color:${color}">${esc(p.label || CAT_LABEL[cat])}${p.name ? ' · ' + esc(p.name) : ''}</span>
+      <div class="sa-t">${esc(deEmoji(p.title || ''))}</div>
+      <div class="sa-ft"><span class="sa-m">${esc(p.src || '')}</span><span class="sa-go">Buka reader ↗</span></div>
+    </div>
   </div>`;
   sitAlertUrl = p.url || '';
   el.hidden = false;
@@ -2651,6 +2648,7 @@ const I = {
 };
 const VF = `<svg class="ic solid vf" aria-label="Terverifikasi" role="img"><use href="#i-verified"></use></svg>`;
 
+let xLastErr = '';
 let xPosts = [], xQuery = '', xQueries = [], xTrending = [], xSeen = new Set(), xFresh = new Set();
 const xAll = new Map(); let xShown = 30;
 
@@ -2761,7 +2759,7 @@ function renderX(){
   $('#xcount').textContent = xPosts.length;
   const page = list.slice(0, xShown);
   $('#xlist').innerHTML = (page.length ? page.map(tweetCard).join('')
-    : '<div class="empty">Tidak ada post yang cocok dengan saringan ini.</div>') +
+    : `<div class="empty">${xPosts.length ? 'Tidak ada post yang cocok dengan saringan ini.' : 'Belum ada post X' + (xLastErr ? ': ' + esc(xLastErr.slice(0, 220)) : '. Server belum selesai menarik, atau X mengembalikan hasil kosong.')}</div>`) +
     (list.length > xShown ? `<button class="xmore" type="button">Muat ${Math.min(30, list.length - xShown)} lagi · ${list.length - xShown} tersisa</button>` : '');
   $('#f-x').textContent = xPosts.length;
   xFresh.clear();
@@ -5069,6 +5067,7 @@ async function pullX(){
   }
   try {
     const d = await getJson(API + '/api/x', 110000);
+    xLastErr = d.err || '';
     socApply(d);
     if (d.queries) {
       xQueries = tQueries = d.queries; xTrending = tTrending = d.trending || []; renderQchips(); renderQChipsTh();

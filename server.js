@@ -389,7 +389,11 @@ async function xSearch(q) {
     throw err;
   }
   const j = await r.json(), out = new Map(); collect(j, out);
-  if (!out.size && j.errors) throw new Error(JSON.stringify(j.errors).slice(0, 200));
+  if (!out.size) {   // 200 tapi nol tweet: jangan diam, tampilkan bentuk respons biar kelihatan (IP datacenter / sesi diflag / query kosong)
+    if (j.errors) throw new Error(JSON.stringify(j.errors).slice(0, 200));
+    const raw = JSON.stringify(j);
+    throw new Error('X HTTP 200 tapi 0 tweet (' + raw.length + 'B): ' + raw.slice(0, 180));
+  }
   return [...out.values()].map(p => ({ ...p, q }));
 }
 /* ---------- query adaptif: frasa yang sedang naik dari headline ---------- */
@@ -462,6 +466,7 @@ const xposts = () => memo('x', 300000, async () => {
   const hotTop = meta0.trending.slice(0, 2);
   for (const e of all) if (ADHOC.some(a => a.id === e.t) || hotTop.includes(e.t)) sel.set(e.q, e);
   const queries = [...sel.values()], errs = [], batch = [], now = Date.now();
+  let rawN = 0, dropTs = 0, dropTag = 0;
   for (let i = 0; i < queries.length; i += 5) {
     const chunk = queries.slice(i, i + 5);
     const rs = await Promise.allSettled(chunk.map(e => xSearch(e.q)));
@@ -469,8 +474,9 @@ const xposts = () => memo('x', 300000, async () => {
       const e = chunk[j];
       if (r.status === 'rejected') { errs.push(e.t + ': ' + String(r.reason && r.reason.message || r.reason)); return; }
       for (const p of r.value) {
-        if (!p.ts || now - p.ts > 48 * 3600e3) continue;
-        if (!tagX(p)) continue;
+        rawN++;
+        if (!p.ts || now - p.ts > 48 * 3600e3) { dropTs++; continue; }
+        if (!tagX(p)) { dropTag++; continue; }
         p.q = e.t; p.qs = p.topics.slice();
         batch.push(p);
       }
@@ -478,7 +484,9 @@ const xposts = () => memo('x', 300000, async () => {
   }
   histMerge(xHist, batch, HIST_MAX.x, path.join(HIST_DIR, 'x-history.json'));
   const posts = [...xHist.values()].sort((a, b) => histTs(b) - histTs(a));
-  return { ok: posts.length > 0, err: errs.join(' | '), posts, ...socMeta(), at: Date.now() };
+  let err = errs.join(' | ');
+  if (!posts.length && !err) err = '0 post lolos filter: ' + rawN + ' tweet dari ' + queries.length + ' query (drop ts:' + dropTs + ' topik:' + dropTag + ')';
+  return { ok: posts.length > 0, err, posts, ...socMeta(), at: Date.now() };
 });
 /* ---------- X lazy: satu topik on-demand (klik chip yang masih kosong) ---------- */
 const xqLazy = q => memo('xq:' + String(q).toLowerCase(), 600000, async () => {
