@@ -2187,14 +2187,19 @@ function drawGlobe(now){
       ctx.lineWidth = .9; ctx.strokeStyle = '#0d0d0d'; ctx.stroke();
       continue;
     }
+    // Fresh (opsi B): cincin tipis statis di r+3, denyut hanya ALPHA-nya
+    // (0.25↔0.6) — pulse terbaca, tapi tidak ada expand seperti gempa.
+    if (d.fresh && !dim) {
+      const pulseA = REDUCED ? 0.45 : 0.25 + (Math.sin(now / 480 + d.p.la * 3 + Math.abs(d.p.lo)) * 0.5 + 0.5) * 0.35;
+      ctx.beginPath(); ctx.arc(d.x, d.y, d.r + 3, 0, Math.PI * 2);
+      ctx.strokeStyle = hexA(d.color, pulseA);
+      ctx.lineWidth = 1;
+      ctx.stroke();
+    }
     ctx.beginPath(); ctx.arc(d.x, d.y, d.r, 0, Math.PI * 2);
     ctx.save();
     ctx.shadowColor = d.color;
-    // Fresh: пульсирует сам glow (мягкое дыхание 5↔12), не кольца
-    const glowPulse = d.fresh && !dim
-      ? (REDUCED ? 8 : 5 + (Math.sin(now / 420 + d.p.la * 3 + Math.abs(d.p.lo)) * 0.5 + 0.5) * 7)
-      : 7;
-    ctx.shadowBlur = dim ? 0 : glowPulse;
+    ctx.shadowBlur = dim ? 0 : 7;
     ctx.fillStyle = hexA(d.color, (d.fresh ? 0.96 : 0.65) * (dim ? 0.3 : 1));
     ctx.fill();
     ctx.restore();
