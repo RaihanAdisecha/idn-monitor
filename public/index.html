@@ -476,7 +476,11 @@ a{color:inherit;text-decoration:none;text-underline-offset:2px}
 /* ============================================================ TOOLS / INPUTS */
 .tools{display:flex;gap:8px;padding:8px 12px;border-bottom:1px solid var(--border);background:var(--bg)}
 .tools[hidden]{display:none}
-.flt-pill{display:inline-flex;align-items:center;gap:5px;margin:7px 12px 0;padding:4px 11px;background:none;border:1px solid var(--border);border-radius:99px;cursor:pointer;font:600 9px/1 var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--text3);transition:color .12s,border-color .12s}
+.pane-fab{position:relative}
+.flt-fab{position:absolute;right:14px;bottom:14px;z-index:30;display:flex;flex-direction:column;align-items:flex-end;gap:8px}
+.flt-tools{flex-direction:row;align-items:center;width:290px;padding:8px;border:1px solid var(--border);border-radius:10px;background:var(--bg);box-shadow:0 8px 28px rgba(0,0,0,.55)}
+.flt-tools .inp{flex:1;min-width:0}
+.flt-pill{display:inline-flex;align-items:center;gap:5px;padding:5px 12px;background:var(--bg);border:1px solid var(--border);border-radius:99px;cursor:pointer;font:600 9px/1 var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--text3);box-shadow:0 4px 14px rgba(0,0,0,.45);transition:color .12s,border-color .12s}
 .flt-pill:hover{color:var(--text2);border-color:var(--text3)}
 .flt-pill[aria-expanded="true"]{color:var(--text);border-color:var(--text3)}
 .flt-cv{font-size:11px;line-height:1}
@@ -1383,14 +1387,16 @@ a{color:inherit;text-decoration:none;text-underline-offset:2px}
   </section>
 
   <!-- 04 NEWS -->
-  <section class="pane" aria-label="Wire berita">
+  <section class="pane pane-fab" aria-label="Wire berita">
     <div class="ph"><span class="ph-k">04</span><h2 class="ph-t">News Wire</h2><span class="ph-m" id="nmeta">—</span></div>
     <div class="pb">
       <div class="catbar" id="catbar" role="group" aria-label="Kategori berita"></div>
-      <button class="flt-pill" id="fltpill" type="button" aria-expanded="false" aria-controls="newstools"><span class="flt-cv">⌄</span>filter</button>
-      <div class="tools" id="newstools" hidden>
-        <input class="inp" id="fq" type="search" placeholder="Saring berita… (/)" aria-label="Saring berita">
-        <button class="tgl" id="ontopic" type="button" aria-pressed="true" title="Hanya berita demo, kebakaran, banjir, bencana, atau insiden">Topik</button>
+      <div class="flt-fab">
+        <div class="tools flt-tools" id="newstools" hidden>
+          <input class="inp" id="fq" type="search" placeholder="Saring berita… (/)" aria-label="Saring berita">
+          <button class="tgl" id="ontopic" type="button" aria-pressed="true" title="Hanya berita demo, kebakaran, banjir, bencana, atau insiden">Topik</button>
+        </div>
+        <button class="flt-pill" id="fltpill" type="button" aria-expanded="false" aria-controls="newstools"><span class="flt-cv">⌄</span>filter</button>
       </div>
       <div id="lead"></div>
       <div id="nlist"><div class="empty">Menghubungkan ke wire…</div></div>
@@ -1815,7 +1821,7 @@ function onLandPt(lo, la){
 }
 const JIT = new Map();
 function jitterGeo(name, la, lo, slot, prec){
-  if (slot === 0) return [la, lo];
+  if (slot === 0 || !landIndex()) return [la, lo];   // peta belum termuat → posisi asli, jangan di-cache
   const key = name + '|' + slot + '|' + la.toFixed(3) + ',' + lo.toFixed(3);
   const hit = JIT.get(key); if (hit) return hit;
   let h = 0; for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0;
@@ -1927,8 +1933,9 @@ function drawGlobe(now){
     if (!xy) continue;
     const fresh = (tsNow - (p.ts || 0)) < 45 * 60e3;
     const name = p.name || '';
-    const slot = slotCount[name] || 0;
-    slotCount[name] = slot + 1;
+    const real = !!p.sub;   // gempa/gunung api: koordinat sensor asli (gempa memang sering di laut), tidak disebar
+    const slot = real ? 0 : (slotCount[name] || 0);
+    if (!real) slotCount[name] = slot + 1;
     const jl = jitterGeo(name, p.la, p.lo, slot, p.prec);
     const xy2 = jl[0] === p.la && jl[1] === p.lo ? xy : proj([jl[1], jl[0]]);
     if (!xy2) continue;
