@@ -2765,7 +2765,8 @@ function alertCards(){
     const rel = relatedNews(g, 6);
     cards.push({ id: 'd:' + g.cat + ':' + g.id, sev, cat: g.cat, place: g.place || 'Scope belum pasti', n: g.n,
       score: g.accounts, latest: g.latest, title: sample,
-      meta: g.n + ' post · ' + g.accounts + ' akun · ' + g.from + ' · belum terverifikasi · dampak belum diketahui',
+      meta: g.n + ' post · ' + g.accounts + ' akun · ' + g.from,
+      note: 'Laporan belum terverifikasi · dampak belum diketahui',
       body: lanesHtml(socRes, rel) });
   }
   if (SIT) {
@@ -2778,7 +2779,7 @@ function alertCards(){
       const lead = g.items[0];
       const socRes = relatedSocial(g, 6);
       cards.push({ id: 'c' + g.id, sev, cat: g.cat, place: g.place || 'Wilayah belum pasti', n: k,
-        score, latest: g.latest || 0, title: lead.title, meta: k + ' kabar · ' + s + ' feed · belum terverifikasi · dampak belum diketahui',
+        score, latest: g.latest || 0, title: lead.title, meta: k + ' kabar · ' + s + ' feed',
         body: lanesHtml(socRes, g.items.slice(0, 6), g.items.length) });
     }
     for (const s of (SIT.sources || [])) {
@@ -2803,7 +2804,7 @@ function alertHtml(c){
         <span class="tr-cat ${c.cat}">${esc(CAT_LABEL[c.cat] || c.cat)}</span>
         ${time ? `<time class="tr-time">${esc(time)}</time>` : ''}</div>
       <div class="tr-t">${esc(title)}</div>
-      <div class="tr-f"><span class="tr-loc">${esc(c.place)}</span><span>${esc(c.meta)}</span>
+      <div class="tr-f"><span class="tr-loc">${esc(c.place)}</span><span${c.note ? ` title="${esc(c.note)}"` : ''}>${esc(c.meta)}</span>
         ${expandable ? `<button class="tr-more" type="button" data-toggle="${esc(c.id)}" aria-expanded="${open ? 'true' : 'false'}">${open ? 'Tutup' : 'Detail'}</button>` : ''}</div>
       ${open && expandable ? c.body : ''}
     </div>
