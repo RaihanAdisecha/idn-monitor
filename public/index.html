@@ -3390,7 +3390,18 @@ setInterval(() => {
    04 · CCTV
    ============================================================ */
 const camStream = c => c.s;   // semua host kirim ACAO:* → direct dari browser (IP user, bukan DC Railway)
-const camProxy = c => API != null ? API + '/hls?u=' + encodeURIComponent(c.s) : c.s;   // fallback bila direct mentok CORS
+// tiap kamera punya beberapa path playlist ekuivalen (index/mono/playlist) — chain fallback otomatis
+const camUrls = c => {
+  try {
+    const u = new URL(c.s), dir = u.pathname.replace(/[^/]+$/, '');
+    const out = ['index.m3u8', 'mono.m3u8', 'playlist.m3u8'].map(f => { const v = new URL(u.href); v.pathname = dir + f; return v.href; });
+    return [...new Set([c.s, ...out])];
+  } catch (e) { return [c.s]; }
+};
+const camSteps = c => {
+  const d = camUrls(c), px = API != null ? d.map(u => API + '/hls?u=' + encodeURIComponent(u)) : [];
+  return d.concat(px);   // direct semua varian → baru proxy semua varian
+};
 // jakcctv butuh ?proto=hls di SEMUA request (playlist & segmen) — loader nambahin otomatis
 const JakLoader = (window.Hls && Hls.DefaultLoader) ? class extends Hls.DefaultLoader {
   load(ctx, cfg, cb){ try{ if(/jakcctv\.jakarta\.go\.id/i.test(ctx.url) && !/[?&]proto=/.test(ctx.url)) ctx.url += (ctx.url.includes('?')?'&':'?')+'proto=hls'; }catch(e){} return super.load(ctx,cfg,cb); }
@@ -3409,7 +3420,7 @@ function upd(){
   $('#ccount').textContent = ok + '/' + P.size + ' · ' + live + ' live' + (off ? ' · ' + off + ' off' : '');
   $('#f-cams').textContent = live + '/' + P.size;
 }
-function startCell(cell, viaProxy){
+function startCell(cell){
   const p = P.get(cell); if (!p || p.dead) return;
   const v = vid(cell);
   if (p.h) {
@@ -3419,7 +3430,8 @@ function startCell(cell, viaProxy){
   }
   p.loading = true; p.t0 = Date.now(); badge(cell, 'wait', 'Memuat');
   const c = camList[+cell.dataset.i];
-  const url = viaProxy ? camProxy(c) : camStream(c);
+  const steps = p.steps || (p.steps = camSteps(c));
+  const url = steps[Math.min(p.step || 0, steps.length - 1)];
   if (window.Hls && Hls.isSupported()) {
     const h = new Hls(hlsJak({ startLevel:0, capLevelToPlayerSize:true, maxBufferLength:4, maxMaxBufferLength:8,
       liveSyncDurationCount:2, manifestLoadingMaxRetry:4, levelLoadingMaxRetry:3, fragLoadingMaxRetry:4 }));
@@ -3429,15 +3441,21 @@ function startCell(cell, viaProxy){
       if (!d || !d.fatal) return;
       if (d.type === Hls.ErrorTypes.NETWORK_ERROR && (p.nerr = (p.nerr || 0) + 1) < 3) h.startLoad();
       else if (d.type === Hls.ErrorTypes.MEDIA_ERROR && (p.merr = (p.merr || 0) + 1) < 3) h.recoverMediaError();
-      else if (!p.px && API != null) { p.px = 1; try { h.destroy(); } catch (e) {} p.h = null; startCell(cell, true); }
-      else kill(cell);
+      else if ((p.step = (p.step || 0) + 1) < steps.length) {   // ganti sumber berikutnya (varian path / proxy)
+        p.nerr = p.merr = 0; try { h.destroy(); } catch (e) {} p.h = null; startCell(cell);
+      } else kill(cell);
     });
   } else if (v.canPlayType('application/vnd.apple.mpegurl')) {
-    p.h = 'native'; v.src = url; v.addEventListener('error', () => kill(cell), { once:true }); v.play().catch(() => {});
+    p.h = 'native'; v.src = url;
+    v.addEventListener('error', () => {
+      if ((p.step = (p.step || 0) + 1) < steps.length) { const old = p.h; p.h = null; try { old && old !== 'native' && old.destroy(); } catch (e) {} startCell(cell); }
+      else kill(cell);
+    }, { once:true });
+    v.play().catch(() => {});
   } else { kill(cell); return; }
   v.onloadeddata = () => {
     if (p.loaded) return;
-    p.loaded = true; p.loading = false; p.nerr = p.merr = p.tries = p.px = p.rest = 0;
+    p.loaded = true; p.loading = false; p.nerr = p.merr = p.tries = p.step = p.rest = 0;
     if (p.vis) badge(cell, 'live', 'Live'); else stopCell(cell);
     pump(); upd();
   };
@@ -3455,7 +3473,7 @@ function kill(cell){
   if (p.h && p.h !== 'native') { try { p.h.destroy(); } catch (e) {} }
   const v = vid(cell); if (v) { try { v.pause(); } catch (e) {} v.removeAttribute('src'); v.load(); }
   p.h = null; p.loading = p.loaded = p.playing = p.stopped = false;
-  p.dead = true; p.tries = (p.tries || 0) + 1; p.px = 0; p.rest = 0;
+  p.dead = true; p.tries = (p.tries || 0) + 1; p.step = 0; p.rest = 0;
   badge(cell, 'off', 'Offline');
   clearTimeout(p.retry);
   p.retry = setTimeout(() => { p.dead = false; p.tries = Math.max(0, p.tries - 1); badge(cell, 'wait', 'Antre'); pump(); }, Math.min(30000, 5000 * p.tries));
