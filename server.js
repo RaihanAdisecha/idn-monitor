@@ -37,10 +37,10 @@ const NEWS = [
   ['GNEWS · BENCANA', gn('gempa OR tsunami OR erupsi OR letusan')],   // "bencana" saja terlalu longgar: tas bencana, pusdalops, bantuan — bukan kejadian
   ['GNEWS · INSIDEN', gn('kecelakaan OR ledakan OR ambruk')],
   ['GNEWS · KRIMINAL', gn('penembakan OR pembunuhan OR penangkapan OR terorisme')],
-  ['GNEWS · KESEHATAN', gn('wabah OR dbd OR "flu burung" OR "stunting"')],
+  ['GNEWS · KESEHATAN', gn('wabah OR dbd OR influenza OR campak OR "tangan kaki mulut" OR leptospirosis OR rabies OR kolera OR mpox OR polio OR TBC OR "gagal ginjal" OR KLB OR "tuberkulosis" OR stunting OR imunisasi')],
   ['GNEWS · EKONOMI', gn('phk OR rupiah OR bbm OR "listrik padam"')],
-  ['GNEWS · POLITIK', gn('pemilu OR pilkada OR pilpres OR kpu')],
-  ['GNEWS · SIBER', gn('ransomware OR "serangan siber" OR phishing OR "bocor data" OR BSSN OR "akun dibajak" OR "dompet kripto"')],
+  ['GNEWS · POLITIK', gn('pemilu OR pilkada OR pilpres OR kpu OR perang OR konflik OR "gencatan senjata" OR ultimatum OR kudeta OR invasi OR "partai politik" OR DPR')],
+  ['GNEWS · SIBER', gn('ransomware OR "serangan siber" OR phishing OR "bocor data" OR BSSN OR "akun dibajak" OR "dompet kripto" OR exploit OR "zero day" OR deepfake OR "data breach" OR "peretasan"')],
   ['GNEWS · LINGKUNGAN', gn('karhutla OR deforestasi OR "sungai tercemar" OR "sampah plastik" OR longsor OR "tambang ilegal"')],
 ].concat((CFG.news_extra || []).map(x => [x.id, x.url]));
 
@@ -85,6 +85,9 @@ setInterval(() => { for (const [f, m] of histDirty) histSave(f, m.map, m.max, tr
 const histFlushAll = () => { for (const [f, m] of histDirty) histSave(f, m.map, m.max, true); };
 process.on('SIGINT', () => { histFlushAll(); process.exit(0); });
 process.on('SIGTERM', () => { histFlushAll(); process.exit(0); });
+// aggregator read-only: exception stray tidak boleh membunuh seluruh dashboard
+process.on('uncaughtException', e => console.error('[fatal-ish] uncaught:', e && e.stack || e));
+process.on('unhandledRejection', e => console.error('[fatal-ish] rejection:', e && e.stack || e));
 function histLoad(file, map) {
   try {
     const j = JSON.parse(fs.readFileSync(file, 'utf8'));
@@ -267,7 +270,7 @@ const news = () => Promise.all(NEWS.map(([id, url]) => memo('n:' + id, 55000, as
         if (!r.ok) throw new Error('HTTP ' + r.status);
         const items = parseFeed(await r.text());
         if (!items.length) throw new Error('feed kosong');
-        const fresh = items.filter(it => !it.ts || Date.now() - it.ts <= 36 * 3600e3);
+        const fresh = items.filter(it => !it.ts || Date.now() - it.ts <= 24 * 3600e3);
         const newest = Math.max(0, ...fresh.map(i => i.ts || 0));
         return { id, ok: true, stale: !!(newest && Date.now() - newest > 3 * 3600e3), items: fresh.slice(0, 100).map(it => ({ ...it, title: cleanTitle(it.title), src: id })), at: Date.now() };
       } catch (e) {
@@ -280,21 +283,26 @@ const news = () => Promise.all(NEWS.map(([id, url]) => memo('n:' + id, 55000, as
 }, v => v.ok === true)));
 
 /* ---------- taksonomi: insiden fisik (geo) + topik sosial ---------- */
-// geo:true = kejadian fisik/lokal → boleh jadi pin peta, node globe, dan masuk marquee.
-// geo:false = topik naratif (ekonomi, politik, siber) → hanya News Wire & statistik situasi.
+// Daftar penyakit/wabah — satu sumber untuk CATS (News Wire) & HEALTH_EVENT_RE
+// (gate plotOk peta/globe). Sumber istilah: daftar infeksi emerging Kemenkes +
+// pola judul kesehatan media RI (TBC, DBD, influenza, HFMD, leptospirosis, dst).
+const HEALTH_DZ = String.raw`wabah|\bklb\b|kejadian luar biasa|dbd|\bdhf\b|demam berdarah|covid|korona|influenza|\bflu\b|mpox|cacar monyet|campak|morbili|cacar air|tangan kaki mulut|hfmd|leptospirosis|tifus|thypoid|typhoid|kolera|rabies|gila anjing|anjing gila|anthrax|difteri|polio|meningitis|meningokokus|ensefalitis|chikungunya|cikungunya|zika|filariasis|kaki gajah|hepatitis|\bhiv\b|\baids\b|kusta|lepra|\bispa\b|pneumonia|bronkopneumonia|bronkitis|hmpv|human metapneumovirus|\brsv\b|\bmers\b|ebola|marburg|lassa|west nile|h5n1|avian influenza|\btbc\b|tuberkulosis|\btb\b|diare|disentri|scabies|kudis|keracunan|rotavirus|flu burung|h1n1|malaria`;
+// istilah insiden layanan/kondisi kesehatan (bukan nama penyakit) — ikut ke
+// HEALTH_EVENT_RE supaya plotOk tidak membuang item yang CATS sudah terima
+const HEALTH_EVT = String.raw`gagal ginjal|gizi buruk|busung lapar|malnutrisi|donor darah|bank darah|transfusi darah|stok darah|obat palsu|talasemia|hemofilia`;
 const CATS = [
   { id:'demo', label:'Demo', sev:0.82, geo:true, re:/(\bdemo\b(?!\s*(aplikasi|game|produk|sistem|fitur|cara|tutorial|masak|memasak|kuliner|spesial|special))(?<!cooking demo|cooking\s+demo)|unjuk rasa|aksi massa|protes|mogok|kerusuhan|bentrok|\bmassa\b|long march|audiensi|women'?s\s+march|international\s+women'?s\s+day|hari\s+buruh|buruh\s+sedunia|labour\s+day|labor\s+day)/i },
   { id:'fire', label:'Kebakaran', sev:0.96, geo:true, re:/(kebakaran|karhutla|kebakaran hutan|kebakaran lahan|terbakar|kobaran api|asap tebal)/i },
   { id:'flood', label:'Banjir', sev:0.86, geo:true, re:/(banjir|genangan|longsor|tanah longsor|cuaca ekstrem|hujan deras|\brob\b)/i },
   { id:'disaster', label:'Bencana', sev:1, geo:true, re:/(gempa|tsunami|erupsi|letusan|bencana|evakuasi|korban jiwa|ambruk|tenggelam|hanyut|banjir bandang)/i },
   { id:'insiden', label:'Insiden', sev:0.62, geo:true, re:/(kecelakaan|ledakan|pohon tumbang|runtuh|tabrakan|tabrak lari|kapal karam|pesawat jatuh|tergelincir|terjun)/i },
-  { id:'siber', label:'Siber', sev:0.55, geo:false, re:/(peretasan|peretas|hacker|ransomware|phishing|malware|ddos|botnet|zero[- ]day|kebocoran data|bocor data|data breach|pencurian data|akun dibajak|akun palsu|scam|penipuan online|pinjol ilegal|investasi bodong|bssn|badan siber|serangan siber|serangan cyber|insiden keamanan|gangguan (layanan|sistem|jaringan|aplikasi|infrastruktur)|layanan lumpuh|situs lumpuh|maintenance keamanan|uu pdp|\bpdp\b|dompet kripto|akun (media sosial|instagram|facebook|whatsapp|telegram|x) dibajak)/i },
+  { id:'siber', label:'Siber', sev:0.55, geo:false, re:/(peretasan|peretas|hacker|ransomware|phishing|malware|ddos|botnet|zero[- ]day|n[- ]?day|\bcve[- ]?\d{4}|exploit|dieksploitasi|kerentanan|vulnerabilit|backdoor|spyware|skimming|carding|cryptojack|deepfake|deface|defacement|vishing|smishing|sextortion|kebocoran data|bocor data|data breach|pencurian data|akun dibajak|akun palsu|scam|penipuan online|pinjol ilegal|investasi bodong|bssn|badan siber|serangan siber|serangan cyber|insiden keamanan|gangguan (layanan|sistem|jaringan|aplikasi|infrastruktur)|layanan lumpuh|situs lumpuh|maintenance keamanan|uu pdp|\bpdp\b|dompet kripto|infrastruktur kritis|apt\d{1,2}\b|command and control|leak site|akun (media sosial|instagram|facebook|whatsapp|telegram|x|tiktok) (dibajak|diretas|dibobol))/i },
   { id:'kriminal', label:'Kriminal', sev:0.78, geo:true, re:/(penembakan|pembunuhan|pengeroyokan|begal|curat|pencurian|perampokan|penangkapan|ditangkap|tersangka|kabur dari lapas|napi kabur|terorisme|radikalisasi|suap|gratifikasi|penipuan|narkoba|psikotropika|penculikan|perkosaan|rudapaksa)/i },
-  { id:'kesehatan', label:'Kesehatan', sev:0.6, geo:true, re:/(wabah|dbd|demam berdarah|covid|korona|flu burung|h1n1|malaria|tuberkulosis|\btb\b|diare|keracunan|stunting|obesitas|vaksin|imunisasi|kemenkes|bpom|faskes|puskesmas|gagal ginjal|kanker)/i },
+  { id:'kesehatan', label:'Kesehatan', sev:0.6, geo:true, re:new RegExp('(?:' + HEALTH_DZ + '|' + HEALTH_EVT + '|stunting|obesitas|vaksin|vaksinasi|imunisasi|kemenkes|bpom|faskes|puskesmas|kanker)', 'i') },
   { id:'ekonomi', label:'Ekonomi', sev:0.5, geo:false, re:/(phk|rupiah|kurs dollar|inflasi|defisit|apbn|apbd|ihsg|bursa efek|saham|emiten|dividen|stock split|buyback|right issue|utang negara|subsidi|bbm|pertamax|solar|listrik padam|padam listrik|pemadaman listrik|pertamina|\bpln\b|ojk|bank indonesia|umk\b|ump\b|thr\b|belanja negara|bea cukai|ekspor|impor|suku bunga|bappebti|kripto|bitcoin|pinjol|fintech|paylater|harga (cabai|beras|daging|minyak|emas))/i },
-  { id:'politik', label:'Politik', sev:0.55, geo:false, re:/(pilpres|pilkada|pemilu|kpu\b|capres|cawapres|\bdpr\b|\bdprd\b|parlemen|pelantikan|menteri|wakil presiden|\bistana\b|bansos|rapat paripurna|mahkamah konstitusi|impeachment|program mbg|makan bergizi)/i }
+  { id:'politik', label:'Politik', sev:0.55, geo:false, re:/(pilpres|pilkada|pilgub|pilbup|pilgici|pemilu|\bkpu\b|kpud|bawaslu|capres|cawapres|partai politik|caleg|capil|\bdpr\b|\bdprd\b|parlemen|fraksi|koalisi|oposisi|pelantikan|menteri|wakil presiden|\bistana\b|senayan|bansos|rapat paripurna|mahkamah konstitusi|impeachment|majelis kehormatan|reshuffle|menko|kadin|perang|konflik|invasi|aneksasi|pendudukan|gencatan senjata|ultimatum|kudeta|pemberontakan|separatis|genosida|blokade|embargo|sandera|pertempuran|peluru kendali|\brudal\b|\bdron\b|serangan udara|perjanjian damai|perundingan damai|program mbg|makan bergizi)/i }
 ];
-const SKIP_RE = /(pascabencana|pascagempa|pascabanjir|mitigasi|kesiapsiagaan|potensi bencana|rawan bencana|risiko bencana|kajian risiko|simulasi|edukasi|sosialisasi|pelatihan|antisipasi|siaga bencana|hadapi bencana|menghadapi bencana|peringatan dini|early warning|asuransi|operasi patuh|imbau|himbau|ingatkan|waspada|waspadai|ranperda|perda|godok|korupsi|dana bencana|tas bencana|go[- ]?bag|pusdalops|kebutuhan darurat|peralatan bencana|salurkan bantuan|menyalurkan|penyaluran|modus|ruu|boikot dirinya|joget|liga|top skor|voli|sepak bola|piala|kualifikasi|gaun|mahalini|fashion|penghargaan|jasa raharja|warisan|turun-temurun|sepanjang 20\d\d|berdampak ke ekonomi|brasil|brazil|amerika serikat|filipina|thailand|malaysia|korea|jepang|tiongkok|china|inggris|prancis|perancis|paris|jerman|australia|india|pakistan|iran|israel|palestina|ukraina|rusia|gaza)/i;
+const SKIP_RE = /(pascabencana|pascagempa|pascabanjir|mitigasi|kesiapsiagaan|potensi bencana|rawan bencana|risiko bencana|kajian risiko|simulasi|edukasi|sosialisasi|pelatihan|antisipasi|siaga bencana|hadapi bencana|menghadapi bencana|peringatan dini|early warning|asuransi|operasi patuh|imbau|himbau|ingatkan|waspada|waspadai|ranperda|perda|godok|korupsi|dana bencana|tas bencana|go[- ]?bag|pusdalops|kebutuhan darurat|peralatan bencana|salurkan bantuan|menyalurkan|penyaluran|modus|ruu|boikot dirinya|joget|liga|top skor|voli|sepak bola|piala|kualifikasi|gaun|mahalini|fashion|film|sinema|bioskop|trailer|teaser|poster|nonton|netflix|zombie|mayat hidup|hantu|sekuel|layar lebar|sinetron|sinetrik|penghargaan|jasa raharja|warisan|turun-temurun|sepanjang 20\d\d|berdampak ke ekonomi|brasil|brazil|amerika serikat|filipina|thailand|malaysia|korea|jepang|tiongkok|china|inggris|prancis|perancis|paris|jerman|australia|india|pakistan|iran|israel|palestina|ukraina|rusia|gaza)/i;
 const catMeta = id => CATS.find(c => c.id === id) || { id:'', label:'Insiden', sev:0.5, geo:true };
 const assessNews = t => SOC.socAssess(t);
 const catOf = t => {
@@ -303,7 +311,9 @@ const catOf = t => {
   // events[] hanya untuk alarm/klaster; headline berita jarang punya EVENT_ACTION
   // jadi events kosong untuk sebagian besar judul legit.
   if (!a.topics.length || SKIP_RE.test(t)) return '';
-  if (a.findings.length && a.findings.every(f => f.scope === 'foreign')) return '';
+  // konflik/perang internasional memang scope foreign — tetap masuk tab Politik
+  // (geo:false, topik naratif). Topik geo lain tetap dibuang saat semua foreign.
+  if (a.findings.length && a.findings.every(f => f.scope === 'foreign') && !a.topics.some(tp => tp === 'konflik' || ASSESS.CATEGORY[tp] === 'siber')) return '';
   const ids = new Set(a.topics.map(tp => ASSESS.CATEGORY[tp]).filter(Boolean));
   const hit = CATS.find(c => ids.has(c.id));
   return hit ? hit.id : '';
@@ -330,7 +340,7 @@ const breaking = () => memo('breaking', 25000, async () => {
       seen.add(k);
       matched++;
       const age = it.ts ? Math.max(0, now - it.ts) : 12 * 3600e3;
-      if (!Number.isFinite(it.ts) || it.ts <= 0 || it.ts > now || age > 36 * 3600e3) continue;
+      if (!Number.isFinite(it.ts) || it.ts <= 0 || it.ts > now || age > 24 * 3600e3) continue;
       const recency = Math.max(0.12, Math.exp(-age / (16 * 3600e3)));
       const meta = catMeta(cat);
       items.push({ ...it, assessment: assessNews(it.title), src: s.id, cat, label: meta.label, score: +(meta.sev * recency).toFixed(3) });
@@ -816,7 +826,7 @@ const placeOf = t => GEO.locate(t);
 // Judul yang menyebut tempat + kata insiden tapi BUKAN kejadian baru di tempat itu: bantuan, reses, apresiasi, program kesehatan umum.
 // Dipakai hanya untuk titik peta/statistik wilayah; berita tetap tampil di news wire.
 const NOT_EVENT_RE = /\b(reses|apresiasi|penghargaan|salurkan|menyalurkan|penyaluran|bantuan (?:rp|tahap|untuk|bagi|kemanusiaan)|kirim bantuan|donasi|santunan|gagasan|webinar|seminar|rakor|rapat koordinasi|kunjungan kerja|kunker|dipulangkan|pemulangan|ucapan duka|doa bersama|pekarangan|ketahanan pangan|kesejahteraan|proklim|sinkronkan|disinkronkan)\b/i;
-const HEALTH_EVENT_RE = /(wabah|dbd|demam berdarah|covid|korona|flu burung|h1n1|malaria|\btb\b|tuberkulosis|diare|keracunan|\bklb\b|gagal ginjal)/i;
+const HEALTH_EVENT_RE = new RegExp('(?:' + HEALTH_DZ + '|' + HEALTH_EVT + ')', 'i');
 const plotOk = (title, cat) => !NOT_EVENT_RE.test(title) && (cat !== 'kesehatan' || HEALTH_EVENT_RE.test(title));
 const GEO_WINDOW = 24 * 3600e3;
 const incidents = () => memo('incidents', 55000, async () => {
@@ -1647,7 +1657,8 @@ function sourceImages(html, base, bodyHtml) {
         if (Array.isArray(n)) { for (const x of n) stack.push(x); continue; }
         if (!n || typeof n !== 'object') continue;
         for (const k of ['@graph', 'mainEntity', 'itemListElement']) if (n[k]) stack.push(n[k]);
-        ldImages(n.image || n.thumbnailUrl || n.thumbnail, rows);
+        // Person/Organization = foto author & logo publisher, bukan foto berita
+        if (!/person|organization/i.test(String(n['@type'] || ''))) ldImages(n.image || n.thumbnailUrl || n.thumbnail, rows);
       }
       for (const u of rows) addCandidate(meta, u, base, 'ld');
     } catch (e) {}
@@ -1734,7 +1745,9 @@ async function probeImage(u, referer) {
   const r = await get(u, { headers: { accept: 'image/avif,image/webp,image/apng,image/*,*/*;q=0.8', ...(referer ? { referer } : {}) } }, 9000);
   if (!r.ok) return null;
   const ct = r.headers.get('content-type') || '';
-  if (!/^image\//i.test(ct)) return null;
+  // CDN berita sering kirim application/octet-stream — imageSize() tetap jadi hakim
+  // akhir lewat magic bytes, jadi cukup tolak tipe yang jelas bukan gambar
+  if (ct && !/^image\//i.test(ct) && !/octet-stream/i.test(ct)) return null;
   const reader = r.body.getReader();
   const chunks = [];
   let total = 0;
@@ -1848,25 +1861,35 @@ async function thumbFromHtml(rawHtml, article) {
     const dim = await probeImage(img, article).catch(() => null);
     return dim ? { img, w: dim.w, h: dim.h, src: article, score: imageScore(c, dim) } : null;
   };
-  const passes = p => p && p.w >= 600 && !rdJunkUrl(p.img) && !rdSmallHint(p.img) && !RD_IMG_JUNK.test(p.img.split('?')[0]) && ogReuse(host, p.img, article) < 1;
+  const strictOK = p => p && p.w >= 600 && !rdJunkUrl(p.img) && !rdSmallHint(p.img) && !RD_IMG_JUNK.test(p.img.split('?')[0]) && ogReuse(host, p.img, article) < 1;
+  const looseOK = p => p && p.w >= 600 && !rdJunkUrl(p.img) && !rdSmallHint(p.img) && !RD_IMG_JUNK.test(p.img.split('?')[0]);
   // hero = urutan prioritas dokumen (ld+json → og → meta), bukan score tertinggi:
   // thumbnail harus konsisten dengan gambar yang sama yang dipakai reader
   const seenU = new Set();
   const dedupe = c => { if (seenU.has(c.url)) return false; seenU.add(c.url); return true; };
   const tiers = [meta.filter(c => c.kind === 'ld'), meta.filter(c => c.kind === 'og'), meta.filter(c => c.kind === 'meta')]
     .map(t => t.filter(dedupe));
+  const probeTier = async (tier, ok) => {
+    const rs = await Promise.all(tier.slice(0, 4).map(probe));
+    for (const p of rs) if (ok(p)) return p;
+    return null;
+  };
   let best = null;
   for (const tier of tiers) {
-    const rs = await Promise.all(tier.slice(0, 4).map(probe));
-    for (let i = 0; i < rs.length; i++) {
-      if (passes(rs[i])) { best = rs[i]; break; }
-    }
+    best = await probeTier(tier, strictOK);
     if (best) break;
   }
   if (!best) {
     const bs = await Promise.all(body.filter(c => !seenU.has(c.url)).slice(0, 8).map(probe));
-    best = bs.filter(Boolean).sort((a, b) => b.score - a.score)
-      .find(p => p.w >= 600 && !rdJunkUrl(p.img) && !rdSmallHint(p.img) && !RD_IMG_JUNK.test(p.img.split('?')[0]) && ogReuse(host, p.img, article) < 1) || null;
+    best = bs.filter(Boolean).sort((a, b) => b.score - a.score).find(strictOK) || null;
+  }
+  if (!best) {
+    // longgar: ogReuse menolak gambar yang sama di banyak artikel — tapi gambar
+    // artikel yang kebetulan dipakai ulang tetap lebih baik daripada tanpa gambar
+    for (const tier of tiers) {
+      best = await probeTier(tier, looseOK);
+      if (best) break;
+    }
   }
   const v = best ? { img: best.img, w: best.w, h: best.h, src: article } : { img: '', src: article };
   return v;
@@ -1891,8 +1914,30 @@ async function thumb(u) {
     } catch (e) { lastErr = e; }
     if (i === 0) await new Promise(res => setTimeout(res, 700));
   }
+  if (!r || !r.ok) {
+    // 403/timeout langsung → coba proxy publik (sama seperti feed berita)
+    for (const px of RD_PROXIES.slice(0, 2)) {
+      try {
+        const pr = await get(px(article), {}, 12000);
+        if (pr.ok) { r = pr; break; }
+      } catch (e) {}
+    }
+  }
   if (!r || !r.ok) throw lastErr || new Error('fetch gagal');
-  const v = await thumbFromHtml(await r.text(), article);
+  let html = await r.text();
+  // HTTP 200 tapi isinya halaman challenge/JS-shell (mediaindonesia dll):
+  // tidak ada meta og sama sekali → coba proxy publik untuk HTML asli
+  if (html.length < 15000 && !/<meta[^>]+(?:property|name)=["']og:/i.test(html)) {
+    for (const px of RD_PROXIES.slice(0, 2)) {
+      try {
+        const pr = await get(px(article), {}, 12000);
+        if (!pr.ok) continue;
+        const t = await pr.text();
+        if (t.length > html.length) { html = t; break; }
+      } catch (e) {}
+    }
+  }
+  const v = await thumbFromHtml(html, article);
   thumbCache.set(u, { v, at: Date.now() });
   if (thumbCache.size > 200) thumbCache.delete(thumbCache.keys().next().value);
   return v;
@@ -2278,7 +2323,7 @@ const RD_IMG_JUNK = /logo|icon|sprite|avatar|badge|placeholder|blank|pixel|space
 // blacklist URL gambar sampah (audit 12 feed): badge app-store, icon sosmed, tracker/pixel,
 // aset UI publisher, thumbnail youtube, foto wartawan — berlaku untuk hero (addCandidate)
 // maupun gambar body (pickImg), satu sumber kebenaran
-const RD_JUNK_URL = /appstore|playstore|googleplay|gettheapp|framebarasset|asset-template|(?:^|\/)slide[-_]|assets_frontend\/images|\/assets\/(?:img|images)\/(?:ui|icons?|buttons?|social)|share[-_ ]?preview|social[-_ ]?(?:share|card)|og[-_]?(?:default|image)\b|partials\/|widgets-nocache|analytics_page_request|inpicture|wartawan|scorecard|criteo|doubleclick|googlesyndication|adservice|hotjar|facebook\.net|img\.youtube\.com|(^|\/)ic_[a-z0-9]|en-flag|id-flag|thumb_|\/mini\/|\/small\/|\/img\/site\/|foot[-_ ]?network|foto[-_/]bank(?!\/originals)|fotobank/i;
+const RD_JUNK_URL = /appstore|playstore|googleplay|gettheapp|framebarasset|asset-template|(?:^|\/)slide[-_]|assets_frontend\/images|\/assets\/(?:img|images)\/(?:ui|icons?|buttons?|social)|share[-_ ]?preview|social[-_ ]?(?:share|card)|og[-_]?(?:default|image)\b|partials\/|widgets-nocache|analytics_page_request|inpicture_widget|wartawan|scorecard|criteo|doubleclick|googlesyndication|adservice|hotjar|facebook\.net|img\.youtube\.com|(^|\/)ic_[a-z0-9]|en-flag|id-flag|thumb_|\/mini\/|\/small\/|\/img\/site\/|foot[-_ ]?network|foto[-_/]bank(?!\/originals)|fotobank/i;
 const RD_JUNK_BASE = /^(google|gnews|googlenews|telegram|threads|bluesky|pinterest|line|ig|fb|twitter|x|tiktok|instagram|youtube|wa|whatsapp|linkedin|googleplay|appstore|playstore|en-flag|id-flag)([-_. ]|$)/i;
 function rdJunkUrl(u) {
   const path = String(u).split('?')[0];
@@ -3146,7 +3191,7 @@ http.createServer(async (req, res) => {
   try {
     if (u.pathname === '/' || u.pathname === '/index.html') { res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' }); return res.end(fs.readFileSync(HTML)); }
     if (u.pathname === '/idn.geo.json' || u.pathname === '/idn-context.geo.json' || u.pathname === '/idn-prov.geo.json' || u.pathname === '/world110.geo.json') { res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store', 'access-control-allow-origin': '*' }); return res.end(fs.readFileSync(path.join(__dirname, 'public', u.pathname.slice(1)))); }
-    if (u.pathname === '/signals.js') { res.writeHead(200, { 'content-type': 'application/javascript; charset=utf-8', 'cache-control': 'no-store' }); return res.end(fs.readFileSync(path.join(__dirname, 'public', 'signals.js'))); }
+    if (u.pathname === '/signals.js' || u.pathname === '/wxicons.js') { res.writeHead(200, { 'content-type': 'application/javascript; charset=utf-8', 'cache-control': 'no-store' }); return res.end(fs.readFileSync(path.join(__dirname, 'public', u.pathname.slice(1)))); }
     if (u.pathname === '/api/ping') return json({ ok: true, x: xHas(), classifierVersion: SOC.CLASSIFIER_VERSION });
     if (u.pathname === '/api/news') {
       const srcs = await news();

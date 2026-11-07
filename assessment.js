@@ -2,11 +2,11 @@
 // Conservative, auditable rules. Topic relevance is not incident confirmation.
 const GEO = require('./geocode');
 const VERSION = '2026-11-07.1';
-const CATEGORY = { demo:'demo', kebakaran:'fire', karhutla:'fire', banjir:'flood', gempa:'disaster', kecelakaan:'insiden', penembakan:'kriminal', pencurian:'kriminal', penangkapan:'kriminal', phk:'ekonomi', rupiah:'ekonomi', ihsg:'ekonomi', 'listrik padam':'ekonomi', wabah:'kesehatan', pemilu:'politik', ransomware:'siber', 'serangan siber':'siber', 'akun dibajak':'siber', insiden:'insiden', kriminal:'kriminal', kesehatan:'kesehatan' };
+const CATEGORY = { demo:'demo', kebakaran:'fire', karhutla:'fire', banjir:'flood', gempa:'disaster', kecelakaan:'insiden', penembakan:'kriminal', pencurian:'kriminal', penangkapan:'kriminal', phk:'ekonomi', rupiah:'ekonomi', ihsg:'ekonomi', 'listrik padam':'ekonomi', wabah:'kesehatan', pemilu:'politik', politik:'politik', konflik:'politik', ransomware:'siber', 'serangan siber':'siber', 'akun dibajak':'siber', insiden:'insiden', kriminal:'kriminal', kesehatan:'kesehatan' };
 const FOREIGN = /\b(jepang|japan|nepal|london|oyo|osun|nigeria|amerika|united states|texas|california|new york|brasil|brazil|filipina|philippines|thailand|malaysia|korea|china|tiongkok|inggris|britain|prancis|perancis|paris|france|eiffel|jerman|germany|australia|india|pakistan|iran|israel|palestina|palestine|ukraina|ukraine|rusia|russia|gaza|turki|turkey|meksiko|mexico|kanada|canada|vietnam|finCEN)\b/i;
 const LOCAL_ORG = /\b(bmkg|bnpb|bpbd|bssn|pdn|polri|pln|kpu|bawaslu|komdigi|kominfo|bank indonesia|bursa efek indonesia|ihsg)\b/i;
 const CYBER_TARGET = /\b(server|sistem|jaringan|komputer|perangkat|database|situs|website|layanan|akun|data|berkas|file|rumah sakit|hospital|network|device|files|computers?)\b/i;
-const CYBER_ACTION = /\b(diserang|diretas|dibobol|terinfeksi|terenkripsi|dienkripsi|dicuri|bocor|lumpuh|terganggu|dikunci|dijual|menyerang|menginfeksi|serangan|attack(?:ed)?|infect(?:ed)?|encrypt(?:ed)?|breach(?:ed)?|leak(?:ed)?|locked|stolen)\b/i;
+const CYBER_ACTION = /\b(diserang|diretas|dibobol|terinfeksi|terenkripsi|dienkripsi|dicuri|bocor|lumpuh|terganggu|dikunci|dijual|menyerang|menginfeksi|serangan|attack(?:ed)?|infect(?:ed)?|encrypt(?:ed)?|breach(?:ed)?|leak(?:ed)?|locked|stolen|hack(?:er|ed|ing|s)?|dihack\w*|dijebol|dieksploitasi|phish\w*|scam\w*|deepfake|spyware|backdoor|defac\w*|cryptojack\w*|skimming|carding|exfiltrat\w*|vishing|smishing|sextortion)\b/i;
 const DENIED = /\b(tidak|tak|nggak|gak|ga|bukan|belum|no|not|never)\s+(?:ada\s+|terjadi\s+|mengalami\s+|a\s+|an\s+)?(?:gempa|tsunami|erupsi|kebakaran|banjir|longsor|kecelakaan|penembakan|serangan|kebocoran|peretasan|wabah|keracunan|phk|pemadaman|ransomware|malware|attack|breach)|\b(?:gempa|tsunami|erupsi|kebakaran|banjir|kebocoran data|peretasan|serangan siber)\b[^.!?]{0,30}\b(?:tidak terjadi|tidak benar|hoaks|hoax|palsu|dibantah)|\b(?:hoaks|hoax|video lama|kabar palsu|dibantah|denies|false claim)\b/i;
 const EDUCATION = /\b(apa itu|pengertian|tutorial|cara (?:mencegah|mengatasi|menghapus|menghindari)|tips|edukasi|simulasi|latihan|mitigasi|kesiapsiagaan|tas bencana|go[- ]?bag|potensi|risiko|rawan|prediksi|diprediksi|andaikan|seandainya|bagaimana jika|what is|how to|exercise|simulation)\b/i;
 const AID = /\b(salurkan|menyalurkan|penyaluran|donasi|rekonstruksi|rehabilitasi|kirim bantuan|pusdalops|rakor|seminar|webinar)\b/i;
@@ -49,7 +49,7 @@ function isReport(topic, span, location, target) {
   const identity = !!(location || target);
   switch (topic) {
     case 'kriminal': return identity && EVENT_ACTION.test(span);
-    case 'kesehatan': return identity && /kasus|pasien|terjangkit|keracunan|wabah|meninggal|dirawat|terinfeksi/i.test(span);
+    case 'kesehatan': return identity && /kasus|pasien|terjangkit|keracunan|wabah|\bklb\b|kejadian luar biasa|meninggal|dirawat|terinfeksi/i.test(span);
     case 'insiden': return identity && EVENT_ACTION.test(span);
     case 'ransomware': return CYBER_TARGET.test(span) && CYBER_ACTION.test(span) && identity;
     case 'serangan siber': case 'akun dibajak': return CYBER_ACTION.test(span) && identity;
@@ -63,6 +63,8 @@ function isReport(topic, span, location, target) {
     case 'ihsg': return /trading halt|dihentikan|anjlok|merosot|turun\s+\d/i.test(span) && !!target;
     case 'rupiah': return /melemah|menguat|anjlok/i.test(span) && /\d/.test(span) && !!target;
     case 'pemilu': return identity && /ricuh|bentrok|ditunda|dibatalkan|pemungutan suara ulang/i.test(span);
+    case 'politik': return identity && /dilantik|ditetapkan|dipecat|mundur|mengundurkan|dipilih|mencalonkan|deklarasi|konvensi|divonis|kalah|menang|reshuffle|impeachment/i.test(span);
+    case 'konflik': return identity && /perang|serangan|gencatan|ultimatum|invasi|kudeta|pemberontakan|tewas|meninggal|korban|menyerah|ditangkap|menolak|menyetujui|gagal|berhasil|mundur|meluas|memanas|menewaskan/i.test(span);
     default: return false; // ad-hoc relevance is never event evidence by itself.
   }
 }

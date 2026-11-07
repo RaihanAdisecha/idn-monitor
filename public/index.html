@@ -16,6 +16,7 @@
 <script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/leaflet.heat@0.2.0/dist/leaflet-heat.js"></script>
 <script src="signals.js"></script>
+<script src="wxicons.js"></script>
 <script>
 "use strict";L.DomUtil.setTransform||(L.DomUtil.setTransform=function(t,e,n){var i=e||new L.Point(0,0);t.style[L.DomUtil.TRANSFORM]=(L.Browser.ie3d?"translate("+i.x+"px,"+i.y+"px)":"translate3d("+i.x+"px,"+i.y+"px,0)")+(n?" scale("+n+")":"")}),L.CanvasLayer=(L.Layer?L.Layer:L.Class).extend({initialize:function(t){this._map=null,this._canvas=null,this._frame=null,this._delegate=null,L.setOptions(this,t)},delegate:function(t){return this._delegate=t,this},needRedraw:function(){return this._frame||(this._frame=L.Util.requestAnimFrame(this.drawLayer,this)),this},_onLayerDidResize:function(t){this._canvas.width=t.newSize.x,this._canvas.height=t.newSize.y},_onLayerDidMove:function(){var t=this._map.containerPointToLayerPoint([0,0]);L.DomUtil.setPosition(this._canvas,t),this.drawLayer()},getEvents:function(){var t={resize:this._onLayerDidResize,moveend:this._onLayerDidMove};return this._map.options.zoomAnimation&&L.Browser.any3d&&(t.zoomanim=this._animateZoom),t},onAdd:function(t){this._map=t,this._canvas=L.DomUtil.create("canvas","leaflet-layer"),this.tiles={};var e=this._map.getSize();this._canvas.width=e.x,this._canvas.height=e.y;var n=this._map.options.zoomAnimation&&L.Browser.any3d;L.DomUtil.addClass(this._canvas,"leaflet-zoom-"+(n?"animated":"hide")),this.options.pane.appendChild(this._canvas),t.on(this.getEvents(),this);var i=this._delegate||this;i.onLayerDidMount&&i.onLayerDidMount(),this.needRedraw();var o=this;setTimeout(function(){o._onLayerDidMove()},0)},onRemove:function(t){var e=this._delegate||this;e.onLayerWillUnmount&&e.onLayerWillUnmount(),this.options.pane.removeChild(this._canvas),t.off(this.getEvents(),this),this._canvas=null},addTo:function(t){return t.addLayer(this),this},drawLayer:function(){var t=this._map.getSize(),e=this._map.getBounds(),n=this._map.getZoom(),i=this._map.options.crs.project(this._map.getCenter()),o=this._map.options.crs.project(this._map.containerPointToLatLng(this._map.getSize())),a=this._delegate||this;a.onDrawLayer&&a.onDrawLayer({layer:this,canvas:this._canvas,bounds:e,size:t,zoom:n,center:i,corner:o}),this._frame=null},_setTransform:function(t,e,n){var i=e||new L.Point(0,0);t.style[L.DomUtil.TRANSFORM]=(L.Browser.ie3d?"translate("+i.x+"px,"+i.y+"px)":"translate3d("+i.x+"px,"+i.y+"px,0)")+(n?" scale("+n+")":"")},_animateZoom:function(t){var e=this._map.getZoomScale(t.zoom),n=L.Layer?this._map._latLngToNewLayerPoint(this._map.getBounds().getNorthWest(),t.zoom,t.center):this._map._getCenterOffset(t.center)._multiplyBy(-e).subtract(this._map._getMapPanePos());L.DomUtil.setTransform(this._canvas,n,e)}}),L.canvasLayer=function(t){return new L.CanvasLayer(t)},L.Control.Velocity=L.Control.extend({options:{position:"bottomleft",emptyString:"Unavailable",angleConvention:"bearingCCW",showCardinal:!1,speedUnit:"m/s",directionString:"Direction",speedString:"Speed",onAdd:null,onRemove:null},onAdd:function(t){return this._container=L.DomUtil.create("div","leaflet-control-velocity"),L.DomEvent.disableClickPropagation(this._container),t.on("mousemove",this._onMouseMove,this),this._container.innerHTML=this.options.emptyString,this.options.leafletVelocity.options.onAdd&&this.options.leafletVelocity.options.onAdd(),this._container},onRemove:function(t){t.off("mousemove",this._onMouseMove,this),this.options.leafletVelocity.options.onRemove&&this.options.leafletVelocity.options.onRemove()},vectorToSpeed:function(t,e,n){var i=Math.sqrt(Math.pow(t,2)+Math.pow(e,2));return"k/h"===n?this.meterSec2kilometerHour(i):"kt"===n?this.meterSec2Knots(i):"mph"===n?this.meterSec2milesHour(i):i},vectorToDegrees:function(t,e,n){n.endsWith("CCW")&&(e=0<e?e=-e:Math.abs(e));var i=Math.sqrt(Math.pow(t,2)+Math.pow(e,2)),o=180*Math.atan2(t/i,e/i)/Math.PI+180;return"bearingCW"!==n&&"meteoCCW"!==n||360<=(o+=180)&&(o-=360),o},degreesToCardinalDirection:function(t){var e="";return 0<=t&&t<11.25||348.75<=t?e="N":11.25<=t&&t<33.75?e="NNW":33.75<=t&&t<56.25?e="NW":56.25<=t&&t<78.75?e="WNW":78.25<=t&&t<101.25?e="W":101.25<=t&&t<123.75?e="WSW":123.75<=t&&t<146.25?e="SW":146.25<=t&&t<168.75?e="SSW":168.75<=t&&t<191.25?e="S":191.25<=t&&t<213.75?e="SSE":213.75<=t&&t<236.25?e="SE":236.25<=t&&t<258.75?e="ESE":258.75<=t&&t<281.25?e="E":281.25<=t&&t<303.75?e="ENE":303.75<=t&&t<326.25?e="NE":326.25<=t&&t<348.75&&(e="NNE"),e},meterSec2Knots:function(t){return t/.514},meterSec2kilometerHour:function(t){return 3.6*t},meterSec2milesHour:function(t){return 2.23694*t},_onMouseMove:function(t){var e=this.options.leafletVelocity._map.containerPointToLatLng(L.point(t.containerPoint.x,t.containerPoint.y)),n=this.options.leafletVelocity._windy.interpolatePoint(e.lng,e.lat),i="";if(n&&!isNaN(n[0])&&!isNaN(n[1])&&n[2]){var o=this.vectorToDegrees(n[0],n[1],this.options.angleConvention),a=this.options.showCardinal?" (".concat(this.degreesToCardinalDirection(o),") "):"";i="<strong> ".concat(this.options.velocityType," ").concat(this.options.directionString,": </strong> ").concat(o.toFixed(2),"°").concat(a,", <strong> ").concat(this.options.velocityType," ").concat(this.options.speedString,": </strong> ").concat(this.vectorToSpeed(n[0],n[1],this.options.speedUnit).toFixed(2)," ").concat(this.options.speedUnit)}else i=this.options.emptyString;this._container.innerHTML=i}}),L.Map.mergeOptions({positionControl:!1}),L.Map.addInitHook(function(){this.options.positionControl&&(this.positionControl=new L.Control.MousePosition,this.addControl(this.positionControl))}),L.control.velocity=function(t){return new L.Control.Velocity(t)},L.VelocityLayer=(L.Layer?L.Layer:L.Class).extend({options:{displayValues:!0,displayOptions:{velocityType:"Velocity",position:"bottomleft",emptyString:"No velocity data"},maxVelocity:10,colorScale:null,data:null},_map:null,_canvasLayer:null,_windy:null,_context:null,_timer:0,_mouseControl:null,initialize:function(t){L.setOptions(this,t)},onAdd:function(t){this._paneName=this.options.paneName||"overlayPane";var e=t._panes.overlayPane;t.getPane&&(e=(e=t.getPane(this._paneName))||t.createPane(this._paneName)),this._canvasLayer=L.canvasLayer({pane:e}).delegate(this),this._canvasLayer.addTo(t),this._map=t},onRemove:function(t){this._destroyWind()},setData:function(t){this.options.data=t,this._windy&&(this._windy.setData(t),this._clearAndRestart()),this.fire("load")},setOpacity:function(t){this._canvasLayer.setOpacity(t)},setOptions:function(t){this.options=Object.assign(this.options,t),t.hasOwnProperty("displayOptions")&&(this.options.displayOptions=Object.assign(this.options.displayOptions,t.displayOptions),this._initMouseHandler(!0)),t.hasOwnProperty("data")&&(this.options.data=t.data),this._windy&&(this._windy.setOptions(t),t.hasOwnProperty("data")&&this._windy.setData(t.data),this._clearAndRestart()),this.fire("load")},onDrawLayer:function(t,e){var n=this;this._windy?this.options.data&&(this._timer&&clearTimeout(n._timer),this._timer=setTimeout(function(){n._startWindy()},750)):this._initWindy(this)},_startWindy:function(){var t=this._map.getBounds(),e=this._map.getSize();this._windy.start([[0,0],[e.x,e.y]],e.x,e.y,[[t._southWest.lng,t._southWest.lat],[t._northEast.lng,t._northEast.lat]])},_initWindy:function(t){var e=Object.assign({canvas:t._canvasLayer._canvas,map:this._map},t.options);this._windy=new Windy(e),this._context=this._canvasLayer._canvas.getContext("2d"),this._canvasLayer._canvas.classList.add("velocity-overlay"),this.onDrawLayer(),this._map.on("dragstart",t._windy.stop),this._map.on("dragend",t._clearAndRestart),this._map.on("zoomstart",t._windy.stop),this._map.on("zoomend",t._clearAndRestart),this._map.on("resize",t._clearWind),this._initMouseHandler(!1)},_initMouseHandler:function(t){if(t&&(this._map.removeControl(this._mouseControl),this._mouseControl=!1),!this._mouseControl&&this.options.displayValues){var e=this.options.displayOptions||{};(e.leafletVelocity=this)._mouseControl=L.control.velocity(e).addTo(this._map)}},_clearAndRestart:function(){this._context&&this._context.clearRect(0,0,3e3,3e3),this._windy&&this._startWindy()},_clearWind:function(){this._windy&&this._windy.stop(),this._context&&this._context.clearRect(0,0,3e3,3e3)},_destroyWind:function(){this._timer&&clearTimeout(this._timer),this._windy&&this._windy.stop(),this._context&&this._context.clearRect(0,0,3e3,3e3),this._mouseControl&&this._map.removeControl(this._mouseControl),this._mouseControl=null,this._windy=null,this._map.removeLayer(this._canvasLayer)}}),L.velocityLayer=function(t){return new L.VelocityLayer(t)};var Windy=function(S){function o(t,e,n,i,o,a){var r=1-t,s=1-e,l=r*s,h=t*s,c=r*e,d=t*e,p=n[0]*l+i[0]*h+o[0]*c+a[0]*d,u=n[1]*l+i[1]*h+o[1]*c+a[1]*d;return[p,u,Math.sqrt(p*p+u*u)]}function d(t){var e=null,n=null;return t.forEach(function(t){switch(t.header.parameterCategory+","+t.header.parameterNumber){case"1,2":case"2,2":e=t;break;case"1,3":case"2,3":n=t;break;default:t}}),function(t,e){var n=t.data,i=e.data;return{header:t.header,data:function(t){return[n[t],i[t]]},interpolate:o}}(e,n)}function a(i,o,t){function a(t,e){var n=i[Math.round(t)];return n&&n[Math.round(e)]||h}a.release=function(){i=[]},a.randomize=function(t){for(var e,n,i=0;null===a(e=Math.round(Math.floor(Math.random()*o.width)+o.x),n=Math.round(Math.floor(Math.random()*o.height)+o.y))[2]&&i++<30;);return t.x=e,t.y=n,t},t(o,a)}function r(t){return t/180*Math.PI}function s(i,s){var e,n,l=(e=x,n=C,R.indexFor=function(t){return Math.max(0,Math.min(R.length-1,Math.round((t-e)/(n-e)*(R.length-1))))},R),h=l.map(function(){return[]}),t=Math.round(i.width*i.height*D);/android|blackberry|iemobile|ipad|iphone|ipod|opera mini|webos/i.test(navigator.userAgent)&&(t*=T);for(var o="rgba(0, 0, 0, ".concat(O,")"),a=[],r=0;r<t;r++)a.push(s.randomize({age:Math.floor(Math.random()*P)+0}));var c=S.canvas.getContext("2d");c.lineWidth=b,c.fillStyle=o,c.globalAlpha=.6;var d=Date.now();!function t(){M=requestAnimationFrame(t);var e=Date.now(),n=e-d;W<n&&(d=e-n%W,h.forEach(function(t){t.length=0}),a.forEach(function(t){t.age>P&&(s.randomize(t).age=0);var e=t.x,n=t.y,i=s(e,n),o=i[2];if(null===o)t.age=P;else{var a=e+i[0],r=n+i[1];null!==s(a,r)[2]?(t.xt=a,t.yt=r,h[l.indexFor(o)].push(t)):(t.x=a,t.y=r)}t.age+=1}),c.globalCompositeOperation="destination-in",c.fillRect(i.x,i.y,i.width,i.height),c.globalCompositeOperation="lighter",c.globalAlpha=0===O?0:.9*O,h.forEach(function(t,e){0<t.length&&(c.beginPath(),c.strokeStyle=l[e],t.forEach(function(t){c.moveTo(t.x,t.y),c.lineTo(t.xt,t.yt),t.x=t.xt,t.y=t.yt}),c.stroke())}))}()}var u,m,p,y,_,f,v,g,w,M,x=S.minVelocity||0,C=S.maxVelocity||10,l=(S.velocityScale||.005)*(Math.pow(window.devicePixelRatio,1/3)||1),P=S.particleAge||90,b=S.lineWidth||1,D=S.particleMultiplier||1/300,T=Math.pow(window.devicePixelRatio,1/3)||1.6,e=S.frameRate||15,W=1e3/e,O=.97,R=S.colorScale||["rgb(36,104, 180)","rgb(60,157, 194)","rgb(128,205,193 )","rgb(151,218,168 )","rgb(198,231,181)","rgb(238,247,217)","rgb(255,238,159)","rgb(252,217,125)","rgb(255,182,100)","rgb(252,150,75)","rgb(250,112,52)","rgb(245,64,32)","rgb(237,45,28)","rgb(220,24,32)","rgb(180,0,35)"],h=[NaN,NaN,null],c=S.data,N=function(t,e){if(!m)return null;var n,i=z(t-y,360)/f,o=(_-e)/v,a=Math.floor(i),r=a+1,s=Math.floor(o),l=s+1;if(n=m[s]){var h=n[a],c=n[r];if(A(h)&&A(c)&&(n=m[l])){var d=n[a],p=n[r];if(A(d)&&A(p))return u.interpolate(i-a,o-s,h,c,d,p)}}return null},A=function(t){return null!=t},z=function(t,e){return t-e*Math.floor(t/e)},E=function(t,e,n,i,o){var a=2*Math.PI,r=e<0?5:-5,s=n<0?5:-5,l=V(n,e+r),h=V(n+s,e),c=Math.cos(n/360*a);return[(l[0]-i)/r/c,(l[1]-o)/r/c,(h[0]-i)/s,(h[1]-o)/s]},V=function(t,e,n){var i=S.map.latLngToContainerPoint(L.latLng(t,e));return[i.x,i.y]},U=function(){F.field&&F.field.release(),M&&cancelAnimationFrame(M)},F={params:S,start:function(e,n,i,t){var o={south:r(t[0][1]),north:r(t[1][1]),east:r(t[1][0]),west:r(t[0][0]),width:n,height:i};U(),function(t,e){var n=!0;t.length<2&&(n=!1),n||console.log("Windy Error: data must have at least two components (u,v)");var i=(u=d(t)).header;if(i.hasOwnProperty("gridDefinitionTemplate")&&0!=i.gridDefinitionTemplate&&(n=!1),n||console.log("Windy Error: Only data with Latitude_Longitude coordinates is supported"),n=!0,y=i.lo1,_=i.la1,f=i.dx,v=i.dy,g=i.nx,w=i.ny,i.hasOwnProperty("scanMode")){var o=i.scanMode.toString(2),a=(o=("0"+o).slice(-8)).split("").map(Number).map(Boolean);a[0]&&(f=-f),a[1]&&(v=-v),a[2]&&(n=!1),a[3]&&(n=!1),a[4]&&(n=!1),a[5]&&(n=!1),a[6]&&(n=!1),a[7]&&(n=!1),n||console.log("Windy Error: Data with scanMode: "+i.scanMode+" is not supported.")}(p=new Date(i.refTime)).setHours(p.getHours()+i.forecastTime),m=[];for(var r=0,s=360<=Math.floor(g*f),l=0;l<w;l++){for(var h=[],c=0;c<g;c++,r++)h[c]=u.data(r);s&&h.push(h[0]),m[l]=h}e({date:p,interpolate:N})}(c,function(t){!function(w,M,t,n){var x={},e=(t.south-t.north)*(t.west-t.east),C=l*Math.pow(e,.4),P=[],i=M.x;function o(t){for(var e,n,i,o,a,r,s,l,h,c,d,p,u,m=[],y=M.y;y<=M.yMax;y+=2){var _=(d=t,p=y,void 0,[(u=S.map.containerPointToLatLng(L.point(d,p))).lng,u.lat]),f=_[0],v=_[1];if(isFinite(f)){var g=w.interpolate(f,v);g&&(e=x,n=f,i=v,o=t,a=y,r=C,void 0,l=(s=g)[0]*r,h=s[1]*r,c=E(e,n,i,o,a),s[0]=c[0]*l+c[2]*h,s[1]=c[1]*l+c[3]*h,g=s,m[y+1]=m[y]=g)}}P[t+1]=P[t]=m}!function t(){for(var e=Date.now();i<M.width;)if(o(i),i+=2,1e3<Date.now()-e)return void setTimeout(t,25);a(P,M,n)}()}(t,function(t,e,n){var i=t[0],o=t[1],a=Math.round(i[0]),r=Math.max(Math.floor(i[1],0),0);Math.min(Math.ceil(o[0],e),e-1);return{x:a,y:r,xMax:e,yMax:Math.min(Math.ceil(o[1],n),n-1),width:e,height:n}}(e,n,i),o,function(t,e){F.field=e,s(t,e)})})},stop:U,createField:a,interpolatePoint:N,setData:function(t){c=t},setOptions:function(t){t.hasOwnProperty("minVelocity")&&(x=t.minVelocity),t.hasOwnProperty("maxVelocity")&&(C=t.maxVelocity),t.hasOwnProperty("velocityScale")&&(l=(t.velocityScale||.005)*(Math.pow(window.devicePixelRatio,1/3)||1)),t.hasOwnProperty("particleAge")&&(P=t.particleAge),t.hasOwnProperty("lineWidth")&&(b=t.lineWidth),t.hasOwnProperty("particleMultiplier")&&(D=t.particleMultiplier),t.hasOwnProperty("opacity")&&(O=+t.opacity),t.hasOwnProperty("frameRate")&&(e=t.frameRate),W=1e3/e}};return F};window.cancelAnimationFrame||(window.cancelAnimationFrame=function(t){clearTimeout(t)});
 </script>
@@ -626,6 +627,25 @@ a{color:inherit;text-decoration:none;text-underline-offset:2px}
 #nlist{display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--border)}
 #nlist>.nw-day,#nlist>.empty{grid-column:1/-1}
 .nw-full{grid-column:1/-1}
+/* News Wire skeleton: hanya dipakai sebelum snapshot pertama */
+.nw-sk-line{display:block;height:9px;border-radius:2px;background:linear-gradient(90deg,#191919 20%,#292929 48%,#191919 76%);background-size:220% 100%;animation:nw-shimmer 1.35s ease-in-out infinite}
+@keyframes nw-shimmer{to{background-position:-220% 0}}
+.lead-skeleton{cursor:default}
+.lead-skeleton:hover{background:var(--layer)}
+.lead-sk-image{aspect-ratio:16/9;margin:-17px -15px 13px;border-bottom:1px solid var(--border)}
+.lead-sk-meta{width:35%;height:8px;margin:0 0 12px}
+.lead-sk-title{height:15px;width:88%;margin:0 0 8px}
+.lead-sk-title.short{width:62%;height:13px;margin-bottom:13px}
+.lead-sk-desc{height:8px;width:96%;margin:0 0 7px}
+.lead-sk-desc.mid{width:79%}
+.nw-sk-card{min-width:0;min-height:116px;padding:12px 13px 11px;background:var(--bg)}
+.nw-sk-meta{width:44%;height:8px;margin:0 0 13px}
+.nw-sk-src{width:55%;height:7px;margin:0 0 12px}
+.nw-sk-title{height:9px;width:94%;margin:0 0 7px}
+.nw-sk-title.short{width:68%;margin-bottom:13px}
+.nw-sk-desc{height:7px;width:88%;margin:0 0 6px}
+.nw-sk-desc.short{width:57%}
+@media(prefers-reduced-motion:reduce){.nw-sk-line{animation:none;background-position:0 0}}
 .nw{
   display:flex;flex-direction:column;min-width:0;padding:12px 13px 11px;background:var(--bg);
   transition:background .12s;
@@ -866,6 +886,8 @@ a{color:inherit;text-decoration:none;text-underline-offset:2px}
 .leaflet-tooltip.rp-tip{background:rgba(10,12,16,.92);border:1px solid var(--border2);color:var(--text);
   font:500 9px/1.5 var(--mono);padding:7px 9px;border-radius:3px;box-shadow:0 6px 18px rgba(0,0,0,.5);white-space:nowrap}
 .leaflet-tooltip.rp-tip:before{display:none}
+/* tile TomTom flow: opacity rendah + desaturasi — warna tidak solid di atas basemap gelap */
+.tt-flow-pane{filter:saturate(.55) brightness(1.08)}
 .mly .ic{width:14px;height:14px}
 .mly i{width:5px;height:5px;background:var(--text3);flex:none}
 .mly[aria-pressed="true"]{color:var(--text);border-color:var(--border2);background:var(--layer2)}
@@ -905,6 +927,11 @@ a{color:inherit;text-decoration:none;text-underline-offset:2px}
 .map-f .lg i{width:5px;height:5px;border-radius:50%;flex:none}
 .map-f .sp{margin-left:auto;color:var(--text3);overflow:hidden;text-overflow:ellipsis}
 .map-f .cred{flex:none;color:#6f6f6f;font-size:8px;letter-spacing:.06em}
+.flow-hint{
+  position:absolute;left:12px;bottom:44px;z-index:900;pointer-events:none;
+  padding:5px 9px;background:rgba(10,10,10,.85);border:1px solid var(--border2);
+  font:500 9px/1 var(--mono);letter-spacing:.06em;text-transform:uppercase;color:var(--text2);
+}
 .leaflet-container{background:#0b0b0b!important;font-family:var(--mono)!important}
 /* Canvas visual-only (heat/wind/fire) tidak menangkap pointer. Jangan matikan
    Leaflet Canvas renderer: CircleMarker interaktif melakukan hit-test di canvas itu. */
@@ -929,6 +956,21 @@ a{color:inherit;text-decoration:none;text-underline-offset:2px}
 .mp-m{margin-top:7px;font:400 9px/1.5 var(--mono);letter-spacing:.03em;text-transform:uppercase;color:#8d8d8d}
 .mp-m a{color:#c6c6c6;border-bottom:1px solid #525252}
 .mp-m a:hover{color:var(--accent);border-bottom-color:var(--accent)}
+.mp-meta{margin-top:9px;display:flex;flex-direction:column;gap:4px;font:600 8px/1.4 var(--mono);letter-spacing:.07em;text-transform:uppercase}
+.mp-meta>div{display:grid;grid-template-columns:64px minmax(0,1fr);gap:4px 12px;align-items:baseline}
+.mp-meta span{color:#8d8d8d;white-space:nowrap}
+.mp-meta b{color:#e8e8e8;font-weight:600;letter-spacing:.02em;text-transform:capitalize;overflow-wrap:anywhere}
+.tt-pop .mp-t,.warn-pop .mp-t{text-transform:capitalize;overflow-wrap:anywhere}
+.mp-foot{margin-top:9px;padding-top:7px;border-top:1px solid #2a2a2a;text-align:center;font:600 8px/1.4 var(--mono);letter-spacing:.07em;text-transform:uppercase;color:#8d8d8d;white-space:nowrap}
+.mp-foot b{color:#e8e8e8;font-weight:600;letter-spacing:.02em;text-transform:none}
+.mk-tt-ic{background:none;border:none}
+.mk-tt{width:100%;height:100%;border-radius:50%;background:#101010;border:1.5px solid var(--tc);color:var(--tc);display:flex;align-items:center;justify-content:center}
+.mk-tt .ic{width:60%;height:60%;stroke-width:1.4}
+#map .leaflet-popup.warn-pop .leaflet-popup-content{width:340px!important}
+#map .leaflet-popup.tt-pop .leaflet-popup-content{width:auto!important;max-width:560px!important}
+.mp-ruas{margin-top:7px}
+.mp-ruas>span{display:block;font:600 8px/1.4 var(--mono);letter-spacing:.07em;text-transform:uppercase;color:#8d8d8d}
+.mp-ruas>b{display:block;margin-top:1px;font:600 10.5px/1.45 var(--sans);color:#e8e8e8;text-transform:capitalize;overflow-wrap:anywhere}
 .mp-src{
   display:inline-flex;align-items:center;gap:4px;margin-top:7px;padding-bottom:2px;
   border-bottom:1px solid #525252;font:500 8.5px/1 var(--mono);letter-spacing:.08em;
@@ -963,6 +1005,12 @@ a{color:inherit;text-decoration:none;text-underline-offset:2px}
 .mk-aqi{display:inline-flex;align-items:center;justify-content:center;min-width:26px;height:15px;padding:0 4px;
   border-radius:3px;border:1.2px solid #101010;font:700 9px/1 var(--mono);letter-spacing:.02em;
   box-shadow:0 1px 4px rgba(0,0,0,.55);text-shadow:none}
+
+/* marker cuaca — glyph WMO per kondisi, warna = severity angin/hujan */
+.mk-cuaca-ic{background:none;border:none}
+.mk-cuaca{width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:var(--wc,#38bdf8)}
+.mk-cuaca svg{width:100%;height:100%;overflow:visible;display:block;
+  filter:drop-shadow(0 0 2.5px rgba(0,0,0,.9)) drop-shadow(0 0 1px rgba(0,0,0,.9))}
 
 /* ============================================================ LIVE TV */
 .tvwrap{
@@ -1402,6 +1450,17 @@ a{color:inherit;text-decoration:none;text-underline-offset:2px}
   <symbol id="i-satellite" viewBox="0 0 16 16"><circle cx="8" cy="4.4" r="1.5"/><path d="M5 7.6a4.4 4.4 0 0 1 6 0"/><path d="M3.2 10.2a7.4 7.4 0 0 1 9.6 0"/><path d="M8 13.9v-3"/><path d="M6 12.4 8 14.4l2-2"/></symbol>
   <symbol id="i-drop" viewBox="0 0 16 16"><path d="M8 2.2c2.6 3.2 4.2 5.2 4.2 7.2a4.2 4.2 0 0 1-8.4 0c0-2 1.6-4 4.2-7.2Z"/></symbol>
   <symbol id="i-cloud-warn" viewBox="0 0 16 16"><path d="M4.4 12.4h7.4a3 3 0 0 0 .4-5.95A4.4 4.4 0 0 0 4.2 6.4a3 3 0 0 0 .2 6Z"/><path d="M8 8.6v2.6"/><circle cx="8" cy="12.9" r=".7" fill="currentColor" stroke="none"/></symbol>
+  <symbol id="i-tt-alert" viewBox="0 0 16 16"><path d="M8 2.8 14.2 13H1.8z"/><path d="M8 6.4v3"/><circle cx="8" cy="11.4" r=".9" fill="currentColor" stroke="none"/></symbol>
+  <symbol id="i-tt-crash" viewBox="0 0 16 16"><path d="M1.8 10.5l1.4-3.4h3l1.3 3.4"/><path d="M9 10.5l1.4-3.4h3.8l1.4 3.4"/><circle cx="4.5" cy="12.2" r="1.2"/><circle cx="11.8" cy="12.2" r="1.2"/><path d="M13.8 2.6l.7 1.4 1.5.2-1.1 1 .3 1.5-1.4-.8-1.4.8.3-1.5-1.1-1 1.5-.2z"/></symbol>
+  <symbol id="i-tt-fog" viewBox="0 0 16 16"><path d="M2.5 5.5h11M4 8.2h8M5.5 10.9h5"/></symbol>
+  <symbol id="i-tt-rain" viewBox="0 0 16 16"><path d="M4.8 10.2a3.4 3.4 0 0 1 .5-6.76 4.4 4.4 0 0 1 8.4 1.1 2.9 2.9 0 0 1-.6 5.66z"/><path d="M6.2 12.6l-.7 1.4M9.8 12.6l-.7 1.4M13.4 12.6l-.7 1.4"/></symbol>
+  <symbol id="i-tt-ice" viewBox="0 0 16 16"><path d="M8 2.5v11M3.3 5.2l9.4 5.6M12.7 5.2 3.3 10.8"/><circle cx="8" cy="8" r="1" fill="currentColor" stroke="none"/></symbol>
+  <symbol id="i-tt-jam" viewBox="0 0 122.88 117.62"><path fill="currentColor" fill-rule="evenodd" stroke="none" d="M0,117.62,30,0h7.08l-26,117.62ZM39.44,28.37c-4.71-2.4-4.17-5.07.56-4.79l1.06,2,2.18-6.79c.86-2.68,2.29-5.1,5.09-5.1H76.27c2.81,0,4.42,2.38,5.1,5.09L83,25.36,84,23.58c4.87-.28,5.3,2.55.15,5l.84,1.28c3.38,3.48,3.07,7,2.54,15.55v2.83a1.6,1.6,0,0,1-1.59,1.59h-6.8a1.6,1.6,0,0,1-1.59-1.59V47H45.39v1.28a1.6,1.6,0,0,1-1.59,1.59H37a1.6,1.6,0,0,1-1.59-1.59V44.56a2,2,0,0,1,0-.25c-.52-6.6-1.24-12.54,4-15.94Zm8.67,7.82-6-.76c-1.43-.16-1.81.44-1.32,1.67l.65,1.58a2.27,2.27,0,0,0,.81.91,2.74,2.74,0,0,0,1.36.38L49,40c1.3,0,1.86-.52,1.45-1.72a2.9,2.9,0,0,0-2.3-2.1Zm26.66,0,6-.76c1.43-.16,1.81.44,1.33,1.67l-.66,1.58a2.27,2.27,0,0,1-.81.91,2.7,2.7,0,0,1-1.35.38l-5.38,0c-1.31,0-1.87-.52-1.46-1.72a2.92,2.92,0,0,1,2.3-2.1ZM43.33,27.07H80.59l-1.65-6.83c-.45-2.09-1.74-3.89-3.88-3.89H49.26c-2.13,0-3.23,1.85-3.88,3.89l-2.05,6.83v0ZM29.17,86.15c-6.91-3.51-6.11-7.42.83-7l1.55,2.91,3.21-10c1.25-3.92,3.35-7.48,7.46-7.48h41c4.11,0,6.48,3.49,7.47,7.47l2.41,9.66,1.38-2.6c7.14-.42,7.78,3.73.22,7.31l1.23,1.88c5,5.11,4.5,10.2,3.73,22.81v4.14a2.35,2.35,0,0,1-2.34,2.34h-10A2.35,2.35,0,0,1,85,115.28v-1.87H37.9v1.87a2.35,2.35,0,0,1-2.33,2.34h-10a2.35,2.35,0,0,1-2.33-2.34V109.9c0-.13,0-.25,0-.37-.75-9.67-1.81-18.39,5.88-23.38ZM41.89,97.63,33,96.51c-2.09-.23-2.65.65-1.94,2.45l1,2.32a3.36,3.36,0,0,0,1.2,1.34,4.2,4.2,0,0,0,2,.55l7.89.06c1.91,0,2.73-.77,2.14-2.52a4.28,4.28,0,0,0-3.38-3.08Zm39.1,0,8.85-1.12c2.09-.23,2.65.65,1.94,2.45l-1,2.32a3.41,3.41,0,0,1-1.19,1.34,4.24,4.24,0,0,1-2,.55l-7.89.06c-1.91,0-2.73-.77-2.13-2.52A4.27,4.27,0,0,1,81,97.63ZM34.88,84.25H89.52l-2.41-10c-.66-3.06-2.56-5.7-5.7-5.7H43.58c-3.13,0-4.73,2.71-5.7,5.7l-3,10v0ZM64.15,0l.38,9.34H58.19L58.75,0Zm2.63,51.17.56,8H55.47l.45-8ZM93.54,0l29.34,117.62h-10.5L86,0Z"/></symbol>
+  <symbol id="i-tt-closed" viewBox="0 0 16 16"><circle cx="8" cy="8" r="5.6"/><path d="M5.2 5.2l5.6 5.6"/></symbol>
+  <symbol id="i-tt-cone" viewBox="0 0 16 16"><path d="M8 2.6 12.4 11.6H3.6z"/><path d="M6.7 8.8h2.6"/><path d="M4.5 12.8h7"/></symbol>
+  <symbol id="i-tt-wind" viewBox="0 0 16 16"><path d="M2.5 5.5h6.5a2 2 0 1 0-2-2"/><path d="M2.5 9h9.5a2 2 0 1 1-2 2"/><path d="M2.5 12.5h4.5"/></symbol>
+  <symbol id="i-tt-flood" viewBox="0 0 16 16"><path d="M1.8 9.2c1.4-1.9 2.7-1.9 4.1 0s2.7 1.9 4.1 0 2.7-1.9 4.1 0"/><path d="M1.8 12.7c1.4-1.9 2.7-1.9 4.1 0s2.7 1.9 4.1 0 2.7-1.9 4.1 0"/></symbol>
+  <symbol id="i-tt-broken" viewBox="0 0 16 16"><path d="M1.8 10.8l1.4-3.4h3l1.3 3.4"/><circle cx="4.6" cy="12.4" r="1.2"/><circle cx="9" cy="12.4" r="1.2"/><path d="M12.6 2.8l.8 1.6 1.7.2-1.3 1.2.3 1.7-1.5-.9-1.5.9.3-1.7-1.3-1.2 1.7-.2z"/></symbol>
   <symbol id="i-air" viewBox="0 0 16 16"><path d="M2.2 13.6V9.9l2-1.4v5.1M4.2 13.6V7.7l2-1.4v7.3M6.2 13.6V5.5l2-1.4v9.5M8.2 13.6V8.9l2-1.4v6.1M10.2 13.6V7l2.4-1.7V13.6"/><circle cx="12.7" cy="4.2" r=".9" fill="currentColor" stroke="none"/><circle cx="14" cy="2.7" r=".7" fill="currentColor" stroke="none"/></symbol>
 
 </svg>
@@ -1537,7 +1596,7 @@ a{color:inherit;text-decoration:none;text-underline-offset:2px}
 
   <!-- 04 NEWS -->
   <section class="pane" aria-label="Wire berita">
-    <div class="ph"><span class="ph-k">04</span><h2 class="ph-t">News Wire</h2><span class="ph-m" id="nmeta">—</span></div>
+    <div class="ph"><span class="ph-k">04</span><h2 class="ph-t">News Wire</h2><span class="ph-m" id="nmeta">Memuat…</span></div>
     <div class="pb">
       <div class="catbar" id="catbar" role="group" aria-label="Kategori berita"></div>
       <div class="flt-wrap" id="fltwrap">
@@ -1554,8 +1613,23 @@ a{color:inherit;text-decoration:none;text-underline-offset:2px}
         </div>
         <button class="flt-tab" id="fltpill" type="button" aria-expanded="false" aria-controls="newstools"><svg class="flt-cv" viewBox="0 0 10 10" width="9" height="9" aria-hidden="true"><path d="M2 3.5 5 6.5 8 3.5" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="square"/></svg><span class="flt-lb">filter</span><i class="flt-dot" aria-hidden="true"></i></button>
       </div>
-      <div id="lead"></div>
-      <div id="nlist"><div class="empty">Menghubungkan ke wire…</div></div>
+      <div id="lead" aria-busy="true" aria-label="Memuat berita utama">
+        <div class="lead lead-skeleton" aria-hidden="true">
+          <div class="nw-sk-line lead-sk-image"></div><div class="nw-sk-line lead-sk-meta"></div>
+          <div class="nw-sk-line lead-sk-title"></div><div class="nw-sk-line lead-sk-title short"></div>
+          <div class="nw-sk-line lead-sk-desc"></div><div class="nw-sk-line lead-sk-desc"></div><div class="nw-sk-line lead-sk-desc mid"></div>
+        </div>
+      </div>
+      <div id="nlist" aria-busy="true" aria-label="Memuat daftar berita">
+        <div class="nw-sk-card" aria-hidden="true"><div class="nw-sk-line nw-sk-meta"></div><div class="nw-sk-line nw-sk-src"></div><div class="nw-sk-line nw-sk-title"></div><div class="nw-sk-line nw-sk-title short"></div><div class="nw-sk-line nw-sk-desc"></div><div class="nw-sk-line nw-sk-desc short"></div></div>
+        <div class="nw-sk-card" aria-hidden="true"><div class="nw-sk-line nw-sk-meta"></div><div class="nw-sk-line nw-sk-src"></div><div class="nw-sk-line nw-sk-title"></div><div class="nw-sk-line nw-sk-title short"></div><div class="nw-sk-line nw-sk-desc"></div><div class="nw-sk-line nw-sk-desc short"></div></div>
+        <div class="nw-sk-card" aria-hidden="true"><div class="nw-sk-line nw-sk-meta"></div><div class="nw-sk-line nw-sk-src"></div><div class="nw-sk-line nw-sk-title"></div><div class="nw-sk-line nw-sk-title short"></div><div class="nw-sk-line nw-sk-desc"></div><div class="nw-sk-line nw-sk-desc short"></div></div>
+        <div class="nw-sk-card" aria-hidden="true"><div class="nw-sk-line nw-sk-meta"></div><div class="nw-sk-line nw-sk-src"></div><div class="nw-sk-line nw-sk-title"></div><div class="nw-sk-line nw-sk-title short"></div><div class="nw-sk-line nw-sk-desc"></div><div class="nw-sk-line nw-sk-desc short"></div></div>
+        <div class="nw-sk-card" aria-hidden="true"><div class="nw-sk-line nw-sk-meta"></div><div class="nw-sk-line nw-sk-src"></div><div class="nw-sk-line nw-sk-title"></div><div class="nw-sk-line nw-sk-title short"></div><div class="nw-sk-line nw-sk-desc"></div><div class="nw-sk-line nw-sk-desc short"></div></div>
+        <div class="nw-sk-card" aria-hidden="true"><div class="nw-sk-line nw-sk-meta"></div><div class="nw-sk-line nw-sk-src"></div><div class="nw-sk-line nw-sk-title"></div><div class="nw-sk-line nw-sk-title short"></div><div class="nw-sk-line nw-sk-desc"></div><div class="nw-sk-line nw-sk-desc short"></div></div>
+        <div class="nw-sk-card" aria-hidden="true"><div class="nw-sk-line nw-sk-meta"></div><div class="nw-sk-line nw-sk-src"></div><div class="nw-sk-line nw-sk-title"></div><div class="nw-sk-line nw-sk-title short"></div><div class="nw-sk-line nw-sk-desc"></div><div class="nw-sk-line nw-sk-desc short"></div></div>
+        <div class="nw-sk-card" aria-hidden="true"><div class="nw-sk-line nw-sk-meta"></div><div class="nw-sk-line nw-sk-src"></div><div class="nw-sk-line nw-sk-title"></div><div class="nw-sk-line nw-sk-title short"></div><div class="nw-sk-line nw-sk-desc"></div><div class="nw-sk-line nw-sk-desc short"></div></div>
+      </div>
     </div>
   </section>
 
@@ -1602,7 +1676,7 @@ a{color:inherit;text-decoration:none;text-underline-offset:2px}
     <span class="mly-unit"><span class="mly-grp">Lalin</span>
     <button class="mly" type="button" data-layer="ttflow" aria-pressed="false" title="TomTom Flow" aria-label="TomTom Flow"><svg class="ic" aria-hidden="true"><use href="#i-flow"></use></svg><span>Flow</span></button>
     <button class="mly" type="button" data-layer="ttinc" aria-pressed="false" title="TomTom Insiden" aria-label="TomTom Insiden"><svg class="ic" aria-hidden="true"><use href="#i-alert"></use></svg><span>Insid.</span></button>
-    <button class="mly" type="button" data-layer="ttdata" aria-pressed="false" title="Data Insiden TomTom" aria-label="Data Insiden TomTom"><svg class="ic" aria-hidden="true"><use href="#i-map"></use></svg><span>Data</span></button>
+    <button class="mly" type="button" data-layer="ttdata" aria-pressed="false" title="Data Insiden TomTom" aria-label="Data Insiden TomTom" hidden><svg class="ic" aria-hidden="true"><use href="#i-map"></use></svg><span>Data</span></button>
     <button class="mly" type="button" data-layer="rute" aria-pressed="false" title="Rute & Jarak" aria-label="Rute & Jarak"><svg class="ic" aria-hidden="true"><use href="#i-route"></use></svg><span>Rute</span></button>
     <button class="mly" type="button" data-layer="lalin" aria-pressed="false" title="Cek Kecepatan Jalan" aria-label="Cek Kecepatan Jalan"><svg class="ic" aria-hidden="true"><use href="#i-gauge"></use></svg><span>Lalin</span></button></span>
     <span class="mly-unit"><span class="mly-grp">Transport</span>
@@ -1630,7 +1704,7 @@ a{color:inherit;text-decoration:none;text-underline-offset:2px}
     <button class="mly" type="button" data-layer="peringatan" aria-pressed="true" title="Peringatan Dini Cuaca (BMKG CAP)" aria-label="Peringatan dini"><svg class="ic" aria-hidden="true"><use href="#i-cloud-warn"></use></svg><span>Warn</span></button></span>
     <span class="tt-status" id="tt-status" title="Status TomTom" role="img" aria-label="Status TomTom"><i></i></span>
     <button class="mly" type="button" id="tt-refresh" title="Refresh TomTom" aria-label="Refresh TomTom"><svg class="ic" aria-hidden="true"><use href="#i-sync"></use></svg></button>
-    <span class="map-hint">Mode: Rute A/B · Lalin probe</span>
+    <span class="map-hint" id="map-hint">Mode: Rute A/B · Lalin probe</span>
     </div>
   </div>
   <div class="radar-ctrl" id="radar-ctrl" hidden aria-label="Kontrol timeline radar hujan">
@@ -1648,6 +1722,7 @@ a{color:inherit;text-decoration:none;text-underline-offset:2px}
     <div class="rp-out" id="rp-out">TomTom routing · jarak & estimasi waktu. Klik peta untuk isi A lalu B, atau ketik koordinat.</div>
   </div>
   <div id="map" role="application" aria-label="Peta interaktif insiden Indonesia"></div>
+  <div class="flow-hint" id="flow-hint" hidden>Klik pada peta untuk cek kecepatan jalan</div>
   <div class="map-f">
     <span class="lg"><i style="background:#f1c21b"></i>Demo</span>
     <span class="lg"><i style="background:#da1e28"></i>Kebakaran</span>
@@ -1805,13 +1880,13 @@ const CAT_RE = {
   flood:/(banjir|genangan|longsor|tanah longsor|cuaca ekstrem|hujan deras|\brob\b)/i,
   disaster:/(gempa|tsunami|erupsi|letusan|bencana|evakuasi|korban jiwa|ambruk|tenggelam|hanyut|banjir bandang)/i,
   insiden:/(kecelakaan|ledakan|pohon tumbang|runtuh|tabrakan|tabrak lari|kapal karam|pesawat jatuh|tergelincir|terjun)/i,
-  siber:/(peretasan|peretas|hacker|ransomware|phishing|malware|ddos|botnet|zero[- ]day|kebocoran data|bocor data|data breach|pencurian data|akun dibajak|akun palsu|scam|penipuan online|pinjol ilegal|investasi bodong|bssn|badan siber|serangan siber|serangan cyber|insiden keamanan|gangguan (layanan|sistem|jaringan|aplikasi|infrastruktur)|layanan lumpuh|situs lumpuh|maintenance keamanan|uu pdp|\bpdp\b|dompet kripto|akun (media sosial|instagram|facebook|whatsapp|telegram|x) dibajak)/i,
+  siber:/(peretasan|peretas|hacker|ransomware|phishing|malware|ddos|botnet|zero[- ]day|n[- ]?day|\bcve[- ]?\d{4}|exploit|dieksploitasi|kerentanan|vulnerabilit|backdoor|spyware|skimming|carding|cryptojack|deepfake|deface|defacement|vishing|smishing|sextortion|kebocoran data|bocor data|data breach|pencurian data|akun dibajak|akun palsu|scam|penipuan online|pinjol ilegal|investasi bodong|bssn|badan siber|serangan siber|serangan cyber|insiden keamanan|gangguan (layanan|sistem|jaringan|aplikasi|infrastruktur)|layanan lumpuh|situs lumpuh|maintenance keamanan|uu pdp|\bpdp\b|dompet kripto|infrastruktur kritis|apt\d{1,2}\b|command and control|leak site|akun (media sosial|instagram|facebook|whatsapp|telegram|x|tiktok) (dibajak|diretas|dibobol))/i,
   kriminal:/(penembakan|pembunuhan|pengeroyokan|begal|curat|pencurian|perampokan|penangkapan|ditangkap|tersangka|kabur dari lapas|napi kabur|terorisme|radikalisasi|suap|gratifikasi|penipuan|narkoba|psikotropika|penculikan|perkosaan|rudapaksa)/i,
-  kesehatan:/(wabah|dbd|demam berdarah|covid|korona|flu burung|h1n1|malaria|tuberkulosis|\btb\b|diare|keracunan|stunting|obesitas|vaksin|imunisasi|kemenkes|bpom|faskes|puskesmas|gagal ginjal|kanker)/i,
+  kesehatan:/(wabah|\bklb\b|kejadian luar biasa|dbd|\bdhf\b|demam berdarah|covid|korona|influenza|\bflu\b|mpox|cacar monyet|campak|morbili|cacar air|tangan kaki mulut|hfmd|leptospirosis|tifus|thypoid|typhoid|kolera|rabies|gila anjing|anjing gila|anthrax|difteri|polio|meningitis|meningokokus|ensefalitis|chikungunya|cikungunya|zika|filariasis|kaki gajah|hepatitis|\bhiv\b|\baids\b|kusta|lepra|\bispa\b|pneumonia|bronkopneumonia|bronkitis|hmpv|human metapneumovirus|\brsv\b|\bmers\b|ebola|marburg|lassa|west nile|h5n1|avian influenza|\btbc\b|tuberkulosis|\btb\b|diare|disentri|scabies|kudis|keracunan|rotavirus|flu burung|h1n1|malaria|gagal ginjal|gizi buruk|busung lapar|malnutrisi|donor darah|bank darah|transfusi darah|stok darah|obat palsu|talasemia|hemofilia|stunting|obesitas|vaksin|vaksinasi|imunisasi|kemenkes|bpom|faskes|puskesmas|kanker)/i,
   ekonomi:/(phk|rupiah|kurs dollar|inflasi|defisit|apbn|apbd|ihsg|bursa efek|saham|emiten|dividen|stock split|buyback|right issue|utang negara|subsidi|bbm|pertamax|solar|listrik padam|padam listrik|pemadaman listrik|pertamina|\bpln\b|ojk|bank indonesia|umk\b|ump\b|thr\b|belanja negara|bea cukai|ekspor|impor|suku bunga|bappebti|kripto|bitcoin|pinjol|fintech|paylater|harga (cabai|beras|daging|minyak|emas))/i,
-  politik:/(pilpres|pilkada|pemilu|kpu\b|capres|cawapres|\bdpr\b|\bdprd\b|parlemen|pelantikan|menteri|wakil presiden|\bistana\b|bansos|rapat paripurna|mahkamah konstitusi|impeachment|program mbg|makan bergizi)/i
+  politik:/(pilpres|pilkada|pilgub|pilbup|pilgici|pemilu|\bkpu\b|kpud|bawaslu|capres|cawapres|partai politik|caleg|capil|\bdpr\b|\bdprd\b|parlemen|fraksi|koalisi|oposisi|pelantikan|menteri|wakil presiden|\bistana\b|senayan|bansos|rapat paripurna|mahkamah konstitusi|impeachment|majelis kehormatan|reshuffle|menko|kadin|perang|konflik|invasi|aneksasi|pendudukan|gencatan senjata|ultimatum|kudeta|pemberontakan|separatis|genosida|blokade|embargo|sandera|pertempuran|peluru kendali|\brudal\b|\bdron\b|serangan udara|perjanjian damai|perundingan damai|program mbg|makan bergizi)/i
 };
-const CAT_SKIP = /(pascabencana|pascagempa|pascabanjir|mitigasi|kesiapsiagaan|potensi bencana|rawan bencana|risiko bencana|kajian risiko|simulasi|edukasi|sosialisasi|pelatihan|antisipasi|siaga bencana|hadapi bencana|menghadapi bencana|peringatan dini|early warning|asuransi|operasi patuh|imbau|himbau|ingatkan|waspada|waspadai|ranperda|perda|godok|korupsi|dana bencana|modus|ruu|boikot dirinya|joget|cooking demo|demo (masak|memasak|kuliner|spesial)|liga|top skor|voli|sepak bola|piala|kualifikasi|gaun|mahalini|fashion|penghargaan|jasa raharja|warisan|turun-temurun|sepanjang 20\d\d|berdampak ke ekonomi|brasil|brazil|amerika serikat|filipina|thailand|malaysia|korea|jepang|tiongkok|china|inggris|prancis|perancis|paris|jerman|australia|india|pakistan|iran|israel|palestina|ukraina|rusia|gaza)/i;
+const CAT_SKIP = /(pascabencana|pascagempa|pascabanjir|mitigasi|kesiapsiagaan|potensi bencana|rawan bencana|risiko bencana|kajian risiko|simulasi|edukasi|sosialisasi|pelatihan|antisipasi|siaga bencana|hadapi bencana|menghadapi bencana|peringatan dini|early warning|asuransi|operasi patuh|imbau|himbau|ingatkan|waspada|waspadai|ranperda|perda|godok|korupsi|dana bencana|modus|ruu|boikot dirinya|joget|cooking demo|demo (masak|memasak|kuliner|spesial)|liga|top skor|voli|sepak bola|piala|kualifikasi|gaun|mahalini|fashion|film|sinema|bioskop|trailer|teaser|poster|nonton|netflix|zombie|mayat hidup|hantu|sekuel|layar lebar|sinetron|sinetrik|penghargaan|jasa raharja|warisan|turun-temurun|sepanjang 20\d\d|berdampak ke ekonomi|brasil|brazil|amerika serikat|filipina|thailand|malaysia|korea|jepang|tiongkok|china|inggris|prancis|perancis|paris|jerman|australia|india|pakistan|iran|israel|palestina|ukraina|rusia|gaza)/i;
 const catOfTitle = t => {
   if (CAT_SKIP.test(t)) return '';
   for (const c of CAT_ORDER) if (CAT_RE[c] && CAT_RE[c].test(t)) return c;
@@ -3246,7 +3321,7 @@ const PROXIES = [
   u => 'https://api.codetabs.com/v1/proxy?quest=' + encodeURIComponent(u),
   u => 'https://api.allorigins.win/raw?url=' + encodeURIComponent(u)
 ];
-let SRC_IDS = null, onlyTopic = true, catFilter = 'semua', seenNews = new Set(), freshNews = new Set(), firstPull = true;
+let SRC_IDS = null, onlyTopic = true, catFilter = 'semua', seenNews = new Set(), freshNews = new Set(), firstPull = true, mediaLoaded = false;
 const lastGood = new Map();   // id -> { items, via, at }
 const srcState = new Map();   // id -> { ok, via }
 const topicOK = h => h.assessment ? !!h.cat : !!catOfTitle(h.title);
@@ -3300,12 +3375,12 @@ function mergedMedia(){
   lastGood.forEach(v => { sig += v.items.length + ':' + v.at + ';'; });
   if (_mmCache && sig === _mmSig) return _mmCache;
   const all = [], now = Date.now();
-  lastGood.forEach(v => { if (now - v.at <= 2 * 3600e3) all.push(...v.items); });
+  lastGood.forEach(v => { if (now - v.at <= 25 * 60e3) all.push(...v.items); });
   const seen = new Set();
   const nkey = t => String(t || '').toLowerCase().replace(/&[a-z#0-9]+;/g, ' ')
     .replace(/[^a-z0-9]+/g, ' ').trim();   // normalisasi: spasi/entity/ekor sumber tidak bikin dup lolos
   _mmCache = all.filter(h => {
-    if (h.ts && now - h.ts > 36 * 3600e3) return false;
+    if (h.ts && now - h.ts > 24 * 3600e3) return false;
     const k = nkey(h.title); if (seen.has(k)) return false; seen.add(k); return true;
   }).sort((a, b) => b.ts - a.ts);
   _mmSig = sig;
@@ -3316,80 +3391,93 @@ function fallbackImgOK(u){
   const m = u.match(/[?&](?:w|width)=(\d{2,4})/i) || u.match(/\/(\d{2,4})x(\d{2,4})\//);
   return !(m && parseInt(m[1], 10) < 600);
 }
-function leadHtml(h){
+function leadHtml(h, imageUrl = ''){
   const cat = (h.assessment?.version === SitrepSignals.VERSION ? (h.cat || h.feedTopic) : (h.cat || catOfTitle(h.title))) || 'insiden';
   return `<a class="lead" data-cat="${cat}" href="${esc(h.url)}" target="_blank" rel="noopener">
-    ${h.img && fallbackImgOK(h.img) ? `<div class="lead-img"><img src="${esc(h.img)}" alt="" loading="eager" decoding="async" referrerpolicy="no-referrer" onerror="this.parentNode.remove()"></div>` : ''}
+    ${imageUrl ? `<div class="lead-img"><img src="${esc(imageUrl)}" alt="" loading="eager" decoding="async" referrerpolicy="no-referrer" onerror="this.parentNode.remove()"></div>` : ''}
     <div class="lead-t"><span class="lead-cat">${CAT_LABEL[cat]}</span>Terbaru<span class="lead-meta-r"><span class="lead-by">${esc(h.pub || h.src)}</span><time>${esc(h.ts ? wibTime(h.ts) : '')} WIB</time></span></div>
     <h3>${esc(deEmoji(h.title))}</h3>
     ${h.desc && h.desc.length > 25 ? `<p class="lead-ex">${esc(deEmoji(h.desc))}</p>` : ''}
   </a>`;
 }
-let leadThumbURL = '';
-let leadPool = [];
+const leadSkeletonHtml = () => `<div class="lead lead-skeleton" aria-hidden="true">
+  <div class="nw-sk-line lead-sk-image"></div><div class="nw-sk-line lead-sk-meta"></div>
+  <div class="nw-sk-line lead-sk-title"></div><div class="nw-sk-line lead-sk-title short"></div>
+  <div class="nw-sk-line lead-sk-desc"></div><div class="nw-sk-line lead-sk-desc"></div><div class="nw-sk-line lead-sk-desc mid"></div>
+</div>`;
+let leadRenderURL = '', leadRenderId = 0;
 const leadThumbs = new Map();
 function pickLead(list){
-  const cand = list.slice(0, 15);
-  const rich = h => (h.desc || '').length > 160;
-  const hasImg = h => h.img && fallbackImgOK(h.img);
-  return cand.find(h => rich(h) && hasImg(h))
-      || cand.find(rich)                                  // desc panjang — gambar di-resolve hydrateLead
-      || cand.find(hasImg)
-      || list[0];
+  // mergedMedia() sudah diurutkan terbaru dahulu; pilihan lead tidak bergantung pada thumbnail.
+  return list[0] || null;
 }
-function insertLeadThumb(h, info){
-  const a = $('#lead .lead');
-  if (!a || a.getAttribute('href') !== h.url) return;
-  const src = typeof info === 'string' ? info : info && info.img;
-  if (!src) return;
-  let box = a.querySelector('.lead-img');
-  if (!box) {
-    a.insertAdjacentHTML('afterbegin', '<div class="lead-img"><img alt="" loading="eager" decoding="async" referrerpolicy="no-referrer"></div>');
-    box = a.querySelector('.lead-img');
-  }
-  const el = box.querySelector('img');
-  if (!el) return;
-  el.onerror = () => { box.remove(); };
-  if (el.getAttribute('src') !== src) el.src = src;
+function preloadLeadImage(src){
+  return new Promise(resolve => {
+    const img = new Image();
+    const done = ok => { clearTimeout(t); resolve(ok ? src : ''); };
+    const t = setTimeout(() => done(false), 12000);   // host gambar hang → jangan biarkan skeleton macet
+    img.onload = () => done(img.naturalWidth > 0);
+    img.onerror = () => done(false);
+    img.src = src;
+    if (img.complete) done(img.naturalWidth > 0);
+  });
 }
-async function hydrateLead(h){
-  leadThumbURL = h && h.url || '';
-  if (!h || API == null) return;
-  const infoOf = async c => {
-    let info = leadThumbs.get(c.url);
-    if (info === undefined) {
+// /api/thumb lebih ringan. Kalau kosong/gagal, pakai RSS lalu fallback ke hero dari reader.
+// Hanya URL gambar kandidat yang di-cache; hasil kosong tidak dianggap sebagai verdict definitif.
+const thumbPending = new Map();   // url -> Promise<string[]>
+function fetchThumbInfo(url, h){
+  const hit = leadThumbs.get(url);
+  if (Array.isArray(hit)) return Promise.resolve(hit);
+  let p = thumbPending.get(url);
+  if (!p) {
+    p = (async () => {
+      let d = null;
       try {
-        const d = await getJson(API + '/api/thumb?u=' + encodeURIComponent(c.url), 30000);
-        info = d && d.ok && d.img ? d : null;
-      } catch (e) { info = null; }
-      if (!info && c.img && fallbackImgOK(c.img)) info = { img: c.img };
-      leadThumbs.set(c.url, info);
-      if (leadThumbs.size > 120) leadThumbs.delete(leadThumbs.keys().next().value);
-    }
-    return info;
-  };
-  // gambar milik lead sendiri dicek DULU — headline tidak boleh tertukar kalau thumb-nya ada
-  const hi = await infoOf(h);
-  if (leadThumbURL !== h.url) return;                        // lead sudah diganti render lain
-  if (hi && hi.img) { insertLeadThumb(h, hi); return; }
-  // lead memang tanpa gambar → promosikan kandidat lain yang punya gambar (maksimal sekali per lead)
-  const pool = [h, ...leadPool.filter(x => x.url !== h.url)];
-  pool.sort((a, b) => (b.ts || 0) - (a.ts || 0) ||
-                      (((b.desc || '').length > 160) - ((a.desc || '').length > 160)) ||
-                      ((b.desc || '').length - (a.desc || '').length));
-  for (const c of pool.slice(0, 10)) {
-    if (leadThumbURL !== h.url) return;                      // render lain sudah mengambil alih
-    if (c.url === h.url) continue;                           // h sudah dicek di atas
-    const info = await infoOf(c);
-    if (leadThumbURL !== h.url) return;                      // guard PASCA-await: cegah hydrate basi menimpa lead baru
-    if (!info || !info.img) continue;
-    leadPool = [c, ...leadPool.filter(x => x.url !== c.url)];
-    $('#lead').innerHTML = leadHtml(c);
-    leadThumbURL = c.url;
-    insertLeadThumb(c, info);
-    curLead = c; renderNlist();   // render ulang grid — parity tetap benar, tidak ada item hilang di tengah
-    return;
+        d = API != null ? await getJson(API + '/api/thumb?u=' + encodeURIComponent(url), 20000, 0) : null;
+      } catch (e) {}
+      const imgs = [];
+      if (d && d.ok && d.img) imgs.push(d.img);
+      if (h && h.img && fallbackImgOK(h.img) && !imgs.includes(h.img)) imgs.push(h.img);
+      if (imgs.length) {
+        leadThumbs.set(url, imgs);
+        if (leadThumbs.size > 120) leadThumbs.delete(leadThumbs.keys().next().value);
+      }
+      return imgs;
+    })().finally(() => thumbPending.delete(url));
+    thumbPending.set(url, p);
   }
+  return p;
+}
+async function renderLead(h){
+  const id = ++leadRenderId;
+  leadRenderURL = h && h.url || '';
+  $('#lead').setAttribute('aria-busy', 'true');
+  $('#lead').innerHTML = leadSkeletonHtml();
+  if (!h) { $('#lead').setAttribute('aria-busy', 'false'); return; }
+  const candidates = await fetchThumbInfo(h.url, h);
+  let imageUrl = '';
+  for (const src of candidates) {
+    imageUrl = await preloadLeadImage(src);
+    if (imageUrl) break;
+  }
+  // Reader bisa punya og:image/body image yang resolver thumbnail ketatnya tolak.
+  if (!imageUrl && API != null) {
+    try {
+      const article = await getJson(API + '/api/read?u=' + encodeURIComponent(h.url), 20000, 0);
+      if (article && article.ok && article.img && !candidates.includes(article.img)) {
+        imageUrl = await preloadLeadImage(article.img);
+      }
+    } catch (e) {}
+  }
+  if (id !== leadRenderId || leadRenderURL !== h.url) return;
+  if (imageUrl) {
+    const saved = Array.isArray(leadThumbs.get(h.url)) ? leadThumbs.get(h.url) : [];
+    if (!saved.includes(imageUrl)) saved.push(imageUrl);
+    leadThumbs.set(h.url, saved);
+  } else leadThumbs.delete(h.url);  // kegagalan sementara bisa dicoba lagi saat lead dipilih ulang
+  // Tampilkan lead setelah salah satu gambar berhasil dimuat. Tanpa gambar valid, tampilkan teks.
+  $('#lead').innerHTML = leadHtml(h, imageUrl);
+  $('#lead').setAttribute('aria-busy', 'false');
 }
 function newsHtml(h, full){
   const isNew = freshNews.has(h.title);
@@ -3472,26 +3560,39 @@ function renderNews(){
   const q = ($('#fq').value || '').toLowerCase();
   const list = items.filter(h => (!onlyTopic || topicOK(h)) && (catFilter === 'semua' || h.cat === catFilter) &&
     (!q || (h.title + ' ' + h.src + ' ' + (h.pub || '')).toLowerCase().includes(q)));
-  $('#nmeta').textContent = list.length + ' / ' + items.length + ' item';
+  const scope = catFilter + '|' + onlyTopic + '|' + q;
   newsList = list;
+  if (!list.length && !mediaLoaded) return; // filter saat fetch pertama tidak menghapus skeleton
+  $('#nmeta').textContent = list.length + ' / ' + items.length + ' item';
+  $('#lead').setAttribute('aria-busy', 'false');
+  $('#nlist').setAttribute('aria-busy', 'false');
   if (!list.length) {
     curLead = null;
+    curLeadScope = scope;
+    leadRenderId++;
+    leadRenderURL = '';
     $('#lead').innerHTML = '';
-    $('#nlist').innerHTML = '<div class="empty">Tidak ada berita yang lolos saring.</div>';
+    $('#nlist').innerHTML = items.length
+      ? '<div class="empty">Tidak ada berita yang lolos saring.</div>'
+      : lastGood.size
+        ? '<div class="empty">Belum ada berita yang dapat ditampilkan dari sumber saat ini.</div>'
+        : '<div class="empty">Feed berita belum berhasil dimuat. Coba refresh.</div>';
   } else {
-    // lead stabil: selama artikel yang sama masih ada di list, jangan ganti headline tiap refresh
-    const keep = curLead && list.find(x => x.url === curLead.url);
+    // Pertahankan lead hanya selama scope filter sama. Scope baru memilih lead terbaru dari hasilnya.
+    const previousLead = curLead;
+    const keep = curLeadScope === scope && previousLead && list.find(x => x.url === previousLead.url);
     curLead = keep || pickLead(list);
-    leadPool = list;
-    const sameLead = keep && $('#lead .lead') && $('#lead .lead').getAttribute('href') === curLead.url;
-    if (!sameLead) $('#lead').innerHTML = leadHtml(curLead);   // lead sama → DOM tidak dibangun ulang (gambar hasil hydrate tidak hilang)
-    hydrateLead(curLead);
+    curLeadScope = scope;
+    const leadNode = $('#lead .lead');
+    const sameLead = previousLead && previousLead.url === curLead.url &&
+      (leadRenderURL === curLead.url || (leadNode && leadNode.getAttribute('href') === curLead.url));
+    if (!sameLead) renderLead(curLead); // lead dan skeleton dipertahankan sampai thumbnail selesai dimuat
     renderNlist();
   }
   $('#f-news').textContent = items.length;
   updateFoot();
 }
-let newsList = [], curLead = null;
+let newsList = [], curLead = null, curLeadScope = '';
 function renderNlist(){
   const list = newsList, leadPick = curLead;
   if (!list || !list.length || !leadPick) return;
@@ -3975,11 +4076,25 @@ async function pullCctv(){
    ============================================================ */
 const KIND_COLOR = { demo:'#f1c21b', fire:'#da1e28', flood:'#4589ff', disaster:'#be95ff', insiden:'#8d8d8d', node:'#525252' };
 const KIND_LABEL = { demo:'Demo', fire:'Kebakaran', flood:'Banjir', disaster:'Bencana', insiden:'Insiden', node:'Node tetap' };
-const TT_CAT_LABEL = { 0:'Unknown', 1:'Accident', 2:'Fog', 3:'DangerousConditions', 4:'Rain', 5:'Ice', 6:'Jam', 7:'LaneClosed', 8:'RoadClosed', 9:'RoadWorks', 10:'Wind', 11:'Flooding', 14:'BrokenDownVehicle' };
-let map = null, heat = null, pinLayer = null, camLayer = null, mapReady = false, mapOpen = false, mapBusy = false, mapData = [];
+const TT_CAT_LABEL = { 0:'Insiden', 1:'Kecelakaan', 2:'Kabut', 3:'Kondisi Berbahaya', 4:'Hujan', 5:'Es', 6:'Kemacetan', 7:'Jalur Ditutup', 8:'Jalan Ditutup', 9:'Perbaikan Jalan', 10:'Angin Kencang', 11:'Banjir', 14:'Kendaraan Mogok' };
+// palet insiden peta (KIND_COLOR), bukan hijau khas TomTom: merah=parah, kuning=waspada, abu=info
+const ttCatCol = c => [1, 7, 8].includes(c) ? '#da1e28' : [6, 10, 11, 14].includes(c) ? '#f1c21b' : '#8d8d8d';
+// warna ikut magnitudeOfDelay TomTom (0-6): >=5 parah, >=3 waspada, sisanya info
+const ttSevCol = inc => [7, 8].includes(inc.iconCategory) ? '#da1e28'   // jalan/jalur ditutup = selalu merah
+  : inc.magnitude == null ? ttCatCol(inc.iconCategory)
+  : inc.magnitude >= 5 ? '#da1e28' : inc.magnitude >= 3 ? '#f1c21b' : '#8d8d8d';
+const TT_ICON = { 1:'i-tt-crash', 2:'i-tt-fog', 3:'i-tt-alert', 4:'i-tt-rain', 5:'i-tt-ice',
+  6:'i-tt-jam', 7:'i-tt-closed', 8:'i-tt-closed', 9:'i-tt-cone', 10:'i-tt-wind', 11:'i-tt-flood', 14:'i-tt-broken' };
+const ttGlyph = (c, px) => `<svg class="ic"${px ? ` style="width:${px}px;height:${px}px"` : ''}><use href="#${TT_ICON[c] || 'i-tt-alert'}"/></svg>`;
+const ttIcon = (inc, sz = 20) => L.divIcon({ className: 'mk-tt-ic', iconSize: [sz, sz], iconAnchor: [sz / 2, sz / 2],
+  html: `<div class="mk-tt" style="--tc:${ttSevCol(inc)}">${ttGlyph(inc.iconCategory)}</div>` });   // svg 60% — ikut ukuran badge
+// badge ikut zoom — floor besar supaya tetap kebaca di zoom-out (pola sama dgn wxSize)
+const ttPtSize = () => { const s = Math.pow(1.3, (map ? map.getZoom() : 10) - 10); return Math.max(22, Math.min(48, Math.round(26 * s))); };
+const ttLnSize = () => { const s = Math.pow(1.3, (map ? map.getZoom() : 10) - 10); return Math.max(17, Math.min(36, Math.round(20 * s))); };
+let map = null, heat = null, pinLayer = null, camLayer = null, mapReady = false, mapOpen = false, mapBusy = false, mapData = [], esriRefLayer = null;
 let ttFlowLayer = null, ttIncTileLayer = null, ttIncDataLayer = null, routeLayer = null, measureLayer = null;
 let flightLayer = null, shipLayer = null, transitLayer = null;
-let gempaLayer = null, gunungLayer = null, wxLayer = null, radarLayer = null, radarBmkgLayer = null, peringatanLayer = null;
+let gempaLayer = null, gunungLayer = null, wxLayer = null, radarLayer = null, radarBmkgLayer = null, peringatanLayer = null, warnRenderer = null;
 let satIrLayer = null, satNcLayer = null, satWvLayer = null, satRainLayer = null, airLayer = null;
 let radarFrames = [], radarIndex = 0, radarPlaying = false, radarTimer = null, radarGenerated = 0, radarHost = 'https://tilecache.rainviewer.com';
 let radarLayerCache = {}, radarPendingLayer = null, radarSwapTimer = null, radarWasPlaying = false;
@@ -4010,12 +4125,22 @@ function camPopup(c){
     ${c.e ? `<a class="mp-src" href="${esc(c.e)}" target="_blank" rel="noopener">Buka player${ic('out')}</a>` : ''}`;
 }
 function ttIncPopup(inc){
-  const cat = TT_CAT_LABEL[inc.iconCategory] || 'Insiden';
-  const delay = inc.delay ? ' · jeda ' + fmtDur(inc.delay) : '';
-  const len = inc.length ? ' · ' + (inc.length / 1000).toFixed(1) + ' km' : '';
-  return `<div class="mp-k" style="color:#00e676">TomTom · ${esc(cat)}</div>
-    <div class="mp-t">${esc(inc.desc)}</div>
-    <div class="mp-m">${esc(inc.from)}${inc.to ? ' → ' + esc(inc.to) : ''}${len}${delay}<br>${esc(inc.timeValidity || '')}${inc.probability ? ' · ' + esc(inc.probability) : ''}${inc.lastReport ? ' · lapor ' + esc(inc.lastReport) : ''}</div>`;
+  const col = ttSevCol(inc);
+  const m = (k, v) => v ? `<div><span>${k}:</span><b>${esc(v)}</b></div>` : '';
+  const ruas = [inc.from, inc.to].filter(Boolean).join(' → ');
+  const lap = [inc.reports ? num(inc.reports) + ' laporan' : '', inc.lastReport ? 'terakhir ' + wibTime(inc.lastReport) + ' WIB' : ''].filter(Boolean).join(' · ');
+  const berlaku = [inc.startTime, inc.endTime].filter(Boolean).map(wibFull).join(' → ');
+  return `<div class="mp-k" style="color:${col};display:flex;align-items:center;gap:5px">${ttGlyph(inc.iconCategory, 10)}${esc(TT_CAT_LABEL[inc.iconCategory] || 'Insiden')}</div>
+    <div class="mp-t">${esc(deEmoji(inc.desc))}</div>
+    <div class="mp-meta">
+      ${m('Severity', inc.magnitude != null ? inc.magnitude + ' / 6' : '')}
+      ${m('Delay', inc.delay != null ? '~' + fmtDur(inc.delay) : '')}
+      ${m('Panjang', inc.length ? (inc.length / 1000).toFixed(1) + ' km' : '')}
+      ${m('Dilaporkan', lap)}
+      ${m('Probabilitas', inc.probability)}
+    </div>
+    ${ruas ? `<div class="mp-ruas"><span>Ruas</span><b>${esc(ruas)}</b></div>` : ''}
+    ${berlaku ? `<div class="mp-foot">Berlaku <b>${esc(berlaku)} WIB</b></div>` : ''}`;
 }
 function syncLayers(){
   if (!map) return;
@@ -4025,10 +4150,12 @@ function syncLayers(){
     if (layerOn[k] && !map.hasLayer(l)) map.addLayer(l);
     if (!layerOn[k] && map.hasLayer(l)) map.removeLayer(l);
   }
-  if (ttFlowLayer && layerOn.ttflow && ttFlowLayer.bringToFront) ttFlowLayer.bringToFront();
-  if (ttIncTileLayer && layerOn.ttinc && ttIncTileLayer.bringToFront) ttIncTileLayer.bringToFront();
-  if (ttIncDataLayer && layerOn.ttdata && ttIncDataLayer.bringToFront) ttIncDataLayer.bringToFront();
-  // satellite di bawah marker/heat (tile pane), jangan bringToFront
+  // tile raster TomTom sudah membawa label jalanan sendiri — label Esri Reference
+  // di atasnya bikin teks dobel overlap. Sembunyikan Reference selama Flow aktif.
+  if (esriRefLayer) {
+    if (layerOn.ttflow && map.hasLayer(esriRefLayer)) map.removeLayer(esriRefLayer);
+    if (!layerOn.ttflow && !map.hasLayer(esriRefLayer)) map.addLayer(esriRefLayer);
+  }
 }
 
 // Satelit: eksklusif (salah satu saja), opacity rendah agar marker tetap terbaca
@@ -4244,6 +4371,7 @@ function paintMap(){
   }));
   pinLayer.clearLayers();
   for (const it of mapData) {
+    if (it.fixed) continue;   // node kab/kota = konteks globe saja — di peta cuma clutter & nutupin insiden
     const c = it.sub === 'gempa' ? '#ff5a4e' : (KIND_COLOR[it.kind] || '#8d8d8d');
     const [dx, dy] = joff(it);
     const m = L.circleMarker([it.la + dy, it.lo + dx], {
@@ -4291,7 +4419,7 @@ async function showTomTomFlow(lat, lon, parentMarker){
     if (parentMarker) parentMarker.setPopupContent(html);
     if (d.coordinates.length) {
       const ll = d.coordinates.map(p => [p.latitude, p.longitude]).filter(p => isFinite(p[0]) && isFinite(p[1]));
-      if (ll.length > 1) L.polyline(ll, { color: '#00e676', weight: 5, opacity: 0.85, dashArray: '6 6' }).addTo(ttIncDataLayer || map).bindPopup('Segment TomTom · ' + (d.currentSpeed ?? '—') + ' km/j');
+      if (ll.length > 1) L.polyline(ll, { color: '#f1c21b', weight: 5, opacity: 0.85, dashArray: '6 6' }).addTo(ttIncDataLayer || map).bindPopup('Segment TomTom · ' + (d.currentSpeed ?? '—') + ' km/j');
     }
   } catch (e) {
     if (parentMarker) parentMarker.setPopupContent(`<div class="mp-k" style="color:#f1c21b">TomTom flow</div><div class="mp-t">Tidak ada data flow di titik ini.</div><div class="mp-m">${esc(e.message || 'gagal')}</div>`);
@@ -4330,13 +4458,22 @@ async function pullTomTomIncidents(){
       if (inc.geometry?.type === 'LineString' && inc.geometry.coordinates?.length > 1) {
         const ll = inc.geometry.coordinates.map(p => [p[1], p[0]]).filter(p => isFinite(p[0]) && isFinite(p[1]));
         if (ll.length) {
-          const col = [8, 7, 6].includes(inc.iconCategory) ? '#da1e28' : [1, 14].includes(inc.iconCategory) ? '#f1c21b' : '#00e676';
-          L.polyline(ll, { color: col, weight: 5, opacity: 0.9 }).addTo(ttIncDataLayer).bindPopup(ttIncPopup(inc), { maxWidth: 300, keepInView: true });
+          const col = ttSevCol(inc);
+          const pop = ttIncPopup(inc);
+          // hit-area invisible di bawah garis tipis — polyline 5px susah diklik
+          L.polyline(ll, { color: 'transparent', weight: 18, opacity: 0, interactive: true })
+            .addTo(ttIncDataLayer).bindPopup(pop, { className: 'tt-pop', maxWidth: 340, keepInView: true });
+          L.polyline(ll, { color: col, weight: 5, opacity: 0.9, interactive: false })
+            .addTo(ttIncDataLayer).bindPopup(pop, { className: 'tt-pop', maxWidth: 340, keepInView: true });
+          // badge glyph kategori di midpoint — non-interaktif supaya tidak menutupi klik garis
+          const badge = L.marker(ll[Math.floor(ll.length / 2)], { icon: ttIcon(inc, ttLnSize()), interactive: false, keyboard: false });
+          badge._tt = { inc, line: true };
+          badge.addTo(ttIncDataLayer);
         }
       } else if (inc.lat != null && inc.lon != null) {
-        const col = inc.iconCategory === 1 ? '#da1e28' : inc.iconCategory === 6 ? '#f1c21b' : '#00e676';
-        const m = L.circleMarker([inc.lat, inc.lon], { radius: 6, color: '#101010', weight: 1.5, fillColor: col, fillOpacity: .95 });
-        m.bindPopup(ttIncPopup(inc), { maxWidth: 300, keepInView: true });
+        const m = L.marker([inc.lat, inc.lon], { icon: ttIcon(inc, ttPtSize()), keyboard: false });
+        m._tt = { inc };
+        m.bindPopup(ttIncPopup(inc), { className: 'tt-pop', maxWidth: 340, keepInView: true });
         ttIncDataLayer.addLayer(m);
       }
     }
@@ -4417,10 +4554,10 @@ function ensureMap(){
   L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}', {
     maxNativeZoom: 16, maxZoom: 18
   }).addTo(map);
-  L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}', {
+  esriRefLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}', {
     maxNativeZoom: 16, maxZoom: 18, opacity: .9
   }).addTo(map);
-  ttFlowLayer = L.tileLayer(ttTileUrl('flow'), { opacity: .85, maxNativeZoom: 19, maxZoom: 19 });
+  ttFlowLayer = L.tileLayer(ttTileUrl('flow'), { opacity: .5, className: 'tt-flow-pane', maxNativeZoom: 19, maxZoom: 19 });
   ttIncTileLayer = L.tileLayer(ttTileUrl('incidents'), { opacity: .9, maxNativeZoom: 19, maxZoom: 19 });
   L.control.zoom({ position:'bottomright' }).addTo(map);
   if (typeof L.heatLayer === 'function') {
@@ -4436,6 +4573,8 @@ function ensureMap(){
   map.on('zoomend', () => {
     for (const [k, m] of flMarkers) if (m._hdg != null) m.setIcon(dirIc('plane', m._hdg, '#7cc7ff'));
     for (const [k, m] of shMarkers) if (m._hdg != null) m.setIcon(dirIc('ship', m._hdg, '#4dd0e1'));
+    if (wxLayer) wxLayer.eachLayer(m => { if (m._wx) m.setIcon(wxIcon(m._wx.code, m._wx.col)); });
+    if (ttIncDataLayer) ttIncDataLayer.eachLayer(m => { if (m._tt) m.setIcon(ttIcon(m._tt.inc, m._tt.line ? ttLnSize() : ttPtSize())); });
     if (layerOn.transit && transitLayer) pullTransit();
   });
   map.on('click', e => {
@@ -4558,6 +4697,9 @@ $$('.mly').forEach(b => b.addEventListener('click', () => {
     flowMode = !flowMode;
     layerOn.lalin = flowMode;
     b.setAttribute('aria-pressed', flowMode ? 'true' : 'false');
+    const fh = $('#flow-hint');
+    if (fh) fh.hidden = !flowMode;
+    if (map) map.getContainer().style.cursor = flowMode ? 'crosshair' : '';
     if (flowMode && !ttOk) checkTomTom();
     if (!flowMode && flowProbe && map) { map.removeLayer(flowProbe); flowProbe = null; }
     return;
@@ -4565,6 +4707,12 @@ $$('.mly').forEach(b => b.addEventListener('click', () => {
   layerOn[k] = !layerOn[k];
   b.setAttribute('aria-pressed', layerOn[k] ? 'true' : 'false');
   if ((k === 'ttflow' || k === 'ttinc') && layerOn[k]) checkTomTom();
+  if (k === 'ttinc') {   // "Insiden" = tile + data vektor sekaligus; tombol Data ikut statusnya
+    layerOn.ttdata = layerOn.ttinc;
+    const db = document.querySelector('[data-layer="ttdata"]');
+    if (db) db.setAttribute('aria-pressed', layerOn.ttdata ? 'true' : 'false');
+    if (layerOn.ttdata) pullTomTomIncidents();
+  }
   if (k === 'ttdata' && layerOn[k]) pullTomTomIncidents();
   if (k === 'flight' && layerOn[k]) pullFlights();
   if (k === 'ship' && layerOn[k]) pullShips();
@@ -4745,6 +4893,17 @@ const LVL_COLOR = { 'LEVEL IV': '#ff3b30', 'LEVEL III': '#ff9f0a', 'LEVEL II': '
 const LVL_RANK = { 'LEVEL IV': 4, 'LEVEL III': 3, 'LEVEL II': 2, 'LEVEL I': 1 };
 const WMO = c => c == null ? '—' : c <= 1 ? 'Cerah' : c <= 3 ? 'Berawan' : c <= 48 ? 'Kabut' : c <= 57 ? 'Hujan gerimis' : c <= 67 ? 'Hujan' : c <= 77 ? 'Salju' : c <= 82 ? 'Hujan lokal' : c <= 86 ? 'Hujan lebat' : 'Badai';
 const WD = d => ['U','TL','T','TR','U','BL','B','BR','U'][Math.round(((d || 0) + 22.5) / 45) % 8];
+// ikon Meteocons monochrome (WX_ICON di wxicons.js) per kelompok kondisi WMO
+function wxGlyph(c){
+  const k = c == null ? 'cloudy' : c <= 1 ? 'clear-day' : c <= 3 ? 'partly-cloudy-day' : c <= 48 ? 'fog'
+    : c <= 57 ? 'drizzle' : c <= 67 ? 'rain' : c <= 77 ? 'snow' : c <= 82 ? 'overcast-rain'
+    : c <= 86 ? 'thunder-rain' : 'thunderstorms';
+  return WX_ICON[k] || WX_ICON.cloudy;
+}
+const wxSize = () => { const s = Math.pow(1.3, (map ? map.getZoom() : 10) - 10); return Math.max(36, Math.min(90, Math.round(40 * s))); };
+const wxIcon = (code, col) => { const sz = wxSize(); return L.divIcon({ className: 'mk-cuaca-ic',
+  iconSize: [sz, sz], iconAnchor: [sz / 2, sz / 2],
+  html: `<div class="mk-cuaca" style="--wc:${col}">${wxGlyph(code)}</div>` }); };
 const wibDayStart = () => { const j = new Date(Date.now() + 7 * 3600e3); j.setUTCHours(0, 0, 0, 0); return j.getTime() - 7 * 3600e3; };
 async function pullDisaster(){
   if (API == null) return;
@@ -4837,9 +4996,11 @@ async function pullWeather(){
     wxLayer.clearLayers();
     for (const w of (d.items || [])) {
       const wind = w.wind != null ? Math.round(w.wind) + ' km/j ' + WD(w.wdir) : '—';
-      const sevCol = (w.wind >= 40 || (w.precip||0) >= 10) ? '#ff5722' : (w.wind >= 25 ? '#ff9800' : '#38bdf8');
-      const m = L.circleMarker([w.lat, w.lon], { radius: 6, color: '#9adcff', weight: 1.2,
-        fillColor: sevCol, fillOpacity: .8 });
+      const sevCol = (w.wind >= 40 || (w.precip||0) >= 10) ? '#ff5722'
+        : (w.code != null && w.code <= 1) ? '#ffb020'
+        : (w.wind >= 25 ? '#ff9800' : '#38bdf8');
+      const m = L.marker([w.lat, w.lon], { keyboard: false, icon: wxIcon(w.code, sevCol) });
+      m._wx = { code: w.code, col: sevCol };
       m.bindPopup(`<div class="mp-k" style="color:#9adcff">CUACA · Open-Meteo</div>
         <div class="mp-t">${WMO(w.code)} · ${w.temp != null ? Math.round(w.temp) + '°C' : '—'}</div>
         <div class="mp-m">angin ${wind} · gust ${w.gust != null ? Math.round(w.gust)+' km/j' : '—'}<br>
@@ -5104,15 +5265,57 @@ async function pullAlerts(){
     if (!peringatanLayer) peringatanLayer = L.layerGroup().addTo(map);
     peringatanLayer.clearLayers();
     const sevColor = { Extreme:'#ff1744', Severe:'#ff5722', Moderate:'#ff9800', Minor:'#ffeb3b', Unknown:'#9e9e9e' };
+    const meta = (k, v) => v ? `<div><span>${k}</span><b>${esc(v)}</b></div>` : '';
+    const capDate = v => { const t = Date.parse(v || ''); if (isNaN(t)) return v || '';
+      const j = new Date(t + 7 * 3600e3), mo = ['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agu','Sep','Okt','Nov','Des'][j.getUTCMonth()];
+      const p = n => String(n).padStart(2, '0');
+      return p(j.getUTCDate()) + ' ' + mo + ' · ' + p(j.getUTCHours()) + ':' + p(j.getUTCMinutes()) + ' WIB'; };
+    const alertHtml = a => {
+      const col = sevColor[a.severity] || '#ff9800';
+      return `<div class="mp-k" style="color:${col}">PERINGATAN DINI · BMKG</div>
+        <div class="mp-t">${esc(a.headline || a.event || '')}</div>
+        <div class="mp-meta">
+          ${meta('Severity:', a.severity)}${meta('Urgency:', a.urgency)}${meta('Certainty:', a.certainty)}
+          ${meta('Effective:', capDate(a.effective))}${meta('Expires:', capDate(a.expires))}${meta('Area:', a.areaDesc || a.area)}
+        </div>
+        ${a.description ? `<div class="mp-m" style="text-transform:none;letter-spacing:.01em">${esc(a.description).slice(0,400)}</div>` : ''}
+        ${a.web ? `<div class="mp-m"><a href="${esc(a.web)}" target="_blank" rel="noopener">info BMKG</a></div>` : ''}`;
+    };
+    if (!warnRenderer) {
+      // pane khusus z-300: di atas basemap, di bawah overlayPane (canvas vector).
+      // Kalau di overlayPane, path SVG warning menangkap klik seluruh area polygon
+      // dan memblokir pin insiden di bawahnya.
+      if (!map.getPane('warnPane')) { const p = map.createPane('warnPane'); p.style.zIndex = 300; }
+      warnRenderer = L.svg({ className:'warn-svg', padding:.5, pane:'warnPane' }).addTo(map);
+    }
+    const svg = warnRenderer._container;
+    if (svg && !svg.querySelector('#warnDefs')) {
+      const NS = 'http://www.w3.org/2000/svg', defs = document.createElementNS(NS, 'defs');
+      defs.id = 'warnDefs';
+      for (const [sev, c] of Object.entries(sevColor)) {
+        const p = document.createElementNS(NS, 'pattern');
+        p.id = 'wh-' + sev; p.setAttribute('patternUnits', 'userSpaceOnUse');
+        p.setAttribute('width', '9'); p.setAttribute('height', '9'); p.setAttribute('patternTransform', 'rotate(45)');
+        const r = document.createElementNS(NS, 'rect');
+        r.setAttribute('width', '9'); r.setAttribute('height', '9'); r.setAttribute('fill', c); r.setAttribute('fill-opacity', '.1');
+        const l = document.createElementNS(NS, 'line');
+        l.setAttribute('x1', '0'); l.setAttribute('y1', '0'); l.setAttribute('x2', '0'); l.setAttribute('y2', '9');
+        l.setAttribute('stroke', c); l.setAttribute('stroke-width', '1.4'); l.setAttribute('stroke-opacity', '.55');
+        p.append(r, l); defs.appendChild(p);
+      }
+      svg.appendChild(defs);
+    }
     for (const a of (d.items || [])) {
       if (!a.polygon || a.polygon.length < 3) continue;
       // polygon coords are [lat,lon] or [lon,lat]? CAP polygon is "lat,lon". Use as [lat,lon].
       const latlngs = a.polygon.map(p => L.latLng(p[0], p[1]));
       const col = sevColor[a.severity] || '#ff9800';
-      const poly = L.polygon(latlngs, { color: col, weight: 2, fillColor: col, fillOpacity: .25 });
-      poly.bindPopup(`<div class="mp-k" style="color:${col}">PERINGATAN DINI · BMKG</div>
-        <div class="mp-t">${esc(a.headline || a.event || '')}</div>
-        <div class="mp-m">${esc(a.description || '').slice(0,400)}<br><b>${esc(a.severity||'')} · ${esc(a.urgency||'')} · ${esc(a.certainty||'')}</b><br>berlaku: ${esc(a.effective||'')} s/d ${esc(a.expires||'')}${a.web?'<br><a href="'+esc(a.web)+'" target="_blank">info</a>':''}</div>`);
+      const sev = a.severity || 'Unknown';
+      const poly = L.polygon(latlngs, {
+        renderer: warnRenderer, color: col, weight: 2, fillOpacity: 1,
+        fillColor: 'url(#wh-' + sev + ')'
+      });
+      poly.bindPopup(alertHtml(a), { className:'warn-pop' });
       peringatanLayer.addLayer(poly);
     }
     if (layerOn.peringatan) {
@@ -5507,6 +5710,7 @@ function updateFoot(){
     ((SRC_IDS || []).length || '—');
 }
 async function pullMedia(){
+  if (mediaLoaded) $('#nmeta').textContent = (newsList.length || 0) + ' item · memperbarui…';
   if (API != null) {
     try {
       const d = await getJson(API + '/api/news', 55000);
@@ -5515,6 +5719,7 @@ async function pullMedia(){
         if (x.ok) { lastGood.set(x.id, { items:x.items, via:'langsung', at:Date.now() }); srcState.set(x.id, { ok:true, via:'langsung', stale:!!x.stale }); }
         else srcState.set(x.id, { ok:false });
       });
+      mediaLoaded = true;
       markFresh();
       renderNews();
       return;
@@ -5539,6 +5744,7 @@ async function pullMedia(){
       srcState.set(s.id, { ok:true, via:x.r.via });
     } else srcState.set(s.id, { ok:false });
   });
+  mediaLoaded = true;
   markFresh();
   renderNews();
 }
