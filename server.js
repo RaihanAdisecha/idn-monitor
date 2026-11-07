@@ -652,6 +652,11 @@ const threadOf = (raw) => {
 /* Geocoder: lihat geocode.js (gazetteer 514 kab/kota Kepmendagri 2025, match per-token, presisi jujur) */
 const GEO = require('./geocode');
 const placeOf = t => GEO.locate(t);
+// Judul yang menyebut tempat + kata insiden tapi BUKAN kejadian baru di tempat itu: bantuan, reses, apresiasi, program kesehatan umum.
+// Dipakai hanya untuk titik peta/statistik wilayah; berita tetap tampil di news wire.
+const NOT_EVENT_RE = /\b(reses|apresiasi|penghargaan|salurkan|menyalurkan|penyaluran|bantuan (?:rp|tahap|untuk|bagi|kemanusiaan)|kirim bantuan|donasi|santunan|gagasan|webinar|seminar|rakor|rapat koordinasi|kunjungan kerja|kunker|dipulangkan|pemulangan|ucapan duka|doa bersama|pekarangan|ketahanan pangan|kesejahteraan|proklim|sinkronkan|disinkronkan)\b/i;
+const HEALTH_EVENT_RE = /(wabah|dbd|demam berdarah|covid|korona|flu burung|h1n1|malaria|\btb\b|tuberkulosis|diare|keracunan|\bklb\b|gagal ginjal)/i;
+const plotOk = (title, cat) => !NOT_EVENT_RE.test(title) && (cat !== 'kesehatan' || HEALTH_EVENT_RE.test(title));
 const GEO_WINDOW = 72 * 3600e3;
 const incidents = () => memo('incidents', 55000, async () => {
   const srcs = await news(), now = Date.now(), out = [], seen = new Set();
@@ -664,14 +669,18 @@ const incidents = () => memo('incidents', 55000, async () => {
       if (age > GEO_WINDOW) continue;                       // jendela sama dengan /api/situation → angka sinkron
       const k = breakNorm(it.title).slice(0, 56);
       if (!k || seen.has(k)) continue;
+      if (!plotOk(it.title, cat)) continue;
       const place = placeOf(it.title);
       if (!place) continue;
       seen.add(k);
       const recency = Math.max(0.16, Math.exp(-age / (20 * 3600e3)));
       const heat = catMeta(cat).sev * recency;
-      out.push({ name: place.name, la: place.la, lo: place.lo, prec: place.prec, prov: place.prov, kind: cat,
-        label: catMeta(cat).label, title: it.title,
-        src: s.id, url: it.url, ts: it.ts || now, weight: +heat.toFixed(3) });
+      // judul dengan beberapa tempat sederajat ("banjir di Aceh dan Sumut") → satu titik per tempat, bobot dibagi
+      const places = place.all && place.all.length > 1 ? place.all : [place];
+      for (const pl of places)
+        out.push({ name: pl.name, la: pl.la, lo: pl.lo, prec: pl.prec, prov: pl.prov, kind: cat,
+          label: catMeta(cat).label, title: it.title, multi: places.length > 1 || undefined,
+          src: s.id, url: it.url, ts: it.ts || now, weight: +(heat / Math.sqrt(places.length)).toFixed(3) });
     }
   }
   out.sort((a, b) => b.ts - a.ts);
@@ -705,7 +714,7 @@ const situation = () => memo('situation', 45000, async () => {
         cat, label: meta.label, place: place ? place.name : '',
         weight: +(meta.sev * recency).toFixed(3) });
       stats[cat]++;
-      if (place && meta.geo !== false) regions.set(place.name, (regions.get(place.name) || 0) + 1);
+      if (place && meta.geo !== false && plotOk(it.title, cat)) regions.set(place.name, (regions.get(place.name) || 0) + 1);
     }
   }
   items.sort((a, b) => b.weight - a.weight || (b.ts || 0) - (a.ts || 0));

@@ -7,6 +7,11 @@
    - Presisi dilaporkan jujur: poi > kab (pusat pemerintahan) > prov (centroid, perkiraan) */
 const path = require('path');
 const G = require(path.join(__dirname, 'geo', 'gazetteer.json'));
+// koreksi koordinat hasil scripts/geo-audit.js (titik pesisir yang jatuh di laut → daratan; centroid provinsi kepulauan → ibukota)
+let FIX = { kab: {}, prov: {} };
+try { FIX = require(path.join(__dirname, 'geo', 'coord-fixes.json')); } catch (e) {}
+for (const k of G.kab) { const f = FIX.kab[k.code]; if (f) { k.la = f[0]; k.lo = f[1]; } }
+for (const p of G.prov) { const f = FIX.prov[p.code]; if (f) { p.la = f[0]; p.lo = f[1]; } }
 
 const norm = s => String(s).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, ' ').trim();
 const LEVEL = { poi: 7, kec: 6.5, kab: 6, region: 3.5, prov: 3 };
@@ -20,6 +25,9 @@ const PREFIX_KEC = new Set(['kecamatan', 'kec']);
 const PREFIX_PROV = new Set(['provinsi', 'prov', 'pemprov', 'gubernur']);
 const CUE_IN = new Set(['di', 'wilayah', 'sekitar', 'kecamatan', 'kec', 'kabupaten', 'kota']);
 const CUE_FROM = new Set(['dari', 'asal', 'warga', 'asal-usul']);
+// tempat tujuan/asal bukan lokasi kejadian: "dipulangkan ke Jawa Tengah", "dilarikan ke Bandung", "bantuan untuk Flores"
+const DEST_VERB = new Set(['dipulangkan', 'dikirim', 'dibawa', 'dilarikan', 'dirujuk', 'diterbangkan', 'diberangkatkan', 'dikembalikan', 'menuju', 'kembali', 'pulang', 'mudik', 'dipindahkan', 'dievakuasi', 'diangkut']);
+const SEP_OK = new Set(['dan', 'serta', 'hingga', 'sampai', 'maupun', 'atau', 'juga', 'sekitarnya', 'dll', 'lainnya']);
 // frasa yang kelihatan seperti lokasi tapi bukan
 const NOT_PLACE = /\b(polda metro jaya|metro tv|metro jaya|batu bara kalori|harga batu bara|pembangkit batu bara|tambang batu bara|serang(?:an)? (?:balik|udara|siber))\b/;
 
@@ -61,8 +69,8 @@ alias('tanjungpinang', 'Tanjung Pinang', true); alias('tasik', 'Tasikmalaya', tr
 alias('banjarbaru', 'Banjar Baru', true); alias('sitaro', 'Kep. Siau Tagulandang Biaro', false); alias('tolitoli', 'Toli-Toli', false); alias('baubau', 'Bau Bau', true);
 // provinsi
 const PROV_ALIAS = {
-  '11': ['aceh', 'nanggroe aceh'], '12': ['sumatera utara', 'sumut'], '13': ['sumatera barat', 'sumbar'], '14': ['riau'], '15': ['jambi'],
-  '16': ['sumatera selatan', 'sumsel'], '17': ['bengkulu'], '18': ['lampung'], '19': ['bangka belitung', 'babel', 'kepulauan bangka belitung', 'bangka', 'belitung'],
+  '11': ['aceh', 'nanggroe aceh'], '12': ['sumatera utara', 'sumatra utara', 'sumut'], '13': ['sumatera barat', 'sumatra barat', 'sumbar'], '14': ['riau'], '15': ['jambi'],
+  '16': ['sumatera selatan', 'sumatra selatan', 'sumsel'], '17': ['bengkulu'], '18': ['lampung'], '19': ['bangka belitung', 'babel', 'kepulauan bangka belitung', 'bangka', 'belitung'],
   '21': ['kepulauan riau', 'kepri'], '31': [], '32': ['jawa barat', 'jabar'], '33': ['jawa tengah', 'jateng'], '34': ['diy', 'daerah istimewa yogyakarta'],
   '35': ['jawa timur', 'jatim'], '36': ['banten'], '51': ['bali'], '52': ['nusa tenggara barat', 'ntb'], '53': ['nusa tenggara timur', 'ntt'],
   '61': ['kalimantan barat', 'kalbar'], '62': ['kalimantan tengah', 'kalteng'], '63': ['kalimantan selatan', 'kalsel'], '64': ['kalimantan timur', 'kaltim'],
@@ -77,7 +85,7 @@ for (const p of G.prov) {
 }
 // provinsi dengan nama sama kota (Gorontalo, Bengkulu, Jambi, Bali..): ambil kota bila ada "kota"; selain itu tingkat provinsi
 // wilayah kepulauan (tanpa batas administratif, presisi kasar)
-for (const [key, name, la, lo] of [['flores', 'Flores', -8.65, 121.0], ['lombok', 'Lombok', -8.65, 116.32], ['sumba', 'Sumba', -9.7, 119.9], ['halmahera', 'Halmahera', 0.9, 127.8]])
+for (const [key, name, la, lo] of [['flores', 'Flores', -8.65, 121.0], ['lombok', 'Lombok', -8.65, 116.32], ['sumba', 'Sumba', -9.7, 119.9], ['halmahera', 'Halmahera', 0.8, 128.0]])
   put(key, { id: 'R' + key, level: 'region', name, la, lo, prov: '', prec: 'region' });
 
 /* POI: gunung api & landmark dengan koordinat nyata */
@@ -113,7 +121,7 @@ function locate(title) {
   if (!text || NOT_PLACE.test(text)) return null;
   const tk = text.split(' ');
   const cands = [];
-  for (const { re, e } of POI) { const m = re.exec(' ' + text); if (m) cands.push({ e, pos: m.index, cue: 0, score: LEVEL.poi }); }
+  for (const { re, e } of POI) { const m = re.exec(' ' + text); if (m) cands.push({ e, pos: m.index, cue: e.id[0] === 'V' ? 1 : 0, score: LEVEL.poi }); }   // gunung api disebut = lokasi kejadian, mengalahkan kab tempat abu terpantau
 
   const matched = [];  // untuk kec → butuh tahu kab/prov lain di judul
   const used = new Array(tk.length).fill(false);
@@ -140,7 +148,9 @@ function locate(title) {
       if (CUE_IN.has(prev) || prev === 'di') cue += 1.5;
       if (CUE_FROM.has(prev)) cue -= 1.5;
       if (PREFIX_KAB.has(prev) || PREFIX_KOTA.has(prev) || PREFIX_PROV.has(prev)) cue += 0.5;
-      cands.push({ e, pos: i, cue, score: LEVEL[e.level], key });
+      if ((prev === 'ke' || prev === 'kepada') && DEST_VERB.has(prev2)) { for (let j = 0; j < n; j++) used[i + j] = true; break; }   // tujuan, bukan lokasi kejadian
+      if (DEST_VERB.has(prev) && !PREFIX_KAB.has(prev)) { for (let j = 0; j < n; j++) used[i + j] = true; break; }
+      cands.push({ e, pos: i, n, cue, score: LEVEL[e.level], key });
       matched.push(e);
       for (let j = 0; j < n; j++) used[i + j] = true;
       break;
@@ -167,7 +177,21 @@ function locate(title) {
   cands.sort((a, b) => (b.score + b.cue) - (a.score + a.cue) || a.pos - b.pos);
   const best = cands[0];
   const e = best.e;
-  return { name: e.name, la: e.la, lo: e.lo, prec: e.prec, prov: e.prov, via: best.key || e.id };
+  // beberapa tempat sederajat yang disebut berurutan ("Aceh, Jawa Tengah dan Jawa Timur") → semuanya titik sah, bukan cuma yang pertama
+  let all = [];
+  if (best.n && (e.level === 'kab' || e.level === 'prov' || e.level === 'region')) {
+    const same = cands.filter(c => c.n && c.e.level === e.level && c.cue >= 0).sort((a, b) => a.pos - b.pos);
+    const seen = new Set(); const uniq = same.filter(c => !seen.has(c.e.id) && seen.add(c.e.id));
+    if (uniq.length > 1 && uniq.some(c => c.e.id === e.id)) {
+      const chain = [uniq[0]];
+      for (let q = 1; q < uniq.length; q++) {
+        const prevC = chain[chain.length - 1], gap = tk.slice(prevC.pos + prevC.n, uniq[q].pos);
+        if (gap.length <= 2 && gap.every(w => SEP_OK.has(w))) chain.push(uniq[q]); else break;
+      }
+      if (chain.length > 1 && chain.some(c => c.e.id === e.id)) all = chain.slice(0, 4).map(c => ({ name: c.e.name, la: c.e.la, lo: c.e.lo, prec: c.e.prec, prov: c.e.prov }));
+    }
+  }
+  return { name: e.name, la: e.la, lo: e.lo, prec: e.prec, prov: e.prov, via: best.key || e.id, all };
 }
 
 /* daftar node pemantauan tetap: semua kab/kota (pusat pemerintahan) */
