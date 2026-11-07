@@ -934,6 +934,32 @@ a{color:inherit;text-decoration:none;text-underline-offset:2px}
 .mp-src .ic{width:9px;height:9px}
 .leaflet-marker-icon.mp-dot{border-radius:50%}
 
+/* marker bencana — meniru visual globe: gempa ripple ring, gunung segitiga */
+.mk-gempa,.mk-gunung{position:relative;width:100%;height:100%;overflow:visible;transform:scale(var(--gs,1));transform-origin:50% 50%}
+.mk-rip{
+  position:absolute;left:50%;top:50%;width:15px;height:15px;margin:-7.5px 0 0 -7.5px;
+  box-sizing:border-box;border-radius:50%;border:1.4px solid var(--mc,#ff5a4e);opacity:0;
+  transform-origin:50% 50%;
+  animation:mk-rip 2.8s ease-out infinite;
+}
+.mk-gempa .mk-rip.r2{animation-delay:.9s}
+.mk-gempa .mk-rip.r3{animation-delay:1.8s}
+@keyframes mk-rip{0%{transform:scale(1);opacity:.7}75%{opacity:.08}100%{transform:scale(3.6);opacity:0}}
+.mk-gempa-dot{
+  position:absolute;left:50%;top:50%;width:13px;height:13px;margin:-6.5px 0 0 -6.5px;
+  box-sizing:border-box;border-radius:50%;border:1.5px solid var(--mc,#ff5a4e);
+  transform-origin:50% 50%;
+  box-shadow:0 0 4px var(--mc,#ff5a4e);
+  animation:mk-quake 1.7s ease-in-out infinite;
+}
+@keyframes mk-quake{0%,100%{transform:scale(1)}50%{transform:scale(1.15)}}
+.mk-gunung svg{display:block;width:100%;height:100%;overflow:visible;filter:drop-shadow(0 0 4px var(--gc,#8d8d8d))}
+
+/* stasiun AQMS — badge angka kategori ISPU */
+.mk-aqi{display:inline-flex;align-items:center;justify-content:center;min-width:26px;height:15px;padding:0 4px;
+  border-radius:3px;border:1.2px solid #101010;font:700 9px/1 var(--mono);letter-spacing:.02em;
+  box-shadow:0 1px 4px rgba(0,0,0,.55);text-shadow:none}
+
 /* ============================================================ LIVE TV */
 .tvwrap{
   --tvw:344px;
@@ -1277,6 +1303,7 @@ a{color:inherit;text-decoration:none;text-underline-offset:2px}
 }
 @media (prefers-reduced-motion:reduce){
   *,*::before,*::after{animation:none!important;transition:none!important}
+  .mk-rip{opacity:.28;transform:scale(1.6)}   /* ring statis pengganti ripple */
   .tk-vp{overflow-x:auto}
   .tk-rail{animation:none}
 }
@@ -1356,7 +1383,7 @@ a{color:inherit;text-decoration:none;text-underline-offset:2px}
   <symbol id="i-tk-politik" viewBox="0 0 16 16"><path d="M2.5 8.5h11v5.5h-11z"/><path d="M6 8.5h4"/><path d="M5.2 6.8 4.6 2.5h6.8l-.6 4.3"/><path d="M6.6 5.2l1 1 2-2.2"/></symbol>
   <symbol id="i-sg-demo" viewBox="0 0 16 16"><path d="M1.8 6.4v3.2h2.2L9.6 13V3L4 6.4H1.8Z"/><path d="M11.2 5.8a3.2 3.2 0 0 1 0 4.4"/><path d="M12.4 4.4a4.8 4.8 0 0 1 0 7.2"/></symbol>
   <symbol id="i-sg-flood" viewBox="0 0 16 16"><path d="M8 2.2c2.7 3.2 4.3 5.4 4.3 7.2a4.3 4.3 0 0 1-8.6 0c0-1.8 1.6-4 4.3-7.2Z"/><path d="M6.3 9.7a1.8 1.8 0 0 0 1.5 1.9"/></symbol>
-  <symbol id="i-sg-burst" viewBox="0 0 16 16"><circle cx="8" cy="8" r="2.1"/><path d="M8 1.4v2M8 12.6v2M1.4 8h2M12.6 8h2M3.2 3.2l1.4 1.4M11.4 11.4l1.4 1.4M12.8 3.2l-1.4 1.4M4.6 11.4l-1.4 1.4"/></symbol>
+  <symbol id="i-sg-burst" viewBox="0 0 16 16"><path d="M8 1.6c2.8 3.3 5 5.7 5 8.6a5 5 0 0 1-10 0c0-1.7.7-3.1 1.7-4.2.2 1.1.9 1.8 1.8 2-.3-2.4.2-4.8 1.5-6.4Z"/><path d="M8 9.6c.9 1.1 1.6 1.8 1.6 2.9a1.6 1.6 0 0 1-3.2 0c0-1.1.7-1.8 1.6-2.9Z"/></symbol>
   <symbol id="i-sg-siber" viewBox="0 0 16 16"><path d="M8 1.8 13.2 3.5v4.1c0 3.1-2.2 5.5-5.2 6.5-3-1-5.2-3.4-5.2-6.5V3.5L8 1.8Z"/><circle cx="8" cy="8" r="1.4"/></symbol>
   <symbol id="i-sg-kriminal" viewBox="0 0 16 16"><path d="M8 1.7 13.7 4.4v7.2L8 14.3 2.3 11.6V4.4L8 1.7Z"/><circle cx="8" cy="8" r="1.8"/></symbol>
   <symbol id="i-sg-kesehatan" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6.1"/><path d="M8 5v6M5 8h6"/></symbol>
@@ -1366,11 +1393,12 @@ a{color:inherit;text-decoration:none;text-underline-offset:2px}
   <symbol id="i-activity" viewBox="0 0 16 16"><path d="M1.8 8.4h2.8l1.5-4 2.9 8 1.6-4h4"/></symbol>
   <symbol id="i-mountain" viewBox="0 0 16 16"><path d="M1.6 13.4 5.8 6.4l2.6 3.7 1.9-2.6 4.1 5.9H1.6Z"/></symbol>
   <symbol id="i-cloud" viewBox="0 0 16 16"><path d="M4.4 12.4h7.4a3 3 0 0 0 .4-5.95A4.4 4.4 0 0 0 4.2 6.4a3 3 0 0 0 .2 6Z"/></symbol>
-  <symbol id="i-wind" viewBox="0 0 16 16"><path d="M2.2 4.8h7.3a1.9 1.9 0 1 0-1.8-2.5"/><path d="M2.2 8.4h10.4a1.9 1.9 0 1 1-1.8 2.5"/><path d="M2.2 12h6.1"/></symbol>
+  <symbol id="i-wind" viewBox="0 0 16 16"><path d="M2 4.4c2.1-1.6 4.2-1.6 6.3 0 1.5.6 3 .9 4.5.2"/><path d="M2 8c2.1-1.6 4.2-1.6 6.3 0 1.5.6 3 .9 4.5.2"/><path d="M2 11.6c2.1-1.6 4.2-1.6 6.3 0 1.5.6 3 .9 4.5.2"/><path d="M13.4 3.4l1.8.7-1.9.8"/></symbol>
   <symbol id="i-cloud-rain" viewBox="0 0 16 16"><path d="M4.4 9.8h7.4a3 3 0 0 0 .4-5.95A4.4 4.4 0 0 0 4.2 3.8a3 3 0 0 0 .2 6Z"/><path d="M6.2 11.6l-.7 2.2M9.8 11.6l-.7 2.2M8 11.6l-.7 2.2"/></symbol>
   <symbol id="i-satellite" viewBox="0 0 16 16"><circle cx="8" cy="4.4" r="1.5"/><path d="M5 7.6a4.4 4.4 0 0 1 6 0"/><path d="M3.2 10.2a7.4 7.4 0 0 1 9.6 0"/><path d="M8 13.9v-3"/><path d="M6 12.4 8 14.4l2-2"/></symbol>
   <symbol id="i-drop" viewBox="0 0 16 16"><path d="M8 2.2c2.6 3.2 4.2 5.2 4.2 7.2a4.2 4.2 0 0 1-8.4 0c0-2 1.6-4 4.2-7.2Z"/></symbol>
   <symbol id="i-cloud-warn" viewBox="0 0 16 16"><path d="M4.4 12.4h7.4a3 3 0 0 0 .4-5.95A4.4 4.4 0 0 0 4.2 6.4a3 3 0 0 0 .2 6Z"/><path d="M8 8.6v2.6"/><circle cx="8" cy="12.9" r=".7" fill="currentColor" stroke="none"/></symbol>
+  <symbol id="i-air" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6.6"/><path d="M5.4 11.5v-3.7" stroke-width="1.8" stroke-linecap="round"/><path d="M8 11.5V5.3" stroke-width="1.8" stroke-linecap="round"/><path d="M10.6 11.5v-2.1" stroke-width="1.8" stroke-linecap="round"/></symbol>
 </svg>
 
 <header class="hdr">
@@ -1592,7 +1620,8 @@ a{color:inherit;text-decoration:none;text-underline-offset:2px}
     <button class="mly" type="button" data-layer="sat-wv" aria-pressed="false" title="Himawari-9 Water Vapor Enhanced" aria-label="Water Vapor"><svg class="ic" aria-hidden="true"><use href="#i-drop"></use></svg><span>WV</span></button>
     <button class="mly" type="button" data-layer="sat-rain" aria-pressed="false" title="Himawari-9 Rainfall Potential (produk turunan)" aria-label="Rainfall Potential"><svg class="ic" aria-hidden="true"><use href="#i-bolt"></use></svg><span>Rain</span></button></span>
     <span class="mly-unit"><span class="mly-grp">API</span>
-    <button class="mly" type="button" data-layer="fires" aria-pressed="false" title="NASA FIRMS hotspot (hingga 24 jam)" aria-label="NASA FIRMS hotspot"><svg class="ic" aria-hidden="true"><use href="#i-sg-burst"></use></svg><span>Hotspot</span></button>
+    <button class="mly" type="button" data-layer="fires" aria-pressed="false" title="Hotspot karhutla (SiPongi Kemenhut + NASA FIRMS)" aria-label="Hotspot kebakaran"><svg class="ic" aria-hidden="true"><use href="#i-sg-burst"></use></svg><span>Hotspot</span></button>
+    <button class="mly" type="button" data-layer="air" aria-pressed="false" title="Kualitas Udara — stasiun AQMS (SiPongi Kemenhut)" aria-label="Kualitas udara"><svg class="ic" aria-hidden="true"><use href="#i-air"></use></svg><span>Udara</span></button>
     <button class="mly" type="button" data-layer="peringatan" aria-pressed="true" title="Peringatan Dini Cuaca (BMKG CAP)" aria-label="Peringatan dini"><svg class="ic" aria-hidden="true"><use href="#i-cloud-warn"></use></svg><span>Warn</span></button></span>
     <span class="tt-status" id="tt-status" title="Status TomTom" role="img" aria-label="Status TomTom"><i></i></span>
     <button class="mly" type="button" id="tt-refresh" title="Refresh TomTom" aria-label="Refresh TomTom"><svg class="ic" aria-hidden="true"><use href="#i-sync"></use></svg></button>
@@ -3906,12 +3935,12 @@ let map = null, heat = null, pinLayer = null, camLayer = null, mapReady = false,
 let ttFlowLayer = null, ttIncTileLayer = null, ttIncDataLayer = null, routeLayer = null, measureLayer = null;
 let flightLayer = null, shipLayer = null, transitLayer = null;
 let gempaLayer = null, gunungLayer = null, wxLayer = null, radarLayer = null, radarBmkgLayer = null, peringatanLayer = null;
-let satIrLayer = null, satNcLayer = null, satWvLayer = null, satRainLayer = null, fireLayer = null;
+let satIrLayer = null, satNcLayer = null, satWvLayer = null, satRainLayer = null, airLayer = null;
 let radarFrames = [], radarIndex = 0, radarPlaying = false, radarTimer = null, radarGenerated = 0, radarHost = 'https://tilecache.rainviewer.com';
 let radarLayerCache = {}, radarPendingLayer = null, radarSwapTimer = null, radarWasPlaying = false;
 let ttOk = false, ttIncBusy = false, ttIncInterval = 0;
 let routeMode = false, routeA = null, routeB = null, flowMode = false, flowProbe = null, flowBusy = false;
-const layerOn = { heat:true, pins:true, cams:true, ttflow:false, ttinc:false, ttdata:false, rute:false, lalin:false, flight:false, ship:false, transit:false, gempa:false, gunung:false, cuaca:false, wind:false, radar:false, radarbmkg:false, peringatan:true, 'sat-ir':true, 'sat-nc':false, 'sat-wv':false, 'sat-rain':false, fires:false };
+const layerOn = { heat:true, pins:true, cams:true, ttflow:false, ttinc:false, ttdata:false, rute:false, lalin:false, flight:false, ship:false, transit:false, gempa:false, gunung:false, cuaca:false, wind:false, radar:false, radarbmkg:false, peringatan:true, 'sat-ir':true, 'sat-nc':false, 'sat-wv':false, 'sat-rain':false, fires:false, air:false };
 
 const ttTileUrl = kind => (API != null ? API : '') + '/tomtom/tile/' + kind + '/{z}/{x}/{y}.png';
 const havKm = (a, b) => {
@@ -3945,7 +3974,7 @@ function ttIncPopup(inc){
 }
 function syncLayers(){
   if (!map) return;
-  const pairs = [[heat, 'heat'], [pinLayer, 'pins'], [camLayer, 'cams'], [ttFlowLayer, 'ttflow'], [ttIncTileLayer, 'ttinc'], [ttIncDataLayer, 'ttdata'], [flightLayer, 'flight'], [shipLayer, 'ship'], [transitLayer, 'transit'], [gempaLayer, 'gempa'], [gunungLayer, 'gunung'], [wxLayer, 'cuaca'], [windVelocityLayer, 'wind'], [radarLayer, 'radar'], [radarBmkgLayer, 'radarbmkg'], [peringatanLayer, 'peringatan'], [satIrLayer, 'sat-ir'], [satNcLayer, 'sat-nc'], [satWvLayer, 'sat-wv'], [satRainLayer, 'sat-rain'], [fireLayer, 'fires']];
+  const pairs = [[heat, 'heat'], [pinLayer, 'pins'], [camLayer, 'cams'], [ttFlowLayer, 'ttflow'], [ttIncTileLayer, 'ttinc'], [ttIncDataLayer, 'ttdata'], [flightLayer, 'flight'], [shipLayer, 'ship'], [transitLayer, 'transit'], [gempaLayer, 'gempa'], [gunungLayer, 'gunung'], [wxLayer, 'cuaca'], [windVelocityLayer, 'wind'], [radarLayer, 'radar'], [radarBmkgLayer, 'radarbmkg'], [peringatanLayer, 'peringatan'], [satIrLayer, 'sat-ir'], [satNcLayer, 'sat-nc'], [satWvLayer, 'sat-wv'], [satRainLayer, 'sat-rain'], [airLayer, 'air']];
   for (const [l, k] of pairs) {
     if (!l) continue;
     if (layerOn[k] && !map.hasLayer(l)) map.addLayer(l);
@@ -3984,23 +4013,45 @@ const SAT_TILES = {
   'sat-wv': { param: 'WV', name: 'Water Vapor Enhanced', attribution: 'BMKG Himawari-9' },
   'sat-rain': { param: 'RP', name: 'Rainfall Potential', attribution: 'BMKG Himawari-9 · produk turunan' }
 };
-let satBasalRun = null;
+let satBasalRun = null, satModelRunAt = 0;
 async function initSatelliteLayers(){
   if (!map) return;
+  // modelrun dicek maksimal tiap 5 mnt — fram Himawari ganti 10 mnt, fetch tiap
+  // pullInsiden (60s) cuma boros request ke BMKG
+  if (Date.now() - satModelRunAt < 300000) return;
   // BMKG WAF blok IP datacenter → fetch direct dari browser (ACAO:*), API hanya fallback
   let d = null;
   try { const r = await getJson('https://satellite.bmkg.go.id/api22/modelrun', 15000); if (r && Array.isArray(r.himawari9)) d = r; } catch (e) {}
   if (!d && API != null) { try { d = await getJson(API + '/api/bmkg-modelrun', 15000); } catch (e) {} }
   try {
     if (!d || !Array.isArray(d.himawari9) || !d.himawari9.length) return;
+    satModelRunAt = Date.now();   // throttle hanya saat sukses — gagal tetap retry di siklus berikut
     const basalRun = d.himawari9[0];
     if (basalRun === satBasalRun && satIrLayer) return;
     satBasalRun = basalRun;
+    // lepas layer lama dulu — basalRun baru tiap ~10 mnt, tanpa ini layer hantu
+    // numpuk di peta dan terus fetch tile untuk run yang sudah basi
+    for (const l of [satIrLayer, satNcLayer, satWvLayer, satRainLayer])
+      if (l && map.hasLayer(l)) map.removeLayer(l);
     const ts = new Date(basalRun);
     const timeLabel = isNaN(ts) ? basalRun : ts.toLocaleString('id-ID', {timeZone:'Asia/Jakarta'}) + ' WIB';
     const mk = (id) => {
       const spec = SAT_TILES[id];
-      return L.tileLayer(`https://satellite.bmkg.go.id/api22/tile/{z}/{x}/{y}.png?tiletype=himawari9&modelname=himawari9&param=${spec.param}&baserun=${encodeURIComponent(basalRun)}`, {
+      // BMKG tileworker render on-demand: request pertama sering 422 timeout,
+      // sesudah warm return 200. Tanpa retry, layer tampil kosong (gejala "cuma
+      // mempergelap"). Retry exponential-lite maks 4x.
+      const SatTile = L.TileLayer.extend({
+        createTile(coords, done){
+          const img = L.TileLayer.prototype.createTile.call(this, coords, done);
+          let tries = 0;
+          img.addEventListener('error', function h(){
+            if (++tries > 4) { img.removeEventListener('error', h); return; }
+            setTimeout(() => { try { img.src = img.src; } catch (e) {} }, 1200 * tries);
+          });
+          return img;
+        }
+      });
+      return new SatTile(`https://satellite.bmkg.go.id/api22/tile/{z}/{x}/{y}.png?tiletype=himawari9&modelname=himawari9&param=${spec.param}&baserun=${encodeURIComponent(basalRun)}`, {
         opacity: .55, zIndex: 200, maxNativeZoom: 7, minZoom: 3, tms: true,
         bounds: L.latLngBounds([-22, 78], [22, 158]),
         attribution: `${spec.attribution} · obs ${timeLabel} · update ±10 mnt`
@@ -4011,31 +4062,123 @@ async function initSatelliteLayers(){
   } catch (e) {}
 }
 
-/* ---------- NASA FIRMS: active fire detections ---------- */
+/* ---------- Hotspot karhutla: SiPongi Kemenhut utama, NASA FIRMS fallback ----------
+   Dirender ke canvas overlay — ribuan titik tanpa DOM marker, tetap ringan. */
+const SIP_COLOR = { high:'#ff3b30', medium:'#ff9f0a', low:'#ffe066' };
+let fireData = [], fireCvLayer = null, fireInitDone = false;
+const FIRE_SPR = {};
+const FIRE_TINT = { high:[255,80,30], medium:[255,140,50], low:[255,195,95] };
+function fireSprite(conf){
+  if (FIRE_SPR[conf]) return FIRE_SPR[conf];
+  const sz = 64, c = document.createElement('canvas'); c.width = c.height = sz;
+  const x = c.getContext('2d'), m = sz / 2, [r, g, b] = FIRE_TINT[conf] || FIRE_TINT.medium;
+  const gr = x.createRadialGradient(m, m, 0, m, m, m);
+  gr.addColorStop(0,   `rgba(${r},${g},${b},.8)`);
+  gr.addColorStop(.3,  `rgba(${r},${g},${b},.38)`);
+  gr.addColorStop(.62, `rgba(${r},${g},${b},.1)`);
+  gr.addColorStop(1,   `rgba(${r},${g},${b},0)`);
+  x.fillStyle = gr; x.fillRect(0, 0, sz, sz);
+  return FIRE_SPR[conf] = c;
+}
+function firePaint(t){
+  const ctx = t.canvas.getContext('2d'), size = t.size;
+  ctx.clearRect(0, 0, size.x, size.y);
+  if (!layerOn.fires || !fireData.length) return;
+  const b = map.getBounds(), pad = .08;
+  const s = b.getSouth() - pad, n = b.getNorth() + pad, w = b.getWest() - pad, e = b.getEast() + pad;
+  for (const p of fireData) {
+    if (p.lat < s || p.lat > n || p.lon < w || p.lon > e) continue;
+    const pt = map.latLngToContainerPoint([p.lat, p.lon]);
+    const sz = p.conf === 'high' ? 26 : p.conf === 'medium' ? 19 : 13;
+    ctx.drawImage(fireSprite(p.conf), pt.x - sz/2, pt.y - sz/2, sz, sz);
+  }
+}
+function fireInit(){
+  if (fireInitDone || !map) return;
+  fireInitDone = true;
+  fireCvLayer = L.canvasLayer({ pane: map.getPane('overlayPane') }).delegate({ onDrawLayer: firePaint }).addTo(map);
+  map.on('click', e => {
+    if (!layerOn.fires || !fireData.length) return;
+    let best = null, bd = 20 * 20;
+    for (const p of fireData) {
+      const q = map.latLngToContainerPoint([p.lat, p.lon]);
+      const dx = q.x - e.containerPoint.x, dy = q.y - e.containerPoint.y, d = dx*dx + dy*dy;
+      if (d < bd) { bd = d; best = p; }
+    }
+    if (best) L.popup({ closeButton: true, maxWidth: 340 }).setLatLng([best.lat, best.lon]).setContent(best.html).openOn(map);
+  });
+}
+function fireRefresh(){ if (fireCvLayer) fireCvLayer.needRedraw(); }
 async function pullFires(){
   if (!map || API == null) return;
   try {
-    const d = await getJson(API + '/api/fires', 30000);
-    if (!d || !Array.isArray(d.items)) return;
-    if (!fireLayer) fireLayer = L.layerGroup().addTo(map);
-    fireLayer.clearLayers();
-    const confLevel = v => {
-      const s = String(v || '').toLowerCase();
-      if (s === 'h' || s === 'high' || Number(v) >= 70) return 'high';
-      if (s === 'n' || s === 'nominal' || s === 'medium' || (Number(v) >= 30 && Number(v) < 70)) return 'nominal';
-      return 'low';
-    };
-    const color = c => c === 'high' ? '#ff3b30' : c === 'nominal' ? '#ff9f0a' : '#ffe066';
-    for (const p of d.items) {
-      const conf = confLevel(p.confidence);
-      const r = conf === 'high' ? 5.5 : conf === 'nominal' ? 4 : 2.5;
-      const m = L.circleMarker([p.lat, p.lon], { radius: r, color: '#101010', weight: 1, fillColor: color(conf), fillOpacity: .85 });
-      const age = p.time ? Math.max(0, Math.round((Date.now() - p.time) / 3600e3)) + ' jam lalu' : 'waktu tidak tersedia';
-      m.bindPopup(`<div class="mp-k" style="color:${color(conf)}">HOTSPOT · NASA FIRMS</div>
-        <div class="mp-t">${esc(p.sensor || p.source || '')} — confidence ${esc(conf)}</div>
-        <div class="mp-m">${p.lat.toFixed(5)}, ${p.lon.toFixed(5)}<br>terdeteksi: ${p.time ? esc(new Date(p.time).toLocaleString('id-ID', {timeZone:'Asia/Jakarta'}) + ' WIB') : '—'}<br>${age} · FRP ${p.frp != null ? p.frp.toFixed(1)+' MW' : '—'}<br>${esc(p.daynight || '')}</div>
-        <div class="mp-m" style="margin-top:6px;text-transform:none;color:#d4d4d4"><b>Catatan:</b> hotspot adalah anomali suhu satelit, bukan bukti kebakaran terkonfirmasi. Awan, asap, dan api bawah tajuk dapat memengaruhi deteksi.</div>`);
-      fireLayer.addLayer(m);
+    fireData = [];
+    const sip = await getJson(API + '/api/sipongi', 45000).catch(() => null);
+    const spots = sip && Array.isArray(sip.hotspots) ? sip.hotspots : [];
+    if (spots.length) {
+      for (const p of spots) {
+        const conf = SIP_COLOR[p.confidence] ? p.confidence : 'low';
+        const age = p.time ? Math.max(0, Math.round((Date.now() - p.time) / 3600e3)) + ' jam lalu' : 'waktu tidak tersedia';
+        const loc = [p.desa, p.kecamatan, p.kabkota].filter(Boolean).join(', ') || p.provinsi || '';
+        fireData.push({ lat: p.lat, lon: p.lon, conf, html:
+          `<div class="mp-k" style="color:${SIP_COLOR[conf]}">HOTSPOT · SIPONGI KEMENHUT</div>
+          <div class="mp-t">${esc(p.sumber || '')} — ${esc(conf)}</div>
+          <div class="mp-m">${p.lat.toFixed(5)}, ${p.lon.toFixed(5)}<br>${esc(loc)}<br>${esc(p.provinsi || '')}<br>terdeteksi: ${p.time ? esc(new Date(p.time).toLocaleString('id-ID', {timeZone:'Asia/Jakarta'}) + ' WIB') : '—'} · ${age}</div>
+          <div class="mp-m" style="margin-top:6px;text-transform:none;color:#d4d4d4"><b>Sumber:</b> SIPONGI Kemenhut (NASA + LAPAN/BRIN). Hotspot = anomali suhu satelit, bukan bukti kebakaran terkonfirmasi.</div>` });
+      }
+    } else {
+      // fallback: NASA FIRMS langsung
+      const d = await getJson(API + '/api/fires', 30000);
+      if (!d || !Array.isArray(d.items)) { fireRefresh(); return; }
+      const confLevel = v => {
+        const s = String(v || '').toLowerCase();
+        if (s === 'h' || s === 'high' || Number(v) >= 70) return 'high';
+        if (s === 'n' || s === 'nominal' || s === 'medium' || (Number(v) >= 30 && Number(v) < 70)) return 'nominal';
+        return 'low';
+      };
+      const color = c => c === 'high' ? '#ff3b30' : c === 'nominal' ? '#ff9f0a' : '#ffe066';
+      const confMap = { high:'high', nominal:'medium', low:'low' };
+      for (const p of d.items) {
+        const conf = confLevel(p.confidence);
+        const age = p.time ? Math.max(0, Math.round((Date.now() - p.time) / 3600e3)) + ' jam lalu' : 'waktu tidak tersedia';
+        fireData.push({ lat: p.lat, lon: p.lon, conf: confMap[conf], html:
+          `<div class="mp-k" style="color:${color(conf)}">HOTSPOT · NASA FIRMS</div>
+          <div class="mp-t">${esc(p.sensor || p.source || '')} — confidence ${esc(conf)}</div>
+          <div class="mp-m">${p.lat.toFixed(5)}, ${p.lon.toFixed(5)}<br>terdeteksi: ${p.time ? esc(new Date(p.time).toLocaleString('id-ID', {timeZone:'Asia/Jakarta'}) + ' WIB') : '—'}<br>${age} · FRP ${p.frp != null ? p.frp.toFixed(1)+' MW' : '—'}<br>${esc(p.daynight || '')}</div>
+          <div class="mp-m" style="margin-top:6px;text-transform:none;color:#d4d4d4"><b>Catatan:</b> hotspot adalah anomali suhu satelit, bukan bukti kebakaran terkonfirmasi. Awan, asap, dan api bawah tajuk dapat memengaruhi deteksi.</div>` });
+      }
+    }
+    fireInit();
+    fireRefresh();
+  } catch (e) {}
+}
+
+/* ---------- Kualitas udara: stasiun AQMS SiPongi Kemenhut ---------- */
+const AIR_COLOR = cat => {
+  const s = String(cat || '').toUpperCase();
+  if (s.includes('SANGAT TIDAK SEHAT')) return '#c4007a';
+  if (s.includes('TIDAK SEHAT')) return '#ff3b30';
+  if (s.includes('SEDANG')) return '#f1c21b';
+  return '#3ddc97';   // BAIK / SEHAT / lainnya
+};
+async function pullAir(){
+  if (!map || API == null) return;
+  try {
+    const d = await getJson(API + '/api/sipongi', 45000);
+    if (!d || !Array.isArray(d.air)) return;
+    if (!airLayer) airLayer = L.layerGroup().addTo(map);
+    airLayer.clearLayers();
+    for (const p of d.air) {
+      const col = AIR_COLOR(p.cat);
+      const txt = /SANGAT TIDAK SEHAT/.test(String(p.cat || '').toUpperCase()) || /TIDAK SEHAT/.test(String(p.cat || '').toUpperCase()) ? '#fff' : '#101010';
+      const m = L.marker([p.lat, p.lon], { keyboard: false, icon: L.divIcon({ className: 'mk-aqi-ic',
+        iconSize: [30, 16], iconAnchor: [15, 8],
+        html: `<div class="mk-aqi" style="background:${col};color:${txt}">${esc(p.nilai || '·')}</div>` }) });
+      m.bindPopup(`<div class="mp-k" style="color:${col}">KUALITAS UDARA · AQMS SIPONGI</div>
+        <div class="mp-t">${esc(p.alamat || p.kota || 'Stasiun AQMS')}</div>
+        <div class="mp-m">${esc(p.kota || '')}${p.provinsi ? ' · ' + esc(p.provinsi) : ''}<br>nilai ${esc(p.nilai || '—')} · ${esc(p.cat || '—')}<br>pengukuran: ${esc(p.waktu || '—')}<br>${p.lat.toFixed(4)}, ${p.lon.toFixed(4)}</div>
+        <div class="mp-m" style="margin-top:6px;text-transform:none;color:#d4d4d4"><b>Sumber:</b> SIPONGI Kemenhut / jaringan stasiun AQMS.</div>`);
+      airLayer.addLayer(m);
     }
     syncLayers();
   } catch (e) {}
@@ -4384,7 +4527,8 @@ $$('.mly').forEach(b => b.addEventListener('click', () => {
   if (k === 'cuaca' && layerOn[k]) pullWeather();
   if (k === 'wind') { if (layerOn[k]) { pullWind().then(() => startWindAnim()); } else { stopWindAnim(); } }
   if (k === 'radar') { if (layerOn[k]) { pullRadar(); } else { stopRadarInterval(); clearRadarCache(); radarLayer = null; const ctrl=$('#radar-ctrl'); if(ctrl) ctrl.hidden=true; } }
-  if (k === 'fires' && layerOn[k]) pullFires();
+  if (k === 'fires') { if (layerOn[k]) pullFires(); fireRefresh(); }
+  if (k === 'air' && layerOn[k]) pullAir();
   if (SAT_IDS.includes(k)) { setSatExclusive(layerOn[k] ? k : null); return; }
   if (k === 'radarbmkg' && layerOn[k]) pullRadarBmkg();
   if (k === 'peringatan') { if (layerOn[k]) pullAlerts(); else if (peringatanLayer && map && map.hasLayer(peringatanLayer)) map.removeLayer(peringatanLayer); }  syncLayers();
@@ -4568,13 +4712,15 @@ async function pullDisaster(){
       const gts = Date.parse(g.time) || 0;
       if (!gts || Date.now() - gts > 24 * 3600e3) continue;   // rolling 24 jam, sama dengan insiden
       const key = g.lat.toFixed(2) + ',' + g.lon.toFixed(2) + '|' + g.mag;
-      const rad = 5 + Math.min(9, (g.mag || 0) * 2.2);
-      const m = L.circleMarker([g.lat, g.lon], { radius: rad, color: '#ff3b30', weight: 1.5,
-        fillColor: g.mag >= 5 ? '#ff3b30' : '#ff9f0a', fillOpacity: .55 });
+      const gcol = '#ff3b30';
+      const gs = 1 + Math.min(1.6, (g.mag || 3) * 0.28);   // ukuran ripple ikut magnitude, seperti di globe
+      const m = L.marker([g.lat, g.lon], { keyboard: false, icon: L.divIcon({ className: 'mk-gempa-ic',
+        iconSize: [64, 64], iconAnchor: [32, 32],
+        html: `<div class="mk-gempa" style="--mc:${gcol};--gs:${gs.toFixed(2)}"><i class="mk-rip"></i><i class="mk-rip r2"></i><i class="mk-rip r3"></i><b class="mk-gempa-dot"></b></div>` }) });
       m.bindPopup(`<div class="mp-k" style="color:#ff6b5e">GEMPA · BMKG</div>
         <div class="mp-t">M${g.mag} — ${esc(g.wilayah || '')}</div>
         <div class="mp-m">${esc(g.depth)} · dirasakan: ${esc(g.mmi || '—')}${g.potensi ? '<br>' + esc(g.potensi) : ''}<br>${esc(g.time || '')}</div>`);
-      m.bindTooltip(`M${g.mag}`, { direction: 'top', offset: [0, -rad], opacity: .9 });
+      m.bindTooltip(`M${g.mag}`, { direction: 'top', offset: [0, -18], opacity: .9 });
       gempaMarkers.push(m);
       dp.push({ kind: 'gempa', sub: 'gempa', la: g.lat, lo: g.lon, ts: gts,
         title: `M${g.mag} · ${g.wilayah || ''}`, name: g.wilayah || 'Gempa', label: 'GEMPA BMKG',
@@ -4582,12 +4728,13 @@ async function pullDisaster(){
     }
     for (const p of (PULSE || [])) {   // gempa versi berita (wire) — BMKG belum terbit tetap tampil di layer Gempa
       if (p.sub !== 'gempa' || p.fixed || typeof p.la !== 'number' || typeof p.lo !== 'number') continue;
-      const m = L.circleMarker([p.la, p.lo], { radius: 6, color: '#ff3b30', weight: 1.5,
-        fillColor: '#ff9f0a', fillOpacity: .5 });
+      const m = L.marker([p.la, p.lo], { keyboard: false, icon: L.divIcon({ className: 'mk-gempa-ic',
+        iconSize: [56, 56], iconAnchor: [28, 28],
+        html: `<div class="mk-gempa" style="--mc:#ff3b30;--gs:1.4"><i class="mk-rip"></i><i class="mk-rip r2"></i><i class="mk-rip r3"></i><b class="mk-gempa-dot"></b></div>` }) });
       m.bindPopup(`<div class="mp-k" style="color:#ff6b5e">GEMPA · WIRE</div>
         <div class="mp-t">${esc(deEmoji(p.title || p.name || 'Gempa'))}</div>
         <div class="mp-m">${esc(p.src || '')} · ${esc(p.ts ? wibTime(p.ts) : '')}</div>`);
-      m.bindTooltip('Gempa (berita)', { direction: 'top', opacity: .9 });
+      m.bindTooltip('Gempa (berita)', { direction: 'top', offset: [0, -16], opacity: .9 });
       gempaMarkers.push(m);
     }
     for (const v of (d.gunung || [])) {
@@ -4598,12 +4745,14 @@ async function pullDisaster(){
       const worse = prev != null && (LVL_RANK[v.level] || 0) > (LVL_RANK[prev] || 0);
       const escalate = worse || prev == null;
       seenGunung.set(v.name, v.level);
-      const m = L.circleMarker([v.lat, v.lon], { radius: v.level === 'LEVEL IV' ? 8 : 6.5,
-        color: '#101010', weight: 1.5, fillColor: col, fillOpacity: .9 });
+      const sz = v.level === 'LEVEL IV' ? 26 : v.level === 'LEVEL III' ? 23 : 20;
+      const m = L.marker([v.lat, v.lon], { keyboard: false, icon: L.divIcon({ className: 'mk-gunung-ic',
+        iconSize: [sz, sz], iconAnchor: [sz / 2, sz / 2],
+        html: `<div class="mk-gunung" style="--gc:${col};--gs:${(sz / 22).toFixed(2)}"><svg viewBox="0 0 16 16"><path d="M8 1.4 14.6 13.2H1.4Z" fill="var(--gc)" stroke="#101010" stroke-width="1.5" stroke-linejoin="round"/></svg></div>` }) });
       m.bindPopup(`<div class="mp-k" style="color:${col}">GUNUNG API · MAGMA/PVMBG</div>
         <div class="mp-t">${esc(v.name)} — ${esc(v.loc || '')}</div>
         <div class="mp-m">${esc(v.level)} (${esc(v.status)})</div>`);
-      m.bindTooltip(`${esc(v.name)} · ${v.level}`, { direction: 'top', opacity: .85 });
+      m.bindTooltip(`${esc(v.name)} · ${v.level}`, { direction: 'top', offset: [0, -sz / 2 - 3], opacity: .85 });
       gunungMarkers.push(m);
       dp.push({ kind: 'gunung', sub: 'volcano', lvl: v.level, la: v.lat, lo: v.lon,
         ts: escalate ? Date.now() : today,
@@ -4854,7 +5003,6 @@ function startWindAnim(){
   bindVelocityInteractionEvents();
   if (windVelocityLayer && map.hasLayer(windVelocityLayer)) {
     try { windVelocityLayer.setData(windData); } catch(e){}
-    windBarbEnsure();
     return;
   }
   try {
@@ -4863,7 +5011,7 @@ function startWindAnim(){
       displayOptions: {
         velocityType: 'Angin',
         position: 'bottomleft',
-        emptyString: 'Tidak ada data angin',
+        emptyString: 'Arahkan kursor ke peta',
         angleConvention: 'meteoCCW',
         showCardinal: true,
         speedUnit: 'k/h',
@@ -4878,7 +5026,6 @@ function startWindAnim(){
       opacity: 0.95
     });
     windVelocityLayer.addTo(map);
-    windBarbEnsure();
   } catch(e) {}
 }
 function stopWindAnim(){
@@ -4886,75 +5033,6 @@ function stopWindAnim(){
     try { map.removeLayer(windVelocityLayer); } catch(e){}
   }
   windVelocityLayer = null;
-  if (windBarbLayer && map) {
-    try { map.removeLayer(windBarbLayer); } catch(e){}
-  }
-  windBarbLayer = null;
-}
-
-/* ---------- WIND BARBS: panah + km/h di tiap grid point, selalu terlihat.
-   leaflet-velocity hanya menampilkan angka di kartu yang ikut kursor — layer
-   ini menggambar ulang data u/v yang sama ke canvas per tile (viewport culling
-   gratis dari GridLayer), jadi biaya render ~nol dan tidak ada animasi per-frame. */
-const WindBarbLayer = L.GridLayer.extend({
-  createTile(coords){
-    const size = this.getTileSize(), dpr = window.devicePixelRatio || 1;
-    const tile = document.createElement('canvas');
-    tile.width = size.x * dpr; tile.height = size.y * dpr;
-    tile.style.width = size.x + 'px'; tile.style.height = size.y + 'px';
-    const ctx = tile.getContext('2d');
-    ctx.scale(dpr, dpr);
-    if (windData && windData.length >= 2) drawWindBarbs(ctx, coords, size, this._map);
-    return tile;
-  }
-});
-let windBarbLayer = null;
-function windBarbEnsure(){
-  if (!windBarbLayer) windBarbLayer = new WindBarbLayer({ tileSize: 256 });
-  if (!map.hasLayer(windBarbLayer)) windBarbLayer.addTo(map);
-  else windBarbLayer.redraw();
-}
-function drawWindBarbs(ctx, coords, size, map){
-  const [gu, gv] = windData, hdr = gu.header || {};
-  const u = gu.data || [], v = gv.data || [], nx = hdr.nx || 0, ny = hdr.ny || 0;
-  if (!nx || !ny) return;
-  const origin = coords.scaleBy(size);                    // pojok kiri-atas tile, layer px
-  const R = 6378137, D2R = Math.PI / 180, font = '600 10px ui-monospace,SFMono-Regular,Menlo,monospace';
-  ctx.font = font; ctx.textBaseline = 'middle';
-  for (let r = 0; r < ny; r++){
-    const lat = hdr.la1 - r * hdr.dy;
-    for (let c = 0; c < nx; c++){
-      const i = r * nx + c, su = u[i] || 0, sv = v[i] || 0, sp = Math.hypot(su, sv);
-      const p = map.latLngToLayerPoint([lat, hdr.lo1 + c * hdr.dx]).subtract(origin);
-      if (p.x < -40 || p.y < -40 || p.x > size.x + 40 || p.y > size.y + 40) continue;
-      const kmh = Math.round(sp * 3.6);
-      const col = kmh >= 50 ? '#f87171' : kmh >= 30 ? '#fbbf24' : kmh >= 12 ? '#38bdf8' : '#94a3b8';
-      if (sp < 0.3){                                       // calm: titik + 0
-        ctx.beginPath(); ctx.arc(p.x, p.y, 2, 0, 7); ctx.fillStyle = col; ctx.fill();
-        ctx.fillStyle = 'rgba(2,6,23,.8)'; ctx.fillText('0', p.x + 5, p.y);
-        ctx.fillStyle = col; ctx.fillText('0', p.x + 4, p.y - 0.5);
-        continue;
-      }
-      // arah gerak angin → layer px, lewat rumus destination (distorsi cos(lat) benar)
-      const brg = Math.atan2(su, sv), d = 1000, la1 = lat * D2R, lo1 = (hdr.lo1 + c * hdr.dx) * D2R;
-      const la2 = Math.asin(Math.sin(la1) * Math.cos(d / R) + Math.cos(la1) * Math.sin(d / R) * Math.cos(brg));
-      const lo2 = lo1 + Math.atan2(Math.sin(brg) * Math.sin(d / R) * Math.cos(la1), Math.cos(d / R) - Math.sin(la1) * Math.sin(la2));
-      const q = map.latLngToLayerPoint([la2 / D2R, lo2 / D2R]).subtract(origin);
-      const vx = q.x - p.x, vy = q.y - p.y, vl = Math.hypot(vx, vy) || 1, ux = vx / vl, uy = vy / vl;
-      const alen = 8 + Math.min(sp, 25) * 0.45;            // 8–19px, saturasi di 25 m/s
-      const ex = p.x + ux * alen, ey = p.y + uy * alen;
-      ctx.strokeStyle = col; ctx.lineWidth = 1.6; ctx.lineCap = 'round';
-      ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(ex, ey); ctx.stroke();
-      for (const s of [-1, 1]){                            // kepala panah
-        const ba = Math.atan2(uy, ux) + s * 2.5;
-        ctx.beginPath(); ctx.moveTo(ex, ey);
-        ctx.lineTo(ex - Math.cos(ba) * 5, ey - Math.sin(ba) * 5); ctx.stroke();
-      }
-      const tx = ex + ux * 4 + 2, ty = ey + uy * 4;
-      ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(2,6,23,.85)'; ctx.strokeText(kmh, tx, ty);
-      ctx.fillStyle = col; ctx.fillText(kmh, tx, ty - 0.5);
-    }
-  }
 }
 
 /* ---------- RADAR BMKG (WMS) ---------- */

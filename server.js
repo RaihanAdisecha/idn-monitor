@@ -1261,6 +1261,51 @@ async function fires(){
   return cacheFail(fireCache, 600000, { ok: sourceStatus.some(s => s.ok), items: out, sources: sourceStatus, at: Date.now() });
 }
 
+/* ---------- SIPONGI+ Kemenhut: hotspot karhutla + stasiun kualitas udara ---------- */
+const sipongiCache = { at: 0, data: null };
+const SIPONGI = 'https://opsroom.sipongidata.my.id';
+// Endpoint internal yang dipakai frontend resmi sipongi.gakkum.kehutanan.go.id/peta
+const SIPONGI_HOTSPOT_URL = SIPONGI + '/api/opsroom/indoHotspot?wilayah=IN&filterperiode=false&from=&to=&late=24' +
+  '&satelit%5B%5D=NASA-MODIS&satelit%5B%5D=NASA-SNPP&satelit%5B%5D=NASA-NOAA20&satelit%5B%5D=NASA-NOAA21' +
+  '&satelit%5B%5D=LPN-MODIS&satelit%5B%5D=LPN-NPP&satelit%5B%5D=LPN-NOAA20&satelit%5B%5D=LPN-LANDSAT8' +
+  '&confidence%5B%5D=low&confidence%5B%5D=medium&confidence%5B%5D=high&provinsi=&kabkota=';
+async function sipongi(){
+  if (sipongiCache.data && Date.now() - sipongiCache.at < 600000) return sipongiCache.data;
+  try {
+    const [hsR, aqR] = await Promise.all([
+      get(SIPONGI_HOTSPOT_URL, {}, 45000),
+      get(SIPONGI + '/api/aqms', {}, 30000)
+    ]);
+    if (!hsR.ok && !aqR.ok) throw new Error(`sipongi http ${hsR.status}/${aqR.status}`);
+    const hs = hsR.ok ? await hsR.json() : { features: [] };
+    const aq = aqR.ok ? await aqR.json() : { features: [] };
+    const spots = (hs.features || []).map(f => {
+      const c = (f.geometry && f.geometry.coordinates) || [];
+      const p = f.properties || {};
+      const lon = parseFloat(c[0]), lat = parseFloat(c[1]);
+      if (!isFinite(lat) || !isFinite(lon)) return null;
+      return {
+        lat, lon, time: Date.parse(p.date_hotspot_ori || p.hs_id || '') || 0,
+        sumber: p.sumber || '', confidence: p.confidence_level || '',
+        desa: p.desa || '', kecamatan: p.kecamatan || '', kabkota: p.kabkota || '',
+        provinsi: p.nama_provinsi || ''
+      };
+    }).filter(Boolean);
+    const air = (aq.features || []).map(f => {
+      const c = (f.geometry && f.geometry.coordinates) || [];
+      const p = f.properties || {};
+      const lon = parseFloat(c[0]), lat = parseFloat(c[1]);
+      if (!isFinite(lat) || !isFinite(lon)) return null;
+      return { lat, lon, kota: p.kota || '', provinsi: p.provinsi || '', alamat: p.alamat || '',
+        nilai: p.nilai != null ? String(p.nilai) : (p.val != null ? String(p.val) : ''),
+        cat: p.cat || '', waktu: p.waktu || '' };
+    }).filter(Boolean);
+    return cacheFail(sipongiCache, 600000, { ok: spots.length > 0 || air.length > 0, hotspots: spots, air, at: Date.now() });
+  } catch(e) {
+    return cacheFail(sipongiCache, 600000, { ok: false, err: String(e.message || e).slice(0,150), hotspots: [], air: [], at: Date.now() });
+  }
+}
+
 const modelRunCache = { at: 0, data: null };
 async function bmkgModelRun(){
   if (modelRunCache.data && Date.now() - modelRunCache.at < 300000) return modelRunCache.data;
@@ -3166,6 +3211,7 @@ http.createServer(async (req, res) => {
     if (u.pathname === '/api/weather') return json(await weather());
     if (u.pathname === '/api/wind') return json(await windGrid());
     if (u.pathname === '/api/fires') return json(await fires());
+    if (u.pathname === '/api/sipongi') return json(await sipongi());
     if (u.pathname === '/api/satellite') return json(await satelliteProducts());
     if (u.pathname === '/api/bmkg-modelrun') return json(await bmkgModelRun());
     if (u.pathname === '/api/alerts') return json(await alerts());
