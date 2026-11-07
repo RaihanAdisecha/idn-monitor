@@ -622,6 +622,7 @@ a{color:inherit;text-decoration:none;text-underline-offset:2px}
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
 }
 .nw .new{display:inline-block;margin-left:5px;padding:2px 3px;background:var(--accent);color:#fff;font:600 8px/1 var(--mono);letter-spacing:.07em;vertical-align:1px}
+.nw .dup-n{display:inline-block;margin-left:5px;padding:2px 3px;background:var(--layer2);border:1px solid var(--border2);color:var(--text3);font:600 8px/1 var(--mono);letter-spacing:.05em;vertical-align:1px;cursor:help}
 .nw-day{
   display:flex;align-items:center;gap:10px;padding:9px 14px;background:var(--layer);
   border-bottom:1px solid var(--border);
@@ -3031,7 +3032,7 @@ function newsHtml(h, full){
   const cat = h.cat || catOfTitle(h.title) || 'insiden';
   return `<a class="nw${full ? ' nw-full' : ''}" data-cat="${cat}" href="${esc(h.url)}" target="_blank" rel="noopener">
     <div class="nw-top"><span class="nw-cat">${CAT_LABEL[cat]}</span><time>${esc(h.ts ? wibTime(h.ts) : '')}</time></div>
-    <div class="nw-src">${esc(h.pub || h.src)}${isNew ? '<span class="new">Baru</span>' : ''}</div>
+    <div class="nw-src">${esc(h.pub || h.src)}${isNew ? '<span class="new">Baru</span>' : ''}${h.n > 1 ? `<span class="dup-n" title="${esc([...h.srcs].filter(Boolean).join(', '))}">×${h.n} sumber</span>` : ''}</div>
     <h3>${esc(deEmoji(h.title))}</h3>
     ${h.desc && h.desc.length > 25 ? `<p class="nw-ex">${esc(deEmoji(h.desc))}</p>` : ''}
   </a>`;
@@ -3049,6 +3050,21 @@ function renderNews(){
     }
     return { ...h, title, cat: h.cat || catOfTitle(title) };
   });
+  // collapse near-dupe lintas-outlet: cerita sama judul mirip → satu kartu + badge jumlah sumber.
+  // ambang 0.72 ketat — artikel beda dari pub sama dengan judul beda tidak akan kegabung.
+  {
+    const toks = t => new Set(t.toLowerCase().replace(/[^a-z0-9 ]/g, ' ').split(/\s+/).filter(w => w.length > 2));
+    const jac = (a, b) => { let n = 0; for (const w of a) if (b.has(w)) n++; return n / (a.size + b.size - n || 1); };
+    const sigs = [], collapsed = [];
+    for (const h of items) {
+      const sig = toks(h.title);
+      const hit = sigs.find(s => jac(s.set, sig) > 0.72);
+      if (hit) { hit.rec.n++; hit.rec.srcs.add(h.pub || h.src || ''); hit.rec.ts = Math.max(hit.rec.ts || 0, h.ts || 0); continue; }
+      const rec = { ...h, n: 1, srcs: new Set([h.pub || h.src || '']) };
+      sigs.push({ set: sig, rec }); collapsed.push(rec);
+    }
+    items.length = 0; items.push(...collapsed);
+  }
   const q = ($('#fq').value || '').toLowerCase();
   const list = items.filter(h => (!onlyTopic || topicOK(h)) && (catFilter === 'semua' || h.cat === catFilter) &&
     (!q || (h.title + ' ' + h.src + ' ' + (h.pub || '')).toLowerCase().includes(q)));

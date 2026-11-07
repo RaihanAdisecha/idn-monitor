@@ -1978,8 +1978,9 @@ function rdBlocks(html, finalURL) {
     u = rdAbs(u, finalURL);
     if (!u || /^data:/i.test(u)) return null;
     if (RD_IMG_JUNK.test(u) || /\.(svg|gif)(\?|#|$)/i.test(u)) return null;
+    if (/(\/|_)(banner|promo|iklan|widget|sidebar|stripbanner|avatar|logo)(\/|[-_.]|$)/i.test(u.split('?')[0])) return null;
     const w = parseInt(attr('width')) || 0, h = parseInt(attr('height')) || 0;
-    if ((w && w < 200) || (h && h < 120)) return null;
+    if ((w && w < 280) || (h && h < 160)) return null;
     return { url: u, alt: rdInline(attr('alt')) };
   };
   const addImg = (tag, cap) => {
@@ -2255,7 +2256,13 @@ function rdAssembleBlocks(d) {
 }
 async function rdFinish(d, url) {
   d = await rdHydrateVideos(d, url);
-  return rdAssembleBlocks(d);
+  d = rdAssembleBlocks(d);
+  // hero disamakan dengan pipeline thumb() news wire — og:image mentah sering logo/aset situs.
+  // thumb() memoized 10 mnt bersama wire → konsisten + murah. Gagal → pertahankan og:image.
+  if (!/youtube\.com|youtu\.be/i.test(url)) {
+    try { const t = await thumb(url); if (t && t.img) d.img = t.img; } catch (e) {}
+  }
+  return d;
 }
 const ytIdOf = raw => { try { const u = new URL(raw); const h = u.hostname.replace(/^(www|m|music)\./, '');
   if (h === 'youtu.be') return u.pathname.slice(1).split('/')[0].match(/^[\w-]{6,15}$/) ? u.pathname.slice(1).split('/')[0] : '';
