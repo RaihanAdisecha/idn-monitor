@@ -1202,9 +1202,13 @@ a{color:inherit;text-decoration:none;text-underline-offset:2px}
     transform:rotate(45deg);transition:transform .15s;
   }
   .pane.open .ph::after{transform:rotate(225deg)}
-  .hdr{position:sticky;top:0;flex-wrap:wrap;height:auto;min-height:var(--hdr);padding:8px 12px;gap:8px}
+  .hdr{position:sticky;top:0;flex-wrap:nowrap;height:auto;min-height:var(--hdr);padding:8px 12px;gap:10px}
   .brand-case{display:none}
-  .hdr-tools{gap:12px;margin-left:0;width:100%;justify-content:space-between}
+  .hdr-tools{display:contents}                        /* anak-anaknya jadi flex item .hdr: Live nempel SITREP, clock+sync kanan */
+  .hdr-tools .hstat#clock{margin-left:auto}
+  .hdr-tools .hstat#countdown{display:none}           /* countdown countdown tak muat di baris header mobile */
+  #btn-refresh{padding:0 9px}
+  #btn-refresh .btn-tx{display:none}                  /* icon-only di mobile */
   /* breaking wire: label+fetch di baris 1, marquee full-width di baris 2 */
   .ticker{height:auto;grid-template-columns:auto 1fr;grid-template-rows:var(--tick) var(--tick)}
   .tk-lbl{padding:0 8px 0 10px;gap:6px;letter-spacing:.1em}
@@ -1352,8 +1356,7 @@ a{color:inherit;text-decoration:none;text-underline-offset:2px}
     <span class="hstat" id="clock">--:--:-- WIB</span>
     <span class="hstat" id="countdown">Sync 02:00</span>
     <button class="btn" id="btn-refresh" type="button" title="Tarik ulang semua sumber (R)">
-      <svg class="ic" aria-hidden="true"><use href="#i-sync"></use></svg>
-      Sync
+      <svg class="ic" aria-hidden="true"><use href="#i-sync"></use></svg><span class="btn-tx">Sync</span>
     </button>
   </div>
 </header>
