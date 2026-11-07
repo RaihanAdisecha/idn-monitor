@@ -2697,7 +2697,7 @@ http.createServer(async (req, res) => {
   incidents().then(r => console.log('Peta warm: ' + r.items.length + ' titik')).catch(() => {});
   situation().then(r => console.log('Situasi warm: ' + r.total + ' insiden')).catch(() => {});
   news().then(rs => console.log('News warm: ' + rs.filter(s => s.ok).length + '/' + rs.length + ' feed')).catch(() => {});
-  xposts().then(r => console.log('X warm: ' + r.posts.length + ' post')).catch(e => console.log('X warm gagal: ' + e.message));
+  xposts().then(r => console.log('X warm: ' + r.posts.length + ' post' + (r.err ? ' | err: ' + String(r.err).slice(0, 160) : ''))).catch(e => console.log('X warm gagal: ' + e.message));
   setTimeout(() => warmCctv().catch(() => {}), 20000);
   setInterval(() => { warmCctv().catch(() => {}); }, 1800000);
 });
