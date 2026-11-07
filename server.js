@@ -255,7 +255,7 @@ const cleanPub = v => {
 };
 // domain/sumber yang dilarang — item langsung dibuang dari semua feed.
 // kompasiana = platform opini/blog, bukan berita; masuk lewat agregat Google News.
-const BANNED_SRC = /infopublik\.id|infopublik|kompasiana/i;
+const BANNED_SRC = /infopublik\.id|infopublik|kompasiana|mediacenter\.palangkaraya\.go\.id|viva\.co\.id\/foto/i;
 function parseFeed(xml) {
   const out = [];
   for (const m of xml.matchAll(/<item[\s>]([\s\S]*?)<\/item>/gi)) {
@@ -408,7 +408,7 @@ const breaking = () => memo('breaking', 25000, async () => {
   ranked.sort((a, b) => (ord[a.cat] ?? 9) - (ord[b.cat] ?? 9) || (b.ts || 0) - (a.ts || 0));
   const prev = cache.get('breaking');
   if (!ranked.length && prev && prev.v && prev.v.items && prev.v.items.length) return { ...prev.v, at: Date.now(), stale: true };
-  return { ok: true, items: ranked, total: matched, at: Date.now(), cycle: 45 };
+  return { ok: true, classifierVersion: SOC.CLASSIFIER_VERSION, items: ranked, total: matched, at: Date.now(), cycle: 45 };
 });
 
 /* ---------- X via cookie sendiri (auth_token + ct0 dari config.json) ---------- */
@@ -928,7 +928,7 @@ const incidents = () => memo('incidents', 55000, async () => {
     items.push({ name: p.name, la: p.la, lo: p.lo, prov: p.prov, prec: 'kab', kind: 'node', label: 'Node',
       title: 'Node pemantauan · ' + p.name, src: 'NODE', url: '', ts: now, weight: 0.16, fixed: true });
   }
-  return { ok: true, items, total: merged.length, raw: out.length, places: GEO.NODES.length, at: now };
+  return { ok: true, classifierVersion: SOC.CLASSIFIER_VERSION, items, total: merged.length, raw: out.length, places: GEO.NODES.length, at: now };
 });
 
 /* ---------- Situasi: agregat kategori + wilayah buat panel dossier ---------- */
@@ -959,7 +959,7 @@ const situation = () => memo('situation', 45000, async () => {
   items.sort((a, b) => b.weight - a.weight || (b.ts || 0) - (a.ts || 0));
   const regionRows = [...regions.entries()].map(([name, n]) => ({ name, n }))
     .sort((a, b) => b.n - a.n).slice(0, 20);
-  return { ok: true, stats, total: items.length, items: items.slice(0, 60), regions: regionRows,
+  return { ok: true, classifierVersion: SOC.CLASSIFIER_VERSION, stats, total: items.length, items: items.slice(0, 60), regions: regionRows,
     sources: srcs.map(s => ({ id: s.id, ok: s.ok, n: s.items.length, err: s.err || '' })), at: now };
 });
 
@@ -2851,6 +2851,7 @@ function rdArticleCandidates(html) {
 function rdExtract(html, finalURL) {
   const meta = rdMeta(html), ld = rdLd(html);
   const art = ld.find(n => /article|posting|news/i.test(String(n['@type'] || ''))) || {};
+  const vid = ld.find(n => /video/i.test(String(n['@type'] || ''))) || {};   // halaman video: body sering di VideoObject.description
   const site = meta['og:site_name'] || rdHost(finalURL);
   let title = rdClean(meta['og:title'] || meta['twitter:title'] || rdName(art.headline) ||
     (html.match(/<title[^>]*>([\s\S]*?)<\/title>/i) || [])[1]);
@@ -2875,9 +2876,14 @@ function rdExtract(html, finalURL) {
   blk.blocks = rdPruneNoise(blk.blocks, title);
   blk.paras = blk.blocks.filter(b => b.k === 'p').map(b => b.t);
   let paras = blk.paras;
-  if (paras.length < 2 && typeof art.articleBody === 'string') {
-    paras = art.articleBody.split(/\n{2,}|(?<=[.!?])\s+(?=[A-Z])/).map(rdInline).filter(t => t.length >= 50).slice(0, 45);
-    blk = { blocks: paras.map(t => ({ k: 'p', t })), paras, videos: [] };
+  if (paras.length < 2) {
+    // articleBody dulu, lalu deskripsi NewsArticle/VideoObject — halaman video
+    // (20detik/antaranews/detik) menyimpan caption artikel di sana, bukan di body.
+    for (const body of [art.articleBody, art.description, vid.description]) {
+      if (typeof body !== 'string' || !body.trim()) continue;
+      const ps = body.split(/\n{2,}|(?<=[.!?])\s+(?=[A-Z])/).map(rdInline).filter(t => t.length >= 50).slice(0, 45);
+      if (ps.length) { paras = ps; blk = { blocks: ps.map(t => ({ k: 'p', t })), paras: ps, videos: [] }; break; }
+    }
   }
   if (!paras.length && desc) {
     paras = [rdInline(desc)];
@@ -3024,7 +3030,7 @@ function rdAssembleBlocks(d) {
   d.blocks = out;
   return d;
 }
-async function rdFinish(d, url, html) {
+async function rdFinish(d, url, html, via) {
   // hydrate video probes dan resolusi hero thumb jalan PARALEL — keduanya network
   // dan tidak saling depend (thumb baca html, hydrate baca d.videos).
   const hydP = rdHydrateVideos(d, url);
@@ -3032,7 +3038,10 @@ async function rdFinish(d, url, html) {
   // html sudah di-fetch rdRead → pakai thumbFromHtml (zero fetch tambahan). Tanpa html → thumb() fallback.
   // Hasil ikut di-cache supaya wire lead tidak fetch ulang. Hero harus final SEBELUM rdAssembleBlocks (dedupe hero vs body).
   let thumbImg = '';
-  if (html !== null && !/youtube\.com|youtu\.be/i.test(url)) {
+  // html null = pemenang non-HTML (Jina/meta). Jina (via 'race') tetap boleh thumb() —
+  // thumbCache membuatnya murah kalau wire sudah fetch, dan Jina sering menang race
+  // padahal direct sebenarnya sanggup. 'meta' = semua fetch gagal → skip, jangan buang waktu.
+  if ((html !== null || via !== 'meta') && !/youtube\.com|youtu\.be/i.test(url)) {
     try {
       const t = html ? await thumbFromHtml(html, url) : await thumb(url);
       if (t && t.img) {
@@ -3093,7 +3102,12 @@ async function rdRead(raw) {
     let fetchMs = 0;
     const fin = async (d, url, html, via) => {
       const m0 = Date.now();
-      const r = await rdFinish(d, url, html);
+      const r = await rdFinish(d, url, html, via);
+      // halaman video: konten utamanya video, bukan artikel — tandai supaya UI
+      // tidak salah-baca thin sebagai "login/JS". Video playable = file/iframe,
+      // bukan 'probe' yang belum teresolve.
+      const playable = (r.videos || []).some(v => v.kind !== 'probe') || (r.blocks || []).some(b => b.k === 'v' && b.v && b.v.kind !== 'probe');
+      if (r.thin && playable) r.videoPage = true;
       r.t = { ms: Date.now() - t0, fetch: fetchMs, media: Date.now() - m0, via };
       console.log('[read]', via, r.t.ms + 'ms', 'fetch:' + fetchMs, 'media:' + r.t.media);
       return r;
@@ -3298,7 +3312,7 @@ http.createServer(async (req, res) => {
         for (const s of srcs) for (const i of s.items) if (i.img) { const k = rdImgKey(i.img); if (!cnt.has(k)) cnt.set(k, new Set()); cnt.get(k).add(i.url); }
         for (const s of srcs) for (const i of s.items) if (i.img && cnt.get(rdImgKey(i.img)).size > 1) i.img = '';
       }
-      return json({ sources: srcs.map(s => ({ ...s, items: s.items.map(i => {
+      return json({ classifierVersion: SOC.CLASSIFIER_VERSION, sources: srcs.map(s => ({ ...s, items: s.items.map(i => {
         const cat = catOf(i.title);
         return { ...i, cat, feedTopic: feedCatOf(s.id), assessment: assessNews(i.title), label: cat ? catMeta(cat).label : '' };
       }) })), at: Date.now() });

@@ -7,7 +7,7 @@
 
   // Default bawaan client. Boleh diadopsi ulang dari classifierVersion snapshot
   // terbaru di reconcile() — server berhak bump versi classifier kapan saja.
-  let VERSION = '2026-11-07.2';
+  let VERSION = '2026-11-07.3';
   const SIGNAL_WINDOW = 90 * 60 * 1000;
   const RETENTION_WINDOW = 24 * 60 * 60 * 1000;
   const REPORT_TYPES = new Set(['reported', 'warning']);
@@ -229,5 +229,11 @@
     return { accepted: true, posts: Array.from(currentMap.values()) };
   }
 
-  return { get VERSION() { return VERSION; }, buildGroups, related, reconcile, tokens, matches, relation };
+  // Adopsi langsung dari payload same-origin yang dipercaya (mis. /api/situation)
+  // tanpa perlu snapshot + proof posts seperti reconcile().
+  function adoptClassifierVersion(v) {
+    if (typeof v === 'string' && v && v !== VERSION) VERSION = v;
+  }
+
+  return { get VERSION() { return VERSION; }, adoptClassifierVersion, buildGroups, related, reconcile, tokens, matches, relation };
 }));

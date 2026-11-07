@@ -29,11 +29,11 @@ function payload(posts, snapshotAt = NOW) {
 }
 
 test('CommonJS and browser UMD expose the same explicit version and API', () => {
-  assert.equal(signals.VERSION, '2026-11-07.2');
+  assert.equal(signals.VERSION, '2026-11-07.3');
   const context = vm.createContext({});
   vm.runInContext(fs.readFileSync(require.resolve('../public/signals'), 'utf8'), context);
   assert.equal(context.SitrepSignals.VERSION, signals.VERSION);
-  for (const name of ['buildGroups', 'related', 'reconcile', 'tokens', 'matches']) {
+  for (const name of ['adoptClassifierVersion', 'buildGroups', 'related', 'reconcile', 'tokens', 'matches']) {
     assert.equal(typeof context.SitrepSignals[name], 'function');
   }
 });
