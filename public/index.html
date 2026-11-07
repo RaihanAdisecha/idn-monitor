@@ -5098,7 +5098,7 @@ function tvOpen(){
   try { saved = JSON.parse(localStorage.getItem('sitrep.tv2') || 'null'); } catch (e) {}
   const r = w.getBoundingClientRect();
   if (saved && Number.isFinite(saved.x) && Number.isFinite(saved.y)) tvPlace(saved.x, saved.y);
-  else tvPlace(18, Math.max(6, Math.min(innerHeight - r.height - 44, (innerHeight - r.height) / 2)));
+  else tvPlace(18, innerHeight - r.height - 44);
   tvPlay();
 }
 function tvClose(){
