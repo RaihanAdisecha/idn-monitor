@@ -35,7 +35,7 @@ Semua secret dibaca dari env / `.env` (file `.env` dimuat otomatis oleh `server.
 | `X_BEARER`, `X_QUERY_ID` | Opsional — override bearer/query-id X |
 | `PORT` / `SERVER_PORT` | Port listen (default 8787) |
 
-`config.json` hanya berisi non-secret: port, daftar query X/Threads, host CCTV/TV.
+`config.json` hanya berisi non-secret: port, host CCTV/TV. Topik sosial (X + Threads) ada di `social.js` (`SOC_TOPICS`): satu registry untuk query, klasifikasi, dan chip.
 
 ## Struktur
 

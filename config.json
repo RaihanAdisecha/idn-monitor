@@ -1,30 +1,6 @@
 {
   "port": 8787,
-  "x": {
-    "queries": [
-      "demo indonesia",
-      "unjuk rasa",
-      "aksi massa",
-      "kebakaran",
-      "banjir",
-      "karhutla",
-      "gempa",
-      "kecelakaan",
-      "penembakan",
-      "pencurian",
-      "penangkapan",
-      "phk",
-      "rupiah",
-      "listrik padam",
-      "wabah",
-      "pemilu",
-      "ransomware",
-      "bssn",
-      "serangan siber",
-      "akun dibajak",
-      "ihsg"
-    ]
-  },
+  "x": {},
   "cctv_hosts": [
     "balitower.co.id",
     "jakarta.go.id",
@@ -51,30 +27,8 @@
     "siar.us",
     "dens.tv"
   ],
-  "threads": {
-    "queries": [
-      "demo indonesia",
-      "unjuk rasa",
-      "kebakaran",
-      "banjir",
-      "karhutla",
-      "gempa",
-      "kecelakaan",
-      "penembakan",
-      "pencurian",
-      "penangkapan",
-      "phk",
-      "rupiah",
-      "listrik padam",
-      "wabah",
-      "pemilu",
-      "pilkada",
-      "ransomware",
-      "serangan siber",
-      "akun dibajak",
-      "bssn"
-    ]
-  },
+  "threads": {},
   "tomtom": {},
-  "insecure_tls": false
+  "insecure_tls": false,
+  "_note": "Topik sosial (X + Threads) ada di social.js (SOC_TOPICS). Satu registry, bukan daftar query per platform."
 }

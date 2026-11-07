@@ -1,4 +1,5 @@
 // node server.js  (Node 18+, tanpa dependency)
+const SOC = require('./social');
 const http = require('http'), fs = require('fs'), path = require('path'), dns = require('dns').promises;
 // muat .env sederhana (satu baris KEY=VALUE) agar TOMTOM_API_KEY bisa dari env
 try {
@@ -47,15 +48,24 @@ const HIST_DIR = path.join(__dirname, 'data');
 const xHist = new Map(), tHist = new Map();
 const histKey = p => p.url || p.text || p.code || '';
 const histTs = p => p.ts || Date.parse(p.created_at || '') || 0;
-const HIST_MAX = { x: 400, th: 200 }, HIST_AGE = 12 * 3600e3;
+const HIST_MAX = { x: 600, th: 300 }, HIST_AGE = 24 * 3600e3;
+let ADHOC = [];   // topik dinamis dari berita yang lagi naik (nama kasus), in-memory
+const histUser = p => String(p.handle || p.username || '').toLowerCase();
 function histMerge(map, posts, max, file) {
   for (const p of posts) { const k = histKey(p); if (k) map.set(k, p); }
-  const arr = [...map.entries()].map(([k, p]) => [k, histTs(p)]).sort((a, b) => b[1] - a[1]);
-  const now = Date.now(), keep = new Set();
-  for (const [k, ts] of arr) {
-    if (keep.size >= max || now - ts > HIST_AGE) map.delete(k); else keep.add(k);
-  }
+  const now = Date.now();
+  const arr = [...map.values()].filter(p => now - histTs(p) <= HIST_AGE).sort((a, b) => histTs(b) - histTs(a));
+  const kept = SOC.socBalance(arr, max, histUser);   // cap per topik + per akun, biar karhutla nggak makan buffer
+  map.clear();
+  for (const p of kept) map.set(histKey(p), p);
   histSave(file, map, max);
+}
+// klasifikasi ulang history yang dimuat dari disk: buang post lama yang nggak lolos aturan sekarang
+function histRetag(map, keep) {
+  for (const [k, p] of [...map.entries()]) {
+    p.topics = SOC.socTopics(p.text);
+    if (!p.topics.length || !keep(p)) map.delete(k);
+  }
 }
 const histSaveAt = {};
 function histSave(file, map, max) {
@@ -76,6 +86,7 @@ function histLoad(file, map) {
 }
 histLoad(path.join(HIST_DIR, 'x-history.json'), xHist);
 histLoad(path.join(HIST_DIR, 'threads-history.json'), tHist);
+histRetag(xHist, SOC.socKeepX); histRetag(tHist, SOC.socKeepTh);
 const memoRetry = new Map();   // k -> jumlah retry gagal beruntun
 const memo = (k, ttl, fn) => {
   const kick = () => {   // refresh background + auto-retry backoff bila gagal (self-heal tanpa nunggu request)
@@ -418,89 +429,127 @@ const trendingQueries = () => memo('trending', 10 * 60e3, async () => {
     return out;
   } catch (e) { return []; }
 });
+/* ---------- X + Threads: pipeline berbasis topic registry (social.js) ---------- */
+const adhocRefresh = async () => {
+  try {
+    const tr = (await trendingQueries()).filter(ph => ph.length <= 30 && !SKIP_RE.test(ph) && !SOC.SOC_FOREIGN_RE.test(ph)
+      && !SOC.SOC_TOPICS.some(t => t.id === ph.toLowerCase()));
+    ADHOC = SOC.socAdhoc(tr);
+  } catch (e) { ADHOC = []; }
+  return ADHOC;
+};
+const topicOf = q => SOC.SOC_TOPICS.concat(ADHOC).find(t => t.id === String(q).toLowerCase());
+const tagX = (p, extra) => { p.topics = SOC.socTopics(p.text, extra || ADHOC); return p.topics.length > 0 && SOC.socKeepX(p); };
+const tagTh = (p, extra) => { p.topics = SOC.socTopics(p.text, extra || ADHOC); return p.topics.length > 0 && SOC.socKeepTh(p); };
+const socPosts = () => [
+  ...[...xHist.values()].map(p => ({ topics: p.topics, platform: 'x', user: p.handle, ts: histTs(p) })),
+  ...[...tHist.values()].map(p => ({ topics: p.topics, platform: 'th', user: p.username, ts: histTs(p) }))];
+// chip + trending + statistik lintas platform, semuanya dari history sosial itu sendiri
+const socMeta = () => {
+  const { stats, hot } = SOC.socHot(socPosts());
+  return { queries: SOC.SOC_TOPICS.map(t => t.id).concat(ADHOC.map(t => t.id)),
+    trending: hot.map(h => h.id), both: hot.filter(h => h.both).map(h => h.id), hot, stats };
+};
+let xTick = 0;
 const xposts = () => memo('x', 300000, async () => {
-  const tr = (await trendingQueries()).slice(0, 4);
-  const base = (X.queries || []).slice(0, 8);
-  const queries = base.concat(tr.filter(t => !base.includes(String(t).toLowerCase()))).slice(0, 10);
-  if (!xHas()) return { ok: false, err: 'auth_token / ct0 belum diisi di config.json', posts: [], queries, trending: tr };
-  const all = new Map(), errs = [];
-  // paralel per 5 query: sinkron tetap cepat, satu query gagal tidak menjatuhkan yang lain
+  await adhocRefresh();
+  const meta0 = socMeta();
+  if (!xHas()) return { ok: false, err: 'auth_token / ct0 belum diisi di config.json', posts: [], ...meta0 };
+  // rotasi: 8 query per siklus (jaga rate limit SearchTimeline) + semua topik ad-hoc + 2 topik terpanas
+  const all = SOC.socQueries('x', ADHOC), first = xTick === 0, N = first ? all.length : 8, start = first ? 0 : ((xTick - 1) * N) % all.length, sel = new Map();
+  xTick++;   // siklus pertama tarik SEMUA topik biar chip nggak 0 semua; sesudahnya rotasi 8/siklus
+  for (let i = 0; i < Math.min(N, all.length); i++) { const e = all[(start + i) % all.length]; sel.set(e.q, e); }
+  const hotTop = meta0.trending.slice(0, 2);
+  for (const e of all) if (ADHOC.some(a => a.id === e.t) || hotTop.includes(e.t)) sel.set(e.q, e);
+  const queries = [...sel.values()], errs = [], batch = [], now = Date.now();
   for (let i = 0; i < queries.length; i += 5) {
     const chunk = queries.slice(i, i + 5);
-    const rs = await Promise.allSettled(chunk.map(q => xSearch(q)));
+    const rs = await Promise.allSettled(chunk.map(e => xSearch(e.q)));
     rs.forEach((r, j) => {
-      const q = chunk[j];
-      if (r.status === 'rejected') { errs.push(q + ': ' + String(r.reason && r.reason.message || r.reason)); return; }
+      const e = chunk[j];
+      if (r.status === 'rejected') { errs.push(e.t + ': ' + String(r.reason && r.reason.message || r.reason)); return; }
       for (const p of r.value) {
-        const key = p.url || p.text;
-        const ex = all.get(key);
-        if (ex) { if (!ex.qs.includes(q)) ex.qs.push(q); }
-        else all.set(key, { ...p, q, qs: [q] });
+        if (!p.ts || now - p.ts > 48 * 3600e3) continue;
+        if (!tagX(p)) continue;
+        p.q = e.t; p.qs = p.topics.slice();
+        batch.push(p);
       }
     });
   }
-  // tiap query dijamin punya wakil: 6 teratas per query, sisanya diisi yang terhangat
-  const byQ = new Map();
-  for (const p of all.values()) for (const q of p.qs || [p.q]) {
-    if (!byQ.has(q)) byQ.set(q, []);
-    byQ.get(q).push(p);
-  }
-  const picked = new Set(), pool = [];
-  for (const arr of byQ.values()) {
-    arr.sort((a, b) => b.ts - a.ts);
-    for (const p of arr.slice(0, 6)) { picked.add(p); pool.push(p); }
-  }
-  const rest = [...all.values()].filter(p => !picked.has(p)).sort((a, b) => b.ts - a.ts);
-  const batch = pool.concat(rest).sort((a, b) => b.ts - a.ts).slice(0, 160);
   histMerge(xHist, batch, HIST_MAX.x, path.join(HIST_DIR, 'x-history.json'));
-  const posts = [...xHist.values()].sort((a, b) => (b.ts || 0) - (a.ts || 0)).slice(0, HIST_MAX.x);
-  return { ok: posts.length > 0, err: errs.join(' | '), posts, queries, trending: tr, at: Date.now() };
+  const posts = [...xHist.values()].sort((a, b) => histTs(b) - histTs(a));
+  return { ok: posts.length > 0, err: errs.join(' | '), posts, ...socMeta(), at: Date.now() };
 });
-/* ---------- X lazy: satu query trending on-demand, merge ke history ---------- */
+/* ---------- X lazy: satu topik on-demand (klik chip yang masih kosong) ---------- */
 const xqLazy = q => memo('xq:' + String(q).toLowerCase(), 600000, async () => {
   if (!xHas()) throw new Error('auth_token / ct0 belum diisi');
-  const rs = await xSearch(q);
-  const now = Date.now();
-  const batch = rs.filter(p => p.ts && now - p.ts < 48 * 3600e3)
-    .map(p => ({ ...p, q, qs: [q] })).slice(0, 20);
+  const tp = topicOf(q), extra = tp ? ADHOC : ADHOC.concat(SOC.socAdhoc([q]));
+  const qs = tp ? tp.x : ['"' + q + '" lang:id -filter:replies'];
+  const rs = await Promise.allSettled(qs.map(x => xSearch(x)));
+  const now = Date.now(), batch = [];
+  for (const r of rs) if (r.status === 'fulfilled') for (const p of r.value) {
+    if (!p.ts || now - p.ts > 48 * 3600e3 || !tagX(p, extra)) continue;
+    p.q = String(q).toLowerCase(); p.qs = p.topics.slice(); batch.push(p);
+  }
+  if (!batch.length && rs.every(r => r.status === 'rejected')) throw rs[0].reason;
   histMerge(xHist, batch, HIST_MAX.x, path.join(HIST_DIR, 'x-history.json'));
-  return [...xHist.values()].sort((a, b) => (b.ts || 0) - (a.ts || 0)).slice(0, HIST_MAX.x);
+  return [...xHist.values()].sort((a, b) => histTs(b) - histTs(a));
 });
 
 /* ---------- Threads: toolzerhub/threads-scraper (MIT) lewat worker Python ---------- */
 const { execFile } = require('child_process');
 const TH = CFG.threads || {};
-const TH_QUERIES = TH.queries || ['demo indonesia', 'unjuk rasa', 'kebakaran', 'banjir', 'karhutla'];
-const TH_RE = INCIDENT_RE;
 const PY_BIN = [
   TH.python,
   path.join(__dirname, '.venv', 'bin', 'python'),
   path.join(__dirname, '.venv', 'Scripts', 'python.exe'),
   'python3'
 ].filter(Boolean).find(p => p === 'python3' || fs.existsSync(p));
+const runTh = (queries, timeout) => new Promise((resolve, reject) => {
+  execFile(PY_BIN, [path.join(__dirname, 'vendor', 'threads_worker.py'), JSON.stringify(queries)],
+    { timeout, maxBuffer: 12 << 20 },
+    (err, stdout, stderr) => {
+      if (err) return reject(new Error(String(stderr || err.message).replace(/\s+/g, ' ').slice(0, 240)));
+      try { resolve(JSON.parse(stdout)); } catch (e) { reject(new Error('worker bukan JSON valid')); }
+    });
+});
+function thCollect(rs, extra) {
+  const now = Date.now(), batch = [], errs = [];
+  for (const r of rs) {
+    if (r.status === 'rejected') { errs.push({ q: '*', err: String(r.reason && r.reason.message || r.reason) }); continue; }
+    for (const e of r.value.errs || []) errs.push(e);
+    for (const p of r.value.posts || []) {
+      if (!p || !p.code || !p.text) continue;
+      if (p.created_at && now - Date.parse(p.created_at) > 72 * 3600e3) continue;
+      if (!tagTh(p, extra)) continue;
+      p.qs = p.topics.slice();
+      batch.push(p);
+    }
+  }
+  return { batch, errs };
+}
 const threads = () => memo('threads', 240000, async () => {
   if (!PY_BIN) throw new Error('Python tidak ditemukan. Jalankan: python3 -m venv .venv && .venv/bin/pip install curl_cffi');
-  // Threads worker sequential per query (timeout 200s total) → jatah adaptif lebih kecil
-  const tr = (await trendingQueries()).slice(0, 3);
-  const baseT = TH_QUERIES.map(q => String(q).toLowerCase());
-  const queries = TH_QUERIES.concat(tr.filter(t => !baseT.includes(String(t).toLowerCase())));
-  const raw = await new Promise((resolve, reject) => {
-    execFile(PY_BIN, [path.join(__dirname, 'vendor', 'threads_worker.py'), JSON.stringify(queries)],
-      { timeout: 200000, maxBuffer: 12 << 20 },
-      (err, stdout, stderr) => {
-        if (err) return reject(new Error(String(stderr || err.message).replace(/\s+/g, ' ').slice(0, 240)));
-        try { resolve(JSON.parse(stdout)); } catch (e) { reject(new Error('worker bukan JSON valid')); }
-      });
-  });
-  const now = Date.now();
-  const batch = (raw.posts || [])
-    .filter(p => p && p.code && p.text && TH_RE.test(p.text))
-    .filter(p => !p.created_at || now - Date.parse(p.created_at) < 96 * 3600e3)
-    .sort((a, b) => Date.parse(b.created_at || 0) - Date.parse(a.created_at || 0))
-    .slice(0, 48);
+  await adhocRefresh();
+  // 3 worker paralel (round-robin), satu worker gagal nggak menjatuhkan yang lain
+  const qs = [...new Set(SOC.socQueries('th', ADHOC).map(e => e.q))], chunks = [[], [], []];
+  qs.forEach((q, i) => chunks[i % 3].push(q));
+  const rs = await Promise.allSettled(chunks.filter(c => c.length).map(c => runTh(c, 150000)));
+  if (rs.every(r => r.status === 'rejected')) throw rs[0].reason;
+  const { batch, errs } = thCollect(rs);
   histMerge(tHist, batch, HIST_MAX.th, path.join(HIST_DIR, 'threads-history.json'));
-  const posts = [...tHist.values()].sort((a, b) => Date.parse(b.created_at || 0) - Date.parse(a.created_at || 0)).slice(0, HIST_MAX.th);
-  return { ok: posts.length > 0, posts, errs: raw.errs || [], queries, trending: tr, at: Date.now() };
+  const posts = [...tHist.values()].sort((a, b) => histTs(b) - histTs(a));
+  return { ok: posts.length > 0, posts, errs, ...socMeta(), at: Date.now() };
+});
+/* ---------- Threads lazy: topik on-demand (sebelumnya nggak ada, makanya chip kosong) ---------- */
+const thqLazy = q => memo('thq:' + String(q).toLowerCase(), 600000, async () => {
+  if (!PY_BIN) throw new Error('Python tidak ditemukan');
+  const tp = topicOf(q), extra = tp ? ADHOC : ADHOC.concat(SOC.socAdhoc([q]));
+  const r = await Promise.allSettled([runTh(tp ? tp.th : [String(q)], 90000)]);
+  if (r[0].status === 'rejected') throw r[0].reason;
+  const { batch } = thCollect(r, extra);
+  histMerge(tHist, batch, HIST_MAX.th, path.join(HIST_DIR, 'threads-history.json'));
+  return [...tHist.values()].sort((a, b) => histTs(b) - histTs(a));
 });
 
 /* ---------- THREAD: post + balasan (X via search conversation, Threads via worker) ---------- */
@@ -1333,6 +1382,7 @@ function addCandidate(out, raw, base, kind) {
     if (/\.(svg|gif)(\?|$)/i.test(x.pathname)) return;
     const fn = x.pathname.split('/').pop() || '';
     if (/(logo|logotype|semangka|favicon|sprite|watermark|placeholder|avatar|icon|default)/i.test(fn)) return;   // aset situs, bukan foto berita
+    if (rdJunkUrl(x.href)) return;   // badge app-store, icon sosmed, tracker, foto wartawan, dll
     const url = x.href;
     if (!out.some(c => c.url === url)) out.push({ url, kind });
   } catch (e) {}
@@ -1383,7 +1433,7 @@ function sourceImages(html, base, bodyHtml) {
   const scan = bodyHtml || html;
   for (const m of scan.matchAll(/<img\b[^>]*>/gi)) {
     const a = attrs(m[0]);
-    if (/logo|icon|avatar|badge|spacer|pixel|blank|sprite|watermark/i.test((a.class || '') + ' ' + (a.alt || ''))) continue;
+    if (/logo|icon|avatar|badge|spacer|pixel|blank|sprite|watermark|author|wartawan|penulis|byline|social|app[-_ ]?(store|badge)/i.test((a.class || '') + ' ' + (a.alt || ''))) continue;
     if (a.srcset) {
       const best = a.srcset.split(',').map(s => s.trim().split(/\s+/))
         .sort((x, y) => (parseInt(y[1], 10) || 0) - (parseInt(x[1], 10) || 0))[0];
@@ -1565,6 +1615,7 @@ async function thumbFromHtml(rawHtml, article) {
   // body scan dibatasi ke container artikel (rdArticleCandidates[0] = paling presisi)
   // dan dipotong sebelum seksi "berita terkait" — menghilangkan thumbnail related/news lain
   let bodySrc = rdArticleCandidates(html)[0] || html;
+  bodySrc = rdStripJunkContainers(bodySrc);   // buang author box/related/widget sebelum scan gambar body
   const relAt = bodySrc.search(/baca juga|berita terkait|artikel terkait|lihat juga|bacaan|recommended|baca selengkapnya/i);
   if (relAt > 1500) bodySrc = bodySrc.slice(0, relAt);
   const { meta, body } = sourceImages(html, article, bodySrc);
@@ -1941,6 +1992,25 @@ const RD_CREDIT = /\b(?:foto|istimewa|dok\.?)\s*:/i;
 const VID_IFRAME = /(?:youtube\.com\/(?:embed|shorts)\/|youtube-nocookie\.com\/(?:embed|shorts)\/|youtu\.be\/|player\.vimeo\.com\/|facebook\.com\/plugins\/video|\/embed\/|\/player\/|\/video-embed\/)/i;
 const VID_FILE = /\.(mp4|webm|mov|m4v|m3u8|mpd)(\?|#|$)/i;
 const RD_IMG_JUNK = /logo|icon|sprite|avatar|badge|placeholder|blank|pixel|spacer|advert|\/ads?\/|[-_/.]ads?[-_/.]|banner|emoji|button|share|loading|lazy\.|default[-_]|no[-_]?image|gravatar|thumb(?:nail)?s?\/small/i;
+// blacklist URL gambar sampah (audit 12 feed): badge app-store, icon sosmed, tracker/pixel,
+// aset UI publisher, thumbnail youtube, foto wartawan — berlaku untuk hero (addCandidate)
+// maupun gambar body (pickImg), satu sumber kebenaran
+const RD_JUNK_URL = /appstore|playstore|googleplay|gettheapp|framebarasset|partials\/|widgets-nocache|analytics_page_request|inpicture|wartawan|scorecard|criteo|doubleclick|googlesyndication|adservice|hotjar|facebook\.net|img\.youtube\.com|(^|\/)ic_[a-z0-9]|en-flag|id-flag|thumb_|\/mini\/|\/small\/|\/img\/site\/|foot[-_ ]?network|foto[-_/]bank|fotobank/i;
+const RD_JUNK_BASE = /^(ig|fb|twitter|x|tiktok|instagram|youtube|wa|whatsapp|linkedin|googleplay|appstore|playstore|en-flag|id-flag)([-_. ]|$)/i;
+function rdJunkUrl(u) {
+  const path = String(u).split('?')[0];
+  if (RD_JUNK_URL.test(path)) return true;
+  return RD_JUNK_BASE.test(path.split('/').pop() || '');
+}
+// container DOM yang isinya bukan konten artikel: reaksi, author box, foto wartawan,
+// section related/baca-juga — dibuang sebelum scan gambar maupun paragraf
+const RD_BAD_BOX = /reaction|reactions|rating|emoticon|emoji|vote|poll|like-box|dislike|social-share|article-tools|post-tools|share-tools|komentar|comment-box|author[-_ ]?(box|img|image|photo|profile|info|bio)|wartawan|penulis|byline|redaksi|profile[-_ ]?(box|img|image)|related|baca[-_ ]?juga|terkait|recommend|most[-_ ]?read|injected|sidebar/i;
+function rdStripJunkContainers(s) {
+  const re = new RegExp('<(div|span|p|section|ul|ol|table|figure)\\b[^>]*(?:class|id)=["\'][^"\']*(?:' + RD_BAD_BOX.source + ')[^"\']*["\'][^>]*>[\\s\\S]*?<\\/\\1\\s*>|<(div|span|p|section|ul|ol|table|figure)\\b[^>]*(?:class|id)=["\'][^"\']*(?:' + RD_BAD_BOX.source + ')[^"\']*["\'][^>]*\\/>', 'gi');
+  let prev, i = 0;
+  do { prev = s; s = s.replace(re, ' '); } while (s !== prev && ++i < 3);
+  return s;
+}
 const rdImgKey = u => String(u).split('?')[0].replace(/-\d+x\d+(?=\.\w+$)/, '').replace(/\.\w+$/, '').toLowerCase();
 const rdAbs = (u, base) => { if (!u) return ''; try { u = new URL(u, base).href; } catch (e) { return ''; } return /^https?:/i.test(u) ? u : ''; };
 const rdYT = u => { const m = String(u).match(/(?:youtube\.com\/(?:embed|shorts)\/|youtu\.be\/|youtube-nocookie\.com\/(?:embed|shorts)\/)([A-Za-z0-9_-]{6,15})/i); return m ? 'https://www.youtube.com/embed/' + m[1] : ''; };
@@ -1975,9 +2045,8 @@ function rdBlocks(html, finalURL) {
     vseen.add(k); vids.push(v);
     return '\n@@RDV' + (vids.length - 1) + '@@\n';
   });
-  // buang container reaksi/emoji/rating/social-widget sebelum scan gambar — isinya bukan konten artikel
-  s = s.replace(/<(div|span|p|section|ul|ol|table|figure)\b[^>]*(?:class|id)=["'][^"']*(?:reaction|reactions|rating|emoticon|emoji|vote|poll|like-box|dislike|social-share|article-tools|post-tools|share-tools|komentar|comment-box)[^"']*["'][^>]*>[\s\S]*?<\/\1\s*>/gi, ' ');
-  s = s.replace(/<(div|span|p|section|ul|ol|table|figure)\b[^>]*(?:class|id)=["'][^"']*(?:reaction|reactions|rating|emoticon|emoji|vote|poll|like-box|dislike|social-share|article-tools|post-tools|share-tools|komentar|comment-box)[^"']*["'][^>]*\/>/gi, ' ');
+  // buang container reaksi/author-box/related-widget sebelum scan gambar — isinya bukan konten artikel
+  s = rdStripJunkContainers(s);
   // gambar dalam badan artikel: simpan di posisi aslinya (figure+figcaption atau <img> lepas)
   const imgs = [], iseen = new Set();
   const pickImg = tag => {
@@ -1989,7 +2058,10 @@ function rdBlocks(html, finalURL) {
     if (!u) u = attr('src');
     u = rdAbs(u, finalURL);
     if (!u || /^data:/i.test(u)) return null;
-    if (RD_IMG_JUNK.test(u) || /\.(svg|gif|ico|cur)(\?|#|$)/i.test(u)) return null;
+    if (u.split('?')[0] === String(finalURL).split('?')[0]) return null;   // lazy-load placeholder = URL artikel itu sendiri
+    if (RD_IMG_JUNK.test(u) || rdJunkUrl(u) || /\.(svg|gif|ico|cur)(\?|#|$)/i.test(u)) return null;
+    const sm = u.match(/(?:^|[\/=_.-])(\d{3,4})[x\/](\d{3,4})(?=[\/_?.&#]|$)/);   // render-size di URL: 300/169, 350x233, w=100
+    if (sm && +sm[1] < 600) return null;   // thumbnail related/preview, bukan foto artikel
     if (/(\/|_)(banner|promo|iklan|widget|sidebar|stripbanner|avatar|logo|emoji|emoticon|reaction|rating|vote|poll|tracking|pixel|spacer|blank|1x1)(\/|[-_.]|$)/i.test(u.split('?')[0])) return null;
     const w = parseInt(attr('width')) || 0, h = parseInt(attr('height')) || 0;
     if ((w && w < 280) || (h && h < 160)) return null;
@@ -2524,7 +2596,13 @@ http.createServer(async (req, res) => {
     if (u.pathname === '/api/xq') {
       const q = (u.searchParams.get('q') || '').trim().slice(0, 60);
       if (!q) return json({ ok: false, err: 'query kosong' });
-      try { return json({ ok: true, posts: await xqLazy(q), at: Date.now() }); }
+      try { return json({ ok: true, posts: await xqLazy(q), ...socMeta(), at: Date.now() }); }
+      catch (e) { return json({ ok: false, err: String(e.message || e).slice(0, 200) }); }
+    }
+    if (u.pathname === '/api/thq') {
+      const q = (u.searchParams.get('q') || '').trim().slice(0, 60);
+      if (!q) return json({ ok: false, err: 'query kosong' });
+      try { return json({ ok: true, posts: await thqLazy(q), ...socMeta(), at: Date.now() }); }
       catch (e) { return json({ ok: false, err: String(e.message || e).slice(0, 200) }); }
     }
     if (u.pathname === '/api/thread') {

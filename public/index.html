@@ -480,20 +480,28 @@ a{color:inherit;text-decoration:none;text-underline-offset:2px}
 .tgl[aria-pressed="true"]{background:var(--text);color:#161616;border-color:var(--text)}
 
 /* ============================================================ X FEED */
-.qchips{display:flex;gap:2px;padding:9px 12px 0;border-bottom:1px solid var(--border);overflow-x:auto;scrollbar-width:none;
+.qchips{display:flex;align-items:stretch;gap:2px;padding:0 12px;border-bottom:1px solid var(--border);overflow-x:auto;scrollbar-width:none;
   -webkit-mask-image:linear-gradient(90deg,#000 calc(100% - 20px),transparent);mask-image:linear-gradient(90deg,#000 calc(100% - 20px),transparent)}
 .qchips::-webkit-scrollbar{display:none}
 .qc{
-  position:relative;flex:none;height:30px;padding:0 10px;background:none;border:0;cursor:pointer;
+  position:relative;flex:none;min-height:44px;padding:0 10px;background:none;border:0;cursor:pointer;
+  display:flex;flex-direction:column;align-items:flex-start;justify-content:center;gap:5px;
   font:600 9px/1 var(--mono);letter-spacing:.08em;color:var(--text3);white-space:nowrap;
   transition:color .12s;
 }
 .qc:hover{color:var(--text2)}
 .qc::after{content:"";position:absolute;left:9px;right:9px;bottom:0;height:2px;background:transparent;transition:background .12s}
-.qc-sep{flex:none;align-self:center;width:1px;height:16px;background:var(--border2);margin:0 9px 0 5px}
+.qc-sep{flex:none;align-self:center;width:1px;height:20px;background:var(--border2);margin:0 9px 0 5px}
 .qc[aria-pressed="true"]{color:var(--text)}
 .qc[aria-pressed="true"]::after{background:var(--accent)}
 .qc.hot .qa{color:var(--ok);font-weight:700}
+.qc .qt{display:block}
+.qc .qp{display:flex;align-items:center;gap:7px;font:500 9px/1 var(--mono);letter-spacing:.02em;font-variant-numeric:tabular-nums;color:var(--text3)}
+.qc .qp span{display:inline-flex;align-items:center;gap:3px;opacity:.55}
+.qc .qp span.on{opacity:1;color:var(--text2)}
+.qc .qp span.zr{opacity:.28}
+.qc .qp .ic{width:9px;height:9px;flex:none}
+.qc.z .qt{opacity:.55}
 .tw{
   position:relative;display:grid;grid-template-columns:40px minmax(0,1fr);gap:12px;
   padding:15px 14px 13px;border-bottom:1px solid var(--border);transition:background .12s;
@@ -2668,7 +2676,7 @@ function termHit(text, q){
   return words.every(w => t.includes(' ' + w + ' '));
 }
 function xMatchQ(p, q){
-  return (p.qs || [p.q]).includes(q) || termHit((p.text || '') + ' ' + (p.handle || '') + ' ' + (p.name || ''), q);
+  return (p.topics || p.qs || [p.q]).includes(q);   // topics[] diklasifikasi server (social.js), bukan tebakan kata
 }
 const xqTried = new Set();
 async function xLazy(q){
@@ -2678,6 +2686,7 @@ async function xLazy(q){
   try {
     const d = await getJson(API + '/api/xq?q=' + encodeURIComponent(q), 30000);
     if (!d || !d.ok || !d.posts) return;
+    socApply(d); renderQchips(); renderQChipsTh();
     for (const p of d.posts) {
       const key = p.url || p.text;
       const ex = xAll.get(key);
@@ -2688,20 +2697,31 @@ async function xLazy(q){
     renderX();
   } catch (e) {}
 }
-function qchipsHtml(queries, trending, active){
-  const norm = s => String(s).toLowerCase();
-  const tr = [...new Set((trending || []).map(norm))];
+let socStats = {}, socBoth = [];
+const TOPIC_LABEL = { phk:'PHK', ihsg:'IHSG', bssn:'BSSN', ransomware:'Ransomware' };
+const topicLabel = q => TOPIC_LABEL[q] || String(q).replace(/(^|\s)(\S)/g, (m, a, b) => a + b.toUpperCase());
+function qchipsHtml(queries, trending, active, me, other){
+  const tr = trending || [], bo = new Set(socBoth);
+  const n = (q, k) => (socStats[q] && socStats[q][k]) || 0;
   const all = [...new Set(queries || [])];
-  const isHot = q => { const n = norm(q); return tr.some(t => t === n || n.includes(t) || t.includes(n)); };
-  const hot = all.filter(isHot).sort((a, b) => (tr.includes(norm(b)) ? 1 : 0) - (tr.includes(norm(a)) ? 1 : 0)), rest = all.filter(q => !isHot(q));
-  const chip = q =>
-    `<button class="qc${isHot(q) ? ' hot' : ''}" type="button" data-q="${esc(q)}" aria-pressed="${q === active}"${isHot(q) ? ' title="Trending hari ini"' : ''}>${isHot(q) ? '<b class="qa">↑</b> ' : ''}${esc(q)}</button>`;
-  return `<button class="qc" type="button" data-q="" aria-pressed="${active === ''}">Semua</button>` +
+  const hot = all.filter(q => tr.includes(q)).sort((a, b) => tr.indexOf(a) - tr.indexOf(b));
+  const rest = all.filter(q => !tr.includes(q)).sort((a, b) => (n(b, me) + n(b, other)) - (n(a, me) + n(a, other)));
+  const chip = q => {
+    const h = tr.includes(q), nx = n(q, 'x'), nt = n(q, 'th');
+    const cell = (k, v) => `<span class="${k === me ? 'on' : ''}${v ? '' : ' zr'}" title="${v} post di ${k === 'x' ? 'X' : 'Threads'}">${ic(k === 'x' ? 'x' : 'threads')}${v}</span>`;
+    return `<button class="qc${h ? ' hot' : ''}${n(q, me) ? '' : ' z'}" type="button" data-q="${esc(q)}" aria-pressed="${q === active}"` +
+      `${h ? ' title="Lagi naik di sosial"' : ''}><span class="qt">${h ? '<b class="qa">↑</b> ' : ''}${esc(topicLabel(q))}</span>` +
+      `<span class="qp">${cell('x', nx)}${cell('th', nt)}</span></button>`;
+  };
+  return `<button class="qc" type="button" data-q="" aria-pressed="${active === ''}"><span class="qt">Semua</span><span class="qp"><span class="${me === 'x' ? 'on' : ''}">${ic('x')}${xPosts.length}</span><span class="${me === 'th' ? 'on' : ''}">${ic('threads')}${tPosts.length}</span></span></button>` +
     (hot.length ? '<i class="qc-sep" aria-hidden="true"></i>' + hot.map(chip).join('') : '') +
     (rest.length ? '<i class="qc-sep" aria-hidden="true"></i>' + rest.map(chip).join('') : '');
 }
+function socApply(d){
+  if (d && d.stats) { socStats = d.stats; socBoth = d.both || []; }
+}
 function renderQchips(){
-  $('#qchips').innerHTML = qchipsHtml(xQueries, xTrending, xQuery);
+  $('#qchips').innerHTML = qchipsHtml(xQueries, xTrending, xQuery, 'x', 'th');
 }
 function renderX(){
   const q = ($('#xq').value || '').toLowerCase();
@@ -2784,7 +2804,7 @@ function threadCard(p){
   </article>`;
 }
 function tMatchQ(p, q){
-  return (p.qs || [p.q]).includes(q) || termHit((p.text || '') + ' ' + (p.username || '') + ' ' + (p.full_name || ''), q);
+  return (p.topics || p.qs || [p.q]).includes(q);
 }
 function renderThreads(){
   const q = ($('#tq').value || '').toLowerCase();
@@ -2804,14 +2824,32 @@ $('#tlist').addEventListener('click', e => {
   if (e.target.closest('.xmore')) { tShown += 30; renderThreads(); }
 });
 function renderQChipsTh(){
-  $('#qchips-th').innerHTML = qchipsHtml(tQueries, tTrending, tQuery);
+  $('#qchips-th').innerHTML = qchipsHtml(tQueries, tTrending, tQuery, 'th', 'x');
 }
 $('#qchips-th').addEventListener('click', e => {
   const b = e.target.closest('.qc'); if (!b) return;
   tQuery = b.dataset.q; tShown = 30;
   $$('#qchips-th .qc').forEach(x => x.setAttribute('aria-pressed', x === b ? 'true' : 'false'));
   renderThreads();
+  thLazy(tQuery);
 });
+const thqTried = new Set();
+async function thLazy(q){
+  if (!q || thqTried.has(q) || API == null) return;
+  thqTried.add(q);
+  if (tPosts.filter(p => tMatchQ(p, q)).length >= 5) return;
+  try {
+    const d = await getJson(API + '/api/thq?q=' + encodeURIComponent(q), 100000);
+    if (!d || !d.ok || !d.posts) return;
+    socApply(d);
+    for (const p of d.posts) {
+      const key = p.code || p.url || p.text;
+      if (!tAll.has(key)) tAll.set(key, p);
+    }
+    tPosts = [...tAll.values()].sort((a, b) => Date.parse(b.created_at || 0) - Date.parse(a.created_at || 0)).slice(0, 300);
+    renderQChipsTh(); renderQchips(); renderThreads();
+  } catch (e) { thqTried.delete(q); }
+}
 async function pullThreads(){
   if (tBusy) return;
   if (API == null) { renderThreads(); return; }
@@ -2819,8 +2857,9 @@ async function pullThreads(){
   $('#tmeta').textContent = 'menarik…';
   try {
     const d = await getJson(API + '/api/threads', 160000);
-    if (d && d.queries && (d.queries.join('|') !== tQueries.join('|') || (d.trending || []).join('|') !== tTrending.join('|'))) {
-      tQueries = d.queries; tTrending = d.trending || []; renderQChipsTh();
+    socApply(d);
+    if (d && d.queries) {
+      tQueries = d.queries; tTrending = d.trending || []; renderQChipsTh(); renderQchips();
       if (tQuery && !tQueries.includes(tQuery)) { tQuery = ''; renderThreads(); }
     }
     if (d && d.posts && d.posts.length) {
@@ -2830,7 +2869,7 @@ async function pullThreads(){
         if (ex) { if (p.q && !(ex.qs || [ex.q]).includes(p.q)) (ex.qs = ex.qs || [ex.q]).push(p.q); }
         else tAll.set(key, p);
       }
-      tPosts = [...tAll.values()].sort((a, b) => Date.parse(b.created_at || 0) - Date.parse(a.created_at || 0)).slice(0, 200);
+      tPosts = [...tAll.values()].sort((a, b) => Date.parse(b.created_at || 0) - Date.parse(a.created_at || 0)).slice(0, 300);
       if (tAll.size > 260) {
         const keep = new Set(tPosts.map(p => p.code || p.url || p.text));
         for (const k of [...tAll.keys()]) if (!keep.has(k)) tAll.delete(k);
@@ -5001,8 +5040,9 @@ async function pullX(){
   }
   try {
     const d = await getJson(API + '/api/x', 110000);
-    if (d.queries && (d.queries.join('|') !== xQueries.join('|') || (d.trending || []).join('|') !== xTrending.join('|'))) {
-      xQueries = d.queries; xTrending = d.trending || []; renderQchips();
+    socApply(d);
+    if (d.queries) {
+      xQueries = tQueries = d.queries; xTrending = tTrending = d.trending || []; renderQchips(); renderQChipsTh();
       if (xQuery && !xQueries.includes(xQuery)) { xQuery = ''; renderX(); }
     }
     if (d.ok) {

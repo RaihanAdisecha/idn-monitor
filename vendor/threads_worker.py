@@ -30,7 +30,7 @@ def main():
             p["q"] = q
             posts.append(p)
     posts.sort(key=lambda p: p.get("created_at") or "", reverse=True)
-    json.dump({"ok": True, "posts": posts[:48], "errs": errs}, sys.stdout, ensure_ascii=False)
+    json.dump({"ok": True, "posts": posts, "errs": errs}, sys.stdout, ensure_ascii=False)
 
 
 if __name__ == "__main__":
