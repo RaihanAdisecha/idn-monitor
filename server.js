@@ -217,6 +217,8 @@ const news = () => Promise.all(NEWS.map(([id, url]) => memo('n:' + id, 55000, as
   ];
   let lastErr = '';
   const t0 = Date.now();
+  // rss.tempo.co di-blokir Cloudflare (403) dan feed aslinya mandek — Google News site query didahulukan
+  if (id === 'TEMPO') attempts.unshift('https://news.google.com/rss/search?hl=id&gl=ID&ceid=ID:id&q=' + encodeURIComponent('site:tempo.co when:2d'));
   outer: for (const u of attempts) {
     for (let i = 0; i < 2; i++) {
       if (Date.now() - t0 > 26000) break outer;   // deadline per feed: jangan biarkan satu feed macetkan semua
