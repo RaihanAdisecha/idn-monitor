@@ -1037,7 +1037,10 @@ a{color:inherit;text-decoration:none;text-underline-offset:2px}
 .rd-art h1{font:600 18px/1.3 var(--sans);letter-spacing:-.01em;color:var(--text);margin:0 0 10px}
 .rd-meta{display:flex;flex-wrap:wrap;gap:5px 10px;margin:0 0 14px;font:400 8.5px/1.4 var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--text3)}
 .rd-hero{display:block;width:100%;max-height:230px;object-fit:cover;border:1px solid var(--border);margin:0 0 16px;background:var(--layer)}
-.rd-vid{margin:0 0 14px;border:1px solid var(--border);background:#000}
+.rd-fig{margin:2px 0 18px}
+.rd-fig img{display:block;width:100%;max-height:340px;object-fit:cover;border:1px solid var(--border);background:var(--layer)}
+.rd-fig figcaption{font:400 9.5px/1.5 var(--mono);letter-spacing:.03em;color:var(--text3);margin-top:6px}
+.rd-vid{margin:2px 0 18px;border:1px solid var(--border);background:#000}
 .rd-vid iframe{display:block;width:100%;aspect-ratio:16/9;border:0}
 .rd-p{font:400 13px/1.68 var(--sans);color:var(--text2);margin:0 0 14px;overflow-wrap:anywhere}
 .rd-p.rd-lead{font-size:14px;color:var(--text)}
@@ -3298,7 +3301,7 @@ function startCell(cell){
   v.onloadeddata = () => {
     if (p.loaded) return;
     p.loaded = true; p.loading = false; p.nerr = p.merr = p.tries = p.step = p.rest = 0;
-    const rc = camList[p.idx]; if (rc) { const cc = CAMS[rc._i]; if (cc) cc.fails = 0; }   // cam pulih → reset hitungan gagal
+    const rc = camList[p.idx]; if (rc) { const cc = CAMS[rc._i]; if (cc) { cc.fails = 0; camReport(cc.s, true); hostBad.delete(hostOf(cc.s)); } }   // cam pulih → reset + lapor ok + bebaskan host
     if (p.vis) badge(cell, 'live', 'Live'); else stopCell(cell);
     pump(); upd();
   };
@@ -3311,6 +3314,21 @@ function stopCell(cell){
   try { vid(cell).pause(); } catch (e) {}
   p.stopped = true; p.playing = false; badge(cell, 'wait', 'Jeda'); upd();
 }
+/* health reporting + per-host cooldown: host yang lagi sakit tidak dihajar terus */
+const camOfCell = cell => { const p = P.get(cell); if (!p) return null;
+  const rc = camList[p.idx]; return rc ? CAMS[rc._i] : null; };
+const hostOf = u => { try { return new URL(u).hostname; } catch (e) { return ''; } };
+const hostBad = new Map();   // host -> { n, until }
+const repLast = new Map();   // url -> ts
+function camReport(u, ok){
+  if (!u || API == null) return;
+  const now = Date.now(), last = repLast.get(u) || 0;
+  if (now - last < (ok ? 600000 : 60000)) return;
+  repLast.set(u, now);
+  fetch(API + '/api/cctv/report', { method: 'POST', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ u, ok }) }).catch(() => {});
+}
+function hostCooling(cam){ const hb = cam && hostBad.get(hostOf(cam.s)); return hb && hb.until > Date.now() ? hb.until : 0; }
 function kill(cell){
   const p = P.get(cell); if (!p) return;
   if (p.h && p.h !== 'native') { try { p.h.destroy(); } catch (e) {} }
@@ -3320,9 +3338,17 @@ function kill(cell){
   const rc = camList[p.idx];
   if (rc) { const cc = CAMS[rc._i]; cc.fails = (cc.fails || 0) + 1;
     if (cc.fails >= 4 && !cc._hide) { cc._hide = true; hideCell(cell); return; } }   // 4x gagal → hilang dari grid
+  const cam = camOfCell(cell);
+  if (cam) {
+    camReport(cam.s, false);
+    const h = hostOf(cam.s);
+    if (h) { const hb = hostBad.get(h) || { n: 0, until: 0 }; hb.n++;
+      hb.until = Date.now() + Math.min(120000, 8000 * hb.n); hostBad.set(h, hb); }
+  }
   badge(cell, 'off', 'Offline');
   clearTimeout(p.retry);
-  p.retry = setTimeout(() => { p.dead = false; p.tries = Math.max(0, p.tries - 1); badge(cell, 'wait', 'Antre'); pump(); }, Math.min(30000, 5000 * p.tries));
+  p.retry = setTimeout(() => { p.dead = false; p.tries = Math.max(0, p.tries - 1); badge(cell, 'wait', 'Antre'); pump(); },
+    Math.min(30000, 5000 * p.tries) * (0.6 + Math.random() * 0.8));   // jitter: tidak retry bareng
   pump(); upd();
 }
 function hideCell(cell){
@@ -3337,11 +3363,19 @@ function pump(){
   let loading = all.filter(([, p]) => p.loading).length;
   let playing = all.filter(([, p]) => p.h && p.loaded && !p.stopped).length;
   all.sort((a, b) => (b[1].vis - a[1].vis) || (a[1].idx - b[1].idx));
+  let wake = 0;
   for (const [c, p] of all) {
     if (p.loading) continue;
-    if (!p.h) { if (p.vis && loading < MAXL) { startCell(c); loading++; } }   // hanya sel yang terlihat/dekat viewport yang load — ratusan cam tidak membanjiri
+    if (!p.h) {
+      if (p.vis && loading < MAXL) {
+        const until = hostCooling(camOfCell(c));
+        if (until) { wake = wake ? Math.min(wake, until) : until; continue; }   // host lagi cooldown → skip
+        startCell(c); loading++;
+      }
+    }
     else if (p.loaded && p.stopped && p.vis && playing < MAXP) { startCell(c); playing++; }
   }
+  if (wake) setTimeout(pump, Math.max(500, wake - Date.now() + 300));   // bangun pas cooldown host selesai
 }
 let pumpT = 0; const pumpSoon = () => { clearTimeout(pumpT); pumpT = setTimeout(pump, 100); };
 const vio = new IntersectionObserver(es => es.forEach(e => {
@@ -5075,7 +5109,7 @@ function rdArticle(d, url) {
   const hero = d.img || rdHero;
   const img = hero ? `<img class="rd-hero" src="${esc(hero)}" alt="" loading="eager" referrerpolicy="no-referrer" onerror="this.remove()">` : '';
   const rdVidHtml = v => v.kind === 'iframe'
-    ? `<div class="rd-vid"><iframe src="${esc(v.url)}" title="Video" loading="lazy" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen referrerpolicy="no-referrer"></iframe></div>`
+    ? `<div class="rd-vid"><iframe src="${esc(v.url)}" title="Video" loading="lazy" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe></div>`
     : '';
   const note = d.thin ? `<div class="rd-note">Halaman ini tidak mengirim teks penuh (login/JS). Ringkasan di bawah diambil dari metadata. Buka asli untuk lanjut.</div>` : '';
   let flow, hasBlocks = Array.isArray(d.blocks) && d.blocks.length > 0;
@@ -5083,13 +5117,17 @@ function rdArticle(d, url) {
     let firstP = true;
     flow = d.blocks.map(b => {
       if (b.k === 'v') return b.v && b.v.kind !== 'probe' ? rdVidHtml(b.v) : '';
+      if (b.k === 'i') return b.img && b.img.url ? `<figure class="rd-fig"><img src="${esc(b.img.url)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.closest('figure').remove()">${b.img.cap ? `<figcaption>${esc(b.img.cap)}</figcaption>` : ''}</figure>` : '';
       const cls = firstP ? 'rd-p rd-lead' : 'rd-p'; firstP = false;
       return `<p class="${cls}">${rdLink(b.t)}</p>`;
     }).join('') || '<p class="rd-p">Tidak ada teks yang bisa diekstrak.</p>';
   } else {
-    const paras = (d.paras || []).map((p, i) => `<p class="rd-p${i === 0 ? ' rd-lead' : ''}">${rdLink(p)}</p>`).join('');
-    const vids = (d.videos || []).filter(v => v.kind === 'iframe').map(rdVidHtml).join('');
-    flow = `${vids}${note}${paras || '<p class="rd-p">Tidak ada teks yang bisa diekstrak.</p>'}`;
+    const pl = (d.paras || []).map((p, i) => `<p class="rd-p${i === 0 ? ' rd-lead' : ''}">${rdLink(p)}</p>`);
+    const vl = (d.videos || []).filter(v => v.kind === 'iframe').map(rdVidHtml);
+    const outp = [];
+    pl.forEach((p, i) => { outp.push(p); const k = i + 1; vl.forEach((v, j) => { const at = pl.length >= 2 ? Math.min(pl.length - 1, Math.max(1, Math.round(pl.length * (j + 1) / (vl.length + 1)))) : 1; if (at === k) outp.push(v); }); });
+    if (!pl.length) outp.push(...vl);
+    flow = `${note}${outp.join('') || '<p class="rd-p">Tidak ada teks yang bisa diekstrak.</p>'}`;
   }
   $('#rd-body').innerHTML = `<article class="rd-art">
     <h1>${esc(d.title || 'Tanpa judul')}</h1>

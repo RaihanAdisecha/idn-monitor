@@ -1726,8 +1726,13 @@ function idRegion(la, lo){
   return 'Lainnya';
 }
 async function cctvBpjt(){
-  const r = await get('https://bpjt.pu.go.id/cctv/', {}, 25000);
-  const h = await r.text();
+  // halaman ~1MB dan bisa lambat — timeout longgar + 1x retry
+  let h = '';
+  for (let i = 0; i < 2; i++) {
+    try { const r = await get('https://bpjt.pu.go.id/cctv/', {}, 45000); h = await r.text(); if (h.includes('allStreams')) break; h = ''; }
+    catch (e) { if (i === 1) throw e; await new Promise(s => setTimeout(s, 3000)); }
+  }
+  if (!h) return [];
   const m = h.match(/const allStreams = (\{[\s\S]*?\});\s*\n/);
   if (!m) return [];
   const groups = JSON.parse(m[1]), seen = new Set(), out = [];
@@ -1739,7 +1744,7 @@ async function cctvBpjt(){
     if (!isFinite(la) || !isFinite(lo) || la < -11 || la > 6 || lo < 95 || lo > 141) continue;
     seen.add(s);
     out.push({ n: String(c.nama_km || c.nama_segment || 'CCTV') + ' · ' + String(c.nama_ruas || '').replace(/-/g, ' '),
-      s, e: '', la, lo, c: idRegion(la, lo) });
+      s, e: '', la, lo, c: idRegion(la, lo), src: 'bpjt' });
   }
   return out;
 }
@@ -1750,7 +1755,7 @@ async function cctvBekasi(){
   return d.filter(x => x && x.path).map(x => ({
     n: String(x.name || x.path).replace(/_/g, ' '),
     s: 'https://eofficev2.bekasikota.go.id/backupcctv/m3/' + x.path,
-    e: '', la: null, lo: null, c: 'Kota Bekasi'
+    e: '', la: null, lo: null, c: 'Kota Bekasi', src: 'pemda'
   }));
 }
 /* probe 3 level: master playlist → variant/media playlist → segmen .ts pertama.
@@ -1769,13 +1774,13 @@ async function probeHls(url, depth){
     if (!lines.length) return false;
     const first = lines[0];
     if (/\.ts(\?|$)/i.test(first) || first.startsWith('http') && /\.(ts|m4s)(\?|$)/i.test(first)) {
-      // ini media playlist — cek segmen pertama bisa di-fetch
+      // ini media playlist — cek segmen pertama bisa di-fetch (Range 4KB, bukan full segmen)
       try {
         const seg = new URL(first, url).href;
-        const sr = await get(seg, { headers: HLS_UA, method: 'GET' }, 8000);
-        if (!sr.ok) return false;
+        const sr = await get(seg, { headers: { ...HLS_UA, range: 'bytes=0-4096' } }, 8000);
+        if (!sr.ok && sr.status !== 206) return false;
         const buf = await sr.arrayBuffer();
-        return buf.byteLength > 1000;
+        return buf.byteLength > 500;
       } catch (e) { return false; }
     }
     // master playlist → recurse ke variant pertama
@@ -1787,7 +1792,9 @@ async function warmCctv(){
   cctvProbe.running = true; cctvProbe.last = Date.now();
   const next = { alive: new Set(), done: new Set() };
   try {
-    const cams = await cctvBpjt().catch(() => []);
+    let cams = await cctvBpjt().catch(() => []);
+    if (!cams.length) { await new Promise(s => setTimeout(s, 30000)); cams = await cctvBpjt().catch(() => []); }   // fetch gagal → retry sekali
+    if (!cams.length) { console.log('[cctv] bpjt fetch kosong, skip sweep'); cctvProbe.running = false; return; }
     let i = 0;
     await Promise.all(Array.from({ length: 24 }, async () => { while (i < cams.length) { const c = cams[i++];
       const ok = await probeHls(c.s, 0);
@@ -1798,14 +1805,27 @@ async function warmCctv(){
     console.log('[cctv] probe selesai:', next.alive.size, '/', cams.length, 'cam playable');
   } catch (e) {} finally { cctvProbe.running = false; }
 }
+/* laporan playback real dari client — cam yang gagal di browser langsung turun,
+   tidak perlu nunggu sweep probe 25 menit */
+const cctvReports = new Map();   // url -> { fails, last }
+function camReport(u, ok){
+  if (!u || typeof u !== 'string' || u.length > 500) return;
+  const r = cctvReports.get(u) || { fails: 0, last: 0 };
+  if (ok) { r.fails = 0; } else { r.fails = Math.min(9, r.fails + 1); }
+  r.last = Date.now(); cctvReports.set(u, r);
+  if (cctvReports.size > 5000) { const cutoff = Date.now() - 3600000;
+    for (const [k, v] of cctvReports) if (v.last < cutoff) cctvReports.delete(k); }
+}
+const cctvReportedDead = s => { const r = cctvReports.get(s);
+  return r && r.fails >= 2 && Date.now() - r.last < 1200000; };   // 2x gagal dlm 20 mnt → exclude
 const cctvCatalog = () => memo('cctvcat', 300000, async () => {
   const rs = await Promise.allSettled([cctvBpjt(), cctvBekasi()]);
-  let cams = rs.flatMap(r => r.status === 'fulfilled' ? r.value : []);
-  const bpjt = cams.filter(c => /jasamarga|hk-opt|jtd|mms-corp|kkdm|hutama|waskita/i.test(c.s));
-  const other = cams.filter(c => !/jasamarga|hk-opt|jtd|mms-corp|kkdm|hutama|waskita/i.test(c.s));
-  // BPJT: hanya yang probe-confirmed playable. Sebelum probe selesai → kosong (jujur, bukan asal pasang)
-  const verified = cctvProbe.done.size ? bpjt.filter(c => cctvProbe.alive.has(c.s)) : [];
-  return { ok: true, cams: [...other, ...verified], bpjt_alive: cctvProbe.alive.size, bpjt_total: bpjt.length, probing: cctvProbe.running, at: Date.now() };
+  const bpjt = [], other = [];
+  for (const r of rs) if (r.status === 'fulfilled') for (const c of r.value) (c.src === 'bpjt' ? bpjt : other).push(c);
+  // BPJT: hanya yang probe-confirmed playable + tidak dilaporkan mati client. Sebelum probe selesai → kosong
+  const verified = (cctvProbe.done.size ? bpjt.filter(c => cctvProbe.alive.has(c.s)) : [])
+    .filter(c => !cctvReportedDead(c.s));
+  return { ok: true, cams: [...other.filter(c => !cctvReportedDead(c.s)), ...verified], bpjt_alive: cctvProbe.alive.size, bpjt_total: bpjt.length, probing: cctvProbe.running, at: Date.now() };
 });
 
 /* ---------- READ: ekstrak teks halaman buat panel baca (bukan iframe) ---------- */
@@ -1912,6 +1932,8 @@ const RD_SKIP = /^(baca juga|simak juga|lihat juga|berita terkait|artikel terkai
 const RD_CREDIT = /\b(?:foto|istimewa|dok\.?)\s*:/i;
 const VID_IFRAME = /(?:youtube\.com\/(?:embed|shorts)\/|youtube-nocookie\.com\/(?:embed|shorts)\/|youtu\.be\/|player\.vimeo\.com\/|facebook\.com\/plugins\/video|\/embed\/|\/player\/|\/video-embed\/)/i;
 const VID_FILE = /\.(mp4|webm|mov|m4v|m3u8|mpd)(\?|#|$)/i;
+const RD_IMG_JUNK = /logo|icon|sprite|avatar|badge|placeholder|blank|pixel|spacer|advert|\/ads?\/|[-_/.]ads?[-_/.]|banner|emoji|button|share|loading|lazy\.|default[-_]|no[-_]?image|gravatar|thumb(?:nail)?s?\/small/i;
+const rdImgKey = u => String(u).split('?')[0].replace(/-\d+x\d+(?=\.\w+$)/, '').replace(/\.\w+$/, '').toLowerCase();
 const rdAbs = (u, base) => { if (!u) return ''; try { u = new URL(u, base).href; } catch (e) { return ''; } return /^https?:/i.test(u) ? u : ''; };
 const rdYT = u => { const m = String(u).match(/(?:youtube\.com\/(?:embed|shorts)\/|youtu\.be\/|youtube-nocookie\.com\/(?:embed|shorts)\/)([A-Za-z0-9_-]{6,15})/i); return m ? 'https://www.youtube.com/embed/' + m[1] : ''; };
 function rdVideoEl(tag, finalURL) {
@@ -1945,10 +1967,43 @@ function rdBlocks(html, finalURL) {
     vseen.add(k); vids.push(v);
     return '\n@@RDV' + (vids.length - 1) + '@@\n';
   });
+  // gambar dalam badan artikel: simpan di posisi aslinya (figure+figcaption atau <img> lepas)
+  const imgs = [], iseen = new Set();
+  const pickImg = tag => {
+    const attr = n => (tag.match(new RegExp('\\b' + n + '=["\']([^"\']+)', 'i')) || [])[1] || '';
+    let u = attr('data-src') || attr('data-lazy-src') || attr('data-original') || attr('data-lazy') || '';
+    if (!u) { const ss = attr('data-srcset') || attr('srcset'); if (ss) u = ss.split(',').map(x => x.trim().split(/\s+/)).sort((a, b) => parseInt(b[1] || 0) - parseInt(a[1] || 0))[0][0]; }
+    if (!u) u = attr('src');
+    u = rdAbs(u, finalURL);
+    if (!u || /^data:/i.test(u)) return null;
+    if (RD_IMG_JUNK.test(u) || /\.(svg|gif)(\?|#|$)/i.test(u)) return null;
+    const w = parseInt(attr('width')) || 0, h = parseInt(attr('height')) || 0;
+    if ((w && w < 200) || (h && h < 120)) return null;
+    return { url: u, alt: rdInline(attr('alt')) };
+  };
+  const addImg = (tag, cap) => {
+    const im = pickImg(tag); if (!im) return ' ';
+    const key = rdImgKey(im.url);
+    if (iseen.has(key) || imgs.length >= 6) return ' ';
+    iseen.add(key);
+    let c = rdInline(cap || '');
+    if (!c && im.alt.length >= 20) c = im.alt;
+    imgs.push({ url: im.url, cap: c.slice(0, 220) });
+    return '\n@@RDI' + (imgs.length - 1) + '@@\n';
+  };
+  s = s.replace(/<figure\b[^>]*>([\s\S]*?)<\/figure\s*>/gi, (m, inner) => {
+    const t = inner.match(/<img\b[^>]*>/i);
+    if (!t) return ' ';
+    const cap = (inner.match(/<figcaption\b[^>]*>([\s\S]*?)<\/figcaption>/i) || [])[1] || '';
+    return addImg(t[0], cap.replace(/<[^>]+>/g, ' '));
+  });
+  s = s.replace(/<img\b[^>]*>/gi, m => addImg(m, ''));
   for (const seg of rdClean(s).split('\n')) {
-    const parts = seg.split(/@@RDV(\d+)@@/);
+    const parts = seg.split(/@@RD([VI])(\d+)@@/);
     for (let i = 0; i < parts.length; i++) {
-      if (i % 2 === 1) { blocks.push({ k: 'v', v: vids[+parts[i]] }); continue; }
+      const mod = i % 3;
+      if (mod === 1) { const kind = parts[i], n = +parts[i + 1]; i++; blocks.push(kind === 'V' ? { k: 'v', v: vids[n] } : { k: 'i', img: imgs[n] }); continue; }
+      if (mod === 2) continue;
       const t = parts[i].replace(/\s+/g, ' ').trim();
       if (t.length < 50 || t.length > 1600 || RD_SKIP.test(t) || (t.length < 120 && RD_CREDIT.test(t))) continue;
       if (/^(copyright|©|all rights reserved)/i.test(t)) continue;
@@ -2156,33 +2211,70 @@ function rdJinaMd(text, url) {
 function rdAssembleBlocks(d) {
   if (!d) return d;
   const paras = d.paras || [];
-  const blocks = (Array.isArray(d.blocks) && d.blocks.length)
-    ? d.blocks
-    : paras.map(t => ({ k: 'p', t }));
-  const inside = new Set();
-  for (const b of blocks) if (b.k === 'v' && b.v) inside.add(String(b.v.url).split('?')[0]);
-  const extra = (d.videos || []).filter(v => v && v.kind !== 'probe' && !inside.has(String(v.url).split('?')[0]));
-  const pIdx = [];
-  blocks.forEach((b, i) => { if (b.k === 'p') pIdx.push(i); });
-  if (extra.length && pIdx.length) {
-    const ops = extra.map((v, j) => ({
-      at: pIdx[Math.min(pIdx.length, Math.max(1, Math.round(pIdx.length * (j + 1) / (extra.length + 1)))) - 1] + 1,
-      v
-    })).sort((a, b) => b.at - a.at);
-    for (const o of ops) blocks.splice(o.at, 0, { k: 'v', v: o.v });
-  } else {
-    for (const v of extra) blocks.push({ k: 'v', v });
+  let blocks = (Array.isArray(d.blocks) && d.blocks.length) ? d.blocks.slice() : paras.map(t => ({ k: 'p', t }));
+  const heroKey = d.img ? rdImgKey(d.img) : '';
+  // media dengan posisi asli: k = jumlah paragraf sebelum media itu
+  const media = [], seenM = new Set();
+  const mkey = b => b.k === 'v' ? 'v|' + String(b.v.url).split('?')[0] : 'i|' + rdImgKey(b.img.url);
+  let pCount = 0;
+  for (const b of blocks) {
+    if (b.k === 'p') { pCount++; continue; }
+    if (b.k === 'v' && (!b.v || b.v.kind === 'probe')) continue;
+    if (b.k === 'i' && (!b.img || rdImgKey(b.img.url) === heroKey)) continue;
+    const key = mkey(b); if (seenM.has(key)) continue; seenM.add(key);
+    media.push({ b, k: pCount });
   }
-  d.blocks = blocks;
+  // video tanpa posisi (og:video/JSON-LD/Jina)
+  for (const v of (d.videos || [])) {
+    if (!v || v.kind === 'probe') continue;
+    const b = { k: 'v', v }, key = mkey(b);
+    if (seenM.has(key)) continue; seenM.add(key);
+    media.push({ b, k: -1 });
+  }
+  const ps = blocks.filter(b => b.k === 'p');
+  const n = ps.length, m = media.length;
+  if (!m) { d.blocks = ps; return d; }
+  if (n === 0) { d.blocks = media.filter(x => x.b.k === 'v').map(x => x.b); return d; }   // gambar tanpa teks = sampah (thumbnail/related), video tetap
+  // posisi akhir: di antara paragraf (minimal setelah paragraf 1, maksimal sebelum paragraf terakhir), satu media per celah
+  const lo = n >= 2 ? 1 : 1, hi = n >= 2 ? n - 1 : 1;
+  const slots = hi - lo + 1;
+  let ks = media.map((x, i) => x.k < 0 ? Math.round(n * (i + 1) / (m + 1)) : x.k);
+  ks = ks.map(k => Math.min(hi, Math.max(lo, k)));
+  let ok = true;
+  for (let i = 1; i < ks.length; i++) { if (ks[i] <= ks[i - 1]) ks[i] = ks[i - 1] + 1; if (ks[i] > hi) ok = false; }
+  if (!ok && m <= slots) ks = media.map((_, i) => lo + Math.floor(i * slots / m));
+  else if (!ok) ks = media.map((_, i) => Math.min(hi, lo + Math.floor(i * slots / m)));
+  const out = [];
+  let pi = 0, mi = 0;
+  const flush = () => { while (mi < m && ks[mi] <= pi) out.push(media[mi++].b); };
+  for (const p of ps) { out.push(p); pi++; flush(); }
+  while (mi < m) out.push(media[mi++].b);
+  d.blocks = out;
   return d;
 }
 async function rdFinish(d, url) {
   d = await rdHydrateVideos(d, url);
   return rdAssembleBlocks(d);
 }
+const ytIdOf = raw => { try { const u = new URL(raw); const h = u.hostname.replace(/^(www|m|music)\./, '');
+  if (h === 'youtu.be') return u.pathname.slice(1).split('/')[0].match(/^[\w-]{6,15}$/) ? u.pathname.slice(1).split('/')[0] : '';
+  if (h === 'youtube.com') { if (u.pathname === '/watch') return (u.searchParams.get('v') || '').match(/^[\w-]{6,15}$/) ? u.searchParams.get('v') : ''; const m = u.pathname.match(/^\/(?:shorts|live|embed)\/([\w-]{6,15})/); return m ? m[1] : ''; }
+} catch (e) {} return ''; };
+async function rdReadYouTube(id, raw) {
+  const watch = 'https://www.youtube.com/watch?v=' + id;
+  let title = '', author = '', desc = '', time = '';
+  try { const r = await get('https://www.youtube.com/oembed?format=json&url=' + encodeURIComponent(watch), {}, 8000); if (r.ok) { const j = await r.json(); title = j.title || ''; author = j.author_name || ''; } } catch (e) {}
+  try { const { r } = await rdSafeGet(watch, 9000); if (r.ok) { const meta = rdMeta(await r.text()); desc = rdInline(meta['og:description'] || meta.description || ''); time = meta['datepublished'] || meta['uploaddate'] || ''; if (!title) title = rdClean(meta['og:title'] || ''); } } catch (e) {}
+  const paras = desc && desc.length >= 30 ? [desc] : [];
+  const v = { url: 'https://www.youtube.com/embed/' + id, kind: 'iframe', poster: '' };
+  return { ok: true, url: raw, final: watch, title: title || 'Video YouTube', site: 'YouTube', byline: author, time: time ? String(time) : '',
+    img: '', desc, paras, thin: false, videos: [v], blocks: [{ k: 'v', v }, ...paras.map(t => ({ k: 'p', t }))], via: 'youtube' };
+}
 async function rdRead(raw) {
   const x = publicURL(raw);
   if (!x) throw new Error('URL tidak valid');
+  const yid = ytIdOf(raw);
+  if (yid) return memo('yt:' + yid, 600000, () => rdReadYouTube(yid, raw));
   let target = raw;
   if (/(^|\.)news\.google\.com$/i.test(x.hostname) && GN_PATH.test(x.pathname)) target = await decodeGNews(raw);
   return memo('read:' + target, 600000, async () => {
@@ -2434,6 +2526,15 @@ http.createServer(async (req, res) => {
     if (u.pathname === '/api/radar') return json(await radar());
     if (u.pathname === '/api/cams') return json(await alive());
     if (u.pathname === '/api/cctv') return json(await cctvCatalog());
+    if (u.pathname === '/api/cctv/report' && req.method === 'POST') {
+      try {
+        let raw = '';
+        for await (const ch of req) { raw += ch; if (raw.length > 4000) break; }
+        const b = JSON.parse(raw || '{}');
+        camReport(String(b.u || ''), !!b.ok);
+        return json({ ok: true });
+      } catch (e) { return json({ ok: false }, 400); }
+    }
     if (u.pathname === '/api/tomtom/status') return json({ ok: true, keyConfigured: ttHas(), source: process.env.TOMTOM_API_KEY ? 'env' : (CFG.tomtom ? 'config' : 'none'), at: Date.now() });
     if (u.pathname === '/api/tomtom/flow') {
       const lat = parseFloat(u.searchParams.get('lat')), lon = parseFloat(u.searchParams.get('lon')), zoom = parseFloat(u.searchParams.get('zoom') || '10');
