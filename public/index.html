@@ -475,6 +475,11 @@ a{color:inherit;text-decoration:none;text-underline-offset:2px}
 
 /* ============================================================ TOOLS / INPUTS */
 .tools{display:flex;gap:8px;padding:8px 12px;border-bottom:1px solid var(--border);background:var(--bg)}
+.tools[hidden]{display:none}
+.flt-pill{display:inline-flex;align-items:center;gap:5px;margin:7px 12px 0;padding:4px 11px;background:none;border:1px solid var(--border);border-radius:99px;cursor:pointer;font:600 9px/1 var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--text3);transition:color .12s,border-color .12s}
+.flt-pill:hover{color:var(--text2);border-color:var(--text3)}
+.flt-pill[aria-expanded="true"]{color:var(--text);border-color:var(--text3)}
+.flt-cv{font-size:11px;line-height:1}
 .inp{
   flex:1;min-width:0;height:30px;padding:0 10px;background:var(--field);
   border:1px solid var(--border);border-bottom-color:var(--border2);
@@ -1382,7 +1387,8 @@ a{color:inherit;text-decoration:none;text-underline-offset:2px}
     <div class="ph"><span class="ph-k">04</span><h2 class="ph-t">News Wire</h2><span class="ph-m" id="nmeta">—</span></div>
     <div class="pb">
       <div class="catbar" id="catbar" role="group" aria-label="Kategori berita"></div>
-      <div class="tools">
+      <button class="flt-pill" id="fltpill" type="button" aria-expanded="false" aria-controls="newstools"><span class="flt-cv">⌄</span>filter</button>
+      <div class="tools" id="newstools" hidden>
         <input class="inp" id="fq" type="search" placeholder="Saring berita… (/)" aria-label="Saring berita">
         <button class="tgl" id="ontopic" type="button" aria-pressed="true" title="Hanya berita demo, kebakaran, banjir, bencana, atau insiden">Topik</button>
       </div>
@@ -1781,6 +1787,52 @@ function showSitAlert(p){
     rdOpen(sitAlertUrl, null, true, '').catch(() => window.open(sitAlertUrl, '_blank', 'noopener'));
   });
 })();
+/* ---------- sebar titik se-lokasi: dalam kilometer & hanya di daratan ----------
+   Titik kab/kota ada di pusat pemerintahan; beberapa insiden di tempat yang sama disebar di sekitarnya, tapi
+   jaraknya geografis (bukan piksel) dan setiap posisi wajib jatuh di daratan Indonesia. Hasil di-cache per (tempat, slot). */
+let landIdx = null;
+function landIndex(){
+  if (landIdx || !globeIdn) return landIdx;
+  landIdx = [];
+  for (const f of globeIdn.features) {
+    const g = f.geometry; if (!g) continue;
+    for (const poly of (g.type === 'Polygon' ? [g.coordinates] : g.coordinates)) {
+      let a = 1e9, b = 1e9, c = -1e9, d = -1e9;
+      for (const q of poly[0]) { if (q[0] < a) a = q[0]; if (q[0] > c) c = q[0]; if (q[1] < b) b = q[1]; if (q[1] > d) d = q[1]; }
+      landIdx.push({ poly, bb: [a, b, c, d] });
+    }
+  }
+  return landIdx;
+}
+function inRingPt(r, x, y){ let c = false; for (let i = 0, j = r.length - 1; i < r.length; j = i++) { const a = r[i], b = r[j]; if ((a[1] > y) !== (b[1] > y) && x < (b[0] - a[0]) * (y - a[1]) / (b[1] - a[1]) + a[0]) c = !c; } return c; }
+function onLandPt(lo, la){
+  const ix = landIndex(); if (!ix) return true;   // peta belum termuat → jangan blokir
+  for (const { poly, bb } of ix) {
+    if (lo < bb[0] || lo > bb[2] || la < bb[1] || la > bb[3]) continue;
+    if (inRingPt(poly[0], lo, la) && !poly.slice(1).some(h => inRingPt(h, lo, la))) return true;
+  }
+  return false;
+}
+const JIT = new Map();
+function jitterGeo(name, la, lo, slot, prec){
+  if (slot === 0) return [la, lo];
+  const key = name + '|' + slot + '|' + la.toFixed(3) + ',' + lo.toFixed(3);
+  const hit = JIT.get(key); if (hit) return hit;
+  let h = 0; for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0;
+  const wide = prec === 'prov' || prec === 'region';
+  const maxKm = wide ? 140 : 24, baseKm = wide ? 18 : 3;
+  const km0 = Math.min(baseKm + Math.sqrt(slot) * (wide ? 22 : 4.2), maxKm), ang0 = slot * 2.399963 + (h % 628) / 100;
+  const cl = Math.cos(la * Math.PI / 180) || 1e-6;
+  let out = [la, lo];
+  outer: for (let shrink = 1; shrink >= 0.2; shrink -= 0.2) {
+    for (let t = 0; t < 12; t++) {
+      const ang = ang0 + t * 0.5236, km = km0 * shrink * (t % 2 ? 0.75 : 1);
+      const la2 = la + Math.sin(ang) * km / 110.57, lo2 = lo + Math.cos(ang) * km / (111.32 * cl);
+      if (onLandPt(lo2, la2)) { out = [la2, lo2]; break outer; }
+    }
+  }
+  JIT.set(key, out); return out;
+}
 function drawGlobe(now){
   now = now || performance.now();
   const c = $('#sit-globe');
@@ -1835,8 +1887,11 @@ function drawGlobe(now){
     }
   }
   if (globeProv) {
+    ctx.save();
+    if (globeIdn) { ctx.beginPath(); for (const f of globeIdn.features) path(f); ctx.clip(); }   // batas provinsi kasar → jangan keluar dari garis pantai detail
     ctx.beginPath(); path(globeProv);
     ctx.lineWidth = .7; ctx.strokeStyle = 'rgba(200,200,200,.28)'; ctx.stroke();
+    ctx.restore();
   }
   // Atmosfer limb tipis
   ctx.beginPath(); path({ type: 'Sphere' });
@@ -1874,11 +1929,11 @@ function drawGlobe(now){
     const name = p.name || '';
     const slot = slotCount[name] || 0;
     slotCount[name] = slot + 1;
-    const ang = slot * 2.399963;
-    const off = slot === 0 ? 0 : Math.min(2.4 + Math.sqrt(slot) * 2.6, 13);   // spiral kecil & dibatasi: titik tetap dekat lokasi aslinya
-    const zScale = Math.max(0.8 + view.zoom * 0.16, view.zoom * 0.6);   // spiral ikut skala peta (bukan dikunci piksel), titik se-centroid melebar saat zoom-in
+    const jl = jitterGeo(name, p.la, p.lo, slot, p.prec);
+    const xy2 = jl[0] === p.la && jl[1] === p.lo ? xy : proj([jl[1], jl[0]]);
+    if (!xy2) continue;
     const r = 1.35 + (p.weight || .3) * 2.5 + zoomBoost;
-    pts.push({ x: xy[0] + Math.cos(ang) * off * zScale, y: xy[1] + Math.sin(ang) * off * zScale,
+    pts.push({ x: xy2[0], y: xy2[1],
       r, cat: p.kind, color: p.sub === 'gempa' ? '#ff5a4e' : p.sub === 'volcano' ? (LVL_COLOR[p.lvl] || '#8d8d8d') : (CAT_COLOR[p.kind] || '#8d8d8d'), fresh, p });
   }
   pts.sort((a, b) => a.r - b.r);
@@ -3160,6 +3215,13 @@ $('#ontopic').addEventListener('click', e => {
   renderNews();
 });
 $('#fq').addEventListener('input', debounce(renderNews, 140));
+$('#fltpill').addEventListener('click', () => {
+  const t = $('#newstools'), open = t.hidden;
+  t.hidden = !open;
+  $('#fltpill').setAttribute('aria-expanded', open ? 'true' : 'false');
+  $('#fltpill .flt-cv').textContent = open ? '⌃' : '⌄';
+  if (open) $('#fq').focus();
+});
 
 /* ============================================================
    BREAKING WIRE · fetch loop terpisah (45s), khusus item breaking
@@ -3548,7 +3610,7 @@ addEventListener('keydown', e => {
     if ($('#mapwrap').classList.contains('on')) { closeMap(); return; }
     if (tvOn) { tvClose(); return; }
   }
-  if (e.key === '/' && !/^(INPUT|TEXTAREA)$/.test(document.activeElement.tagName)) { e.preventDefault(); $('#fq').focus(); }
+  if (e.key === '/' && !/^(INPUT|TEXTAREA)$/.test(document.activeElement.tagName)) { e.preventDefault(); if ($('#newstools').hidden) $('#fltpill').click(); $('#fq').focus(); }
   if ((e.key === 'r' || e.key === 'R') && !/^(INPUT|TEXTAREA)$/.test(document.activeElement.tagName)) refreshAll(true);
 });
 async function pullAlive(){
