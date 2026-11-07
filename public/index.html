@@ -2746,7 +2746,7 @@ function socialPool(){
 }
 function acceptSocialSnapshot(kind, payload){
   const map = kind === 'x' ? xAll : tAll, prev = new Set(map.keys());
-  const r = SitrepSignals.reconcile(map, payload, { now:Date.now(), max:kind === 'x' ? 400 : 300,
+  const r = SitrepSignals.reconcile(map, payload, { now:Date.now(), max:kind === 'x' ? 1600 : 900,
     keyOf:p => kind === 'x' ? p.url || p.text : p.code || p.url || p.text });
   if (!r.accepted && payload?.snapshotAt < map._snapshotAt) return false;
   if (kind === 'x') {
@@ -3038,7 +3038,7 @@ $('#xq').addEventListener('input', debounce(() => { xShown = 30; renderX(); }, 1
    02b · THREADS (toolzerhub/threads-scraper lewat server)
    ============================================================ */
 let tPosts = [], tAt = 0, tBusy = false, socTab = 'x';
-let tQuery = '', tQueries = [], tTrending = [];
+let tQuery = '', tQueries = [], tTrending = [], tErrs = [];
 const tAll = new Map(); let tShown = 30;
 
 function linkifyThreads(t){
@@ -3097,7 +3097,7 @@ function renderThreads(){
     (!tQuery || tMatchQ(p, tQuery)) &&
     (!q || ((p.text || '') + ' ' + (p.username || '') + ' ' + (p.full_name || '')).toLowerCase().includes(q)));
   $('#tcount').textContent = tPosts.length;
-  $('#tmeta').textContent = list.length + ' post' + (tAt ? ' · ' + wibTime(tAt) : '');
+  $('#tmeta').textContent = list.length + ' post' + (tAt ? ' · ' + wibTime(tAt) : '') + (tErrs.length ? ' · ' + tErrs.length + ' query gagal' : '');
   $('#f-th').textContent = tPosts.length;
   const page = list.slice(0, tShown);
   $('#tlist').innerHTML = (page.length ? page.map(threadCard).join('')
@@ -3139,6 +3139,7 @@ async function pullThreads(){
   try {
     const d = await getJson(API + '/api/threads', 160000);
     socApply(d);
+    tErrs = Array.isArray(d.errs) ? d.errs : [];
     if (d && d.queries) {
       tQueries = d.queries; tTrending = d.trending || []; renderQChipsTh(); renderQchips();
       if (tQuery && !tQueries.includes(tQuery)) { tQuery = ''; renderThreads(); }
@@ -5837,6 +5838,29 @@ document.addEventListener('click', e => {
   if (!p) return;
   e.preventDefault();
   rdPost(isX ? 'x' : 'threads', p, card);
+});
+
+/* Prefetch /api/read saat hover — klik berikutnya langsung render dari rdCache */
+const rdPrefetching = new Set();
+let rdPrefetchT = null, rdPrefetchU = '';
+function rdPrefetch(u){
+  if (!u || !/^https?:/i.test(u) || isSocialPost(u) || API == null) return;
+  if (rdCache.has(u) || rdPrefetching.has(u)) return;
+  clearTimeout(rdPrefetchT); rdPrefetchU = u;
+  rdPrefetchT = setTimeout(async () => {
+    if (rdCache.has(u) || rdPrefetching.has(u)) return;
+    rdPrefetching.add(u);
+    try {
+      const d = await getJson(API + '/api/read?u=' + encodeURIComponent(u), 45000);
+      if (d && d.ok) { rdCache.set(u, d); if (rdCache.size > 80) rdCache.delete(rdCache.keys().next().value); }
+    } catch (e) {} finally { rdPrefetching.delete(u); }
+  }, 350);
+}
+document.addEventListener('mouseover', e => {
+  const a = e.target.closest && e.target.closest('a.lead, a.nw, a.si, a.tk, a.th-link, a.srcl, a.tw-txt a, a.th-txt a');
+  if (!a || !a.href || a.href === rdPrefetchU) return;
+  rdPrefetchU = a.href;
+  rdPrefetch(a.href);
 });
 
 
