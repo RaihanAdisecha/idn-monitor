@@ -3145,6 +3145,7 @@ async function pullThreads(){
     }
     acceptSocialSnapshot('th', d);
     renderThreads();
+    renderQChipsTh(); renderQchips();   // kedua baris chip menampilkan count x+th — sinkronkan setelah snapshot
   } catch (e) {
     tSignalCurrent = false; updateDistress();
     if (!tPosts.length) $('#tlist').innerHTML = '<div class="empty">Threads gagal: ' + esc(e.message || e) + '</div>';
@@ -5347,6 +5348,7 @@ async function pullX(){
       acceptSocialSnapshot('x', d);
       if (xShown > xPosts.length) xShown = Math.max(30, xPosts.length);
       renderX();
+      renderQchips();   // chip "Semua" menghitung xPosts/tPosts — render ulang setelah snapshot diterima
       $('#xmeta').textContent = d.posts.length + ' post' + (d.err ? ' · sebagian gagal' : '');
     } else if (xPosts.length) {
       xSignalCurrent = false; updateDistress();
