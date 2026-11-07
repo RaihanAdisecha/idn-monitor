@@ -33,7 +33,7 @@ const provKey = p => { const k = norm(p); return PROV_CANON[k] || k; };
 const LEVEL = { poi: 7, village: 7.2, kec: 6.5, kab: 6, region: 3.5, prov: 3 };
 
 // nama kab/kota yang juga kata umum / nama institusi: wajib ada penanda lokatif tepat sebelumnya
-const AMBIG = new Set(['batang', 'batu', 'batu bara', 'puncak', 'metro', 'serang', 'malang', 'buru', 'pati', 'sula', 'banjar', 'bone', 'kaur', 'tanah laut', 'kota baru', 'seribu', 'jaya', 'raya', 'mamasa', 'lahat']);
+const AMBIG = new Set(['batang', 'batu', 'batu bara', 'puncak', 'metro', 'serang', 'malang', 'buru', 'pati', 'sula', 'banjar', 'bone', 'kaur', 'tanah laut', 'kota baru', 'seribu', 'jaya', 'raya', 'mamasa', 'lahat', 'medan', 'subang', 'kudus']);
 const LOC_CUE = new Set(['di', 'ke', 'kota', 'kabupaten', 'kab', 'pemkot', 'pemkab', 'walikota', 'bupati', 'kodya', 'kecamatan', 'kec', 'wilayah', 'kapolres', 'polres', 'polresta', 'polrestabes', 'kodim', 'bpbd']);
 const PREFIX_KAB = new Set(['kabupaten', 'kab', 'pemkab', 'bupati']);
 const PREFIX_KOTA = new Set(['kota', 'kodya', 'pemkot', 'walikota', 'polresta', 'polrestabes']);
@@ -376,6 +376,9 @@ function locate(title) {
       const cityTail = (i + n >= tk.length) && cands.length > 0;
       if (AMBIG.has(key) && !(LOC_CUE.has(prev) || PREFIX_KAB.has(prev) || PREFIX_KOTA.has(prev) || cityTail)) { continue; }
       if (key === 'malaka' && prev === 'selat') continue;
+      // "medan" kata benda umum (medan perang/rendah/tempur) — Kota Medan tetap
+      // cocok selama tidak diikuti kata tersebut; "di Medan" tetap sah.
+      if (key === 'medan' && /^(perang|pertempuran|tempur|rendah|legam|basah|lodak|laga|perang saudara)$/.test(tk[i + n] || '')) continue;
       if (key === 'metro' && /^(jaya|tv)$/.test(tk[i + 1] || '')) continue;
       // pilih entri: prefix eksplisit > kota (bila kembar kab/kota) > pertama
       let e = list[0];

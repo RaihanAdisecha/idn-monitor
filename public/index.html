@@ -1920,11 +1920,13 @@ const cleanTitle = t => {
 };
 let SIT = null, SIT_STALE = false;
 let openCluster = '', openAlert = '', SIG_GROUPS = [];
-let PULSE = [], DIS_PULSE = [], globeReady = false, globeCtx = null, globeIdn = null, globeProv = null, globeRaf = 0, globeLast = 0, globePoints = [], globeProj = null, globeCenter = [118, 0];
+let PULSE = [], DIS_PULSE = [], globeReady = false, globeCtx = null, globeIdn = null, globeProv = null, globeRaf = 0, globeLast = 0, globePoints = [], globeNodePoints = [], globeProj = null, globeCenter = [118, 0];
+let globeActInc = '', globeActNode = '';   // id titik/node yang lagi di-hover — digambar sebagai ring highlight di canvas
+let globeShakeX = 0, globeShakeY = 0;       // offset screen shake — render digeser, hit-test harus ikut
 const legendOn = Object.fromEntries(Object.keys(CAT_GEO).map(c => [c, true]));
 const REDUCED = matchMedia('(prefers-reduced-motion: reduce)').matches;
 const view = { lon: 118, lat: -2.5, zoom: 2.2 };
-const ZOOM_MAX = 24;   // dulu 7: titik se-centroid tidak pernah sempat melebar
+const ZOOM_MAX = 30;   // dulu 7: titik se-centroid tidak pernah sempat melebar
 const clampN = (v, a, b) => Math.min(b, Math.max(a, v));
 let flyAnim = null, lastGestEnd = -1e9, globeSuppressClick = 0, gesture = null;
 let globePtrType = 'mouse', tapKey = '', tapAt = 0;   // mobile: tap 1 = tooltip, tap 2 (titik sama) = reader
@@ -1967,6 +1969,39 @@ function globeProject(){
     .clipAngle(90);
 }
 const easeInOutCubic = t => t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+/* Zoom ber-anchor ke titik di bawah kursor: ortografis = rotasi + scale uniform,
+   jadi |proyeksi| = sin(θ) dengan θ = jarak sudut pusat↔titik. Zoom k× berarti
+   θ' = asin(sinθ/k) — pusat digeser menyusuri great-circle ke arah titik itu
+   sejauh θ−θ'. Titik di bawah kursor tetap di bawah kursor. */
+function zoomAt(cx, cy, factor){
+  const c = $('#sit-globe'); if (!c || !globeProj) { view.zoom = clampN(view.zoom * factor, 0.9, ZOOM_MAX); return; }
+  const proj = globeProject();
+  const rect = c.getBoundingClientRect();
+  const z2 = clampN(view.zoom * factor, 0.9, ZOOM_MAX);
+  const k = z2 / view.zoom;
+  view.zoom = z2;
+  if (k === 1 || !proj.invert) return;
+  const inv = proj.invert([cx - rect.left, cy - rect.top]);
+  if (!inv || !isFinite(inv[0]) || !isFinite(inv[1])) return;
+  const loP = inv[0], laP = inv[1];
+  if (Math.abs(laP) > Math.PI / 2 || Math.abs(loP) > Math.PI) return;
+  const laC = view.lat * Math.PI / 180, loC = view.lon * Math.PI / 180;
+  const clamp1 = v => Math.min(1, Math.max(-1, v));
+  const cosT = Math.sin(laC) * Math.sin(laP) + Math.cos(laC) * Math.cos(laP) * Math.cos(loP - loC);
+  const theta = Math.acos(clamp1(cosT));
+  const sinT = Math.sin(theta);
+  if (sinT < 1e-6) return;   // kursor pas di pusat proyeksi — tidak ada yang digeser
+  const theta2 = Math.asin(clamp1(sinT / k));
+  const d = theta - theta2;
+  if (Math.abs(d) < 1e-9) return;
+  const A = [Math.cos(laC) * Math.cos(loC), Math.cos(laC) * Math.sin(loC), Math.sin(laC)];
+  const B = [Math.cos(laP) * Math.cos(loP), Math.cos(laP) * Math.sin(loP), Math.sin(laP)];
+  const om = theta, so = Math.sin(om), t = d / om;
+  const sA = Math.sin((1 - t) * om) / so, sB = Math.sin(t * om) / so;
+  view.lat = Math.asin(clamp1(A[2] * sA + B[2] * sB)) * 180 / Math.PI;
+  view.lon = Math.atan2(A[1] * sA + B[1] * sB, A[0] * sA + B[0] * sB) * 180 / Math.PI;
+  view.lon = ((view.lon + 540) % 360) - 180;
+}
 function flyTo(lat, lon, zoom){
   flyAnim = { from: { lon: view.lon, lat: view.lat, zoom: view.zoom },
     to: { lon, lat, zoom: zoom || view.zoom }, start: performance.now(), dur: 1150 };
@@ -2121,7 +2156,7 @@ function showSitAlert(p){
       el.hidden = true; el.classList.remove('hide','show'); setLinkItem(null);
       // zoom-out hanya kalau tidak ada antrian menunggu & user tidak baru berinteraksi — jangan tarik view yang baru difokuskan
       if (globeReady && !focusQueue.length && performance.now() - lastGestEnd > 10000)
-        flyTo(view.lat, view.lon, clampN(view.zoom - 2.2, 3, 6));
+        flyTo(view.lat, view.lon, clampN(view.zoom - 2.2, 3, ZOOM_MAX));   // jangan clamp atas ke 6 — zoom dalam user harus survive
     }, 320);
   }, 10000);
 }
@@ -2199,6 +2234,7 @@ function drawGlobe(now){
     shakeX = Math.sin(now / 37) * amp; shakeY = Math.cos(now / 53) * amp * 0.7;
   }
   ctx.setTransform(dpr, 0, 0, dpr, shakeX * dpr, shakeY * dpr);
+  globeShakeX = shakeX; globeShakeY = shakeY;   // simpan buat hit-test — dot yang kegeser shake tetap ke-hit
   ctx.clearRect(-8, -8, w + 16, h + 16);
   const proj = globeProject();
   globeProj = proj;
@@ -2244,16 +2280,17 @@ function drawGlobe(now){
   ctx.lineWidth = 2.2; ctx.strokeStyle = 'rgba(96,96,96,.32)'; ctx.stroke();
   // Titik insiden: pin nangkring di wilayahnya, disusun dalam spiral kecil biar tidak numpuk
   const tsNow = Date.now();
-  const zoomBoost = Math.min(2.0, (view.zoom - 1) * 0.5);
+  const zoomBoost = Math.min(4.5, (view.zoom - 1) * 0.55);   // dot ikut membesar pas zoom dalam — terasa "mendekat", bukan flat map
   const slotCount = {};
   const pts = [];
   // Node pemantauan tetap (semua kab/kota): titik redup sebagai konteks, kecuali wilayah yang sudah punya insiden
+  const nodePts = [];
   {
     const hot = new Set();
     for (const p of (PULSE || [])) if (!p.fixed && p.name) hot.add(p.name);
-    const nr = 0.8 + Math.min(1.1, (view.zoom - 1) * 0.35);
+    const nr = 0.55 + Math.min(0.75, Math.max(0, view.zoom - 1) * 0.22);   // lebih kecil dari semula — node itu konteks, bukan sinyal
     ctx.save();
-    ctx.fillStyle = 'rgba(160,160,160,.34)';
+    ctx.fillStyle = 'rgba(160,160,160,.30)';
     ctx.beginPath();
     for (const p of (PULSE || [])) {
       if (!p.fixed || hot.has(p.name) || typeof p.la !== 'number') continue;
@@ -2261,6 +2298,7 @@ function drawGlobe(now){
       const q = proj([p.lo, p.la]);
       if (!q) continue;
       ctx.moveTo(q[0] + nr, q[1]); ctx.arc(q[0], q[1], nr, 0, Math.PI * 2);
+      nodePts.push({ x: q[0], y: q[1], r: nr, node: p });
     }
     ctx.fill();
     ctx.restore();
@@ -2349,6 +2387,16 @@ function drawGlobe(now){
       ctx.strokeStyle = hexA(d.color, .7); ctx.lineWidth = .9; ctx.stroke(); ctx.restore();
     }
   }
+  // Ring highlight target hover — keliatan mana yang lagi "interactive" di antara titik yang overlap.
+  // Lookup by id tiap frame → ring ngikutin dotnya pas globe berputar.
+  if (globeActInc) {
+    const d = pts.find(q => q.p && itemIdOf(q.p) === globeActInc);
+    if (d) { ctx.beginPath(); ctx.arc(d.x, d.y, d.r + 3, 0, Math.PI * 2); ctx.strokeStyle = 'rgba(255,255,255,.9)'; ctx.lineWidth = 1.5; ctx.stroke(); }
+  }
+  if (globeActNode) {
+    const d = nodePts.find(q => q.node && 'n:' + (q.node.name || '') === globeActNode);
+    if (d) { ctx.beginPath(); ctx.arc(d.x, d.y, 6.5, 0, Math.PI * 2); ctx.strokeStyle = 'rgba(255,255,255,.75)'; ctx.lineWidth = 1.3; ctx.stroke(); }
+  }
   // Connector toast: digambar di canvas SEBELUM label wilayah → label menumpuk di atas garis (interplay)
   const alertEl = $('#sit-alert');
   const fp = linkItem && alertEl && !alertEl.hidden && alertEl.classList.contains('show')
@@ -2417,29 +2465,50 @@ function drawGlobe(now){
     }
   }
   globePoints = pts;
+  globeNodePoints = nodePts;
 }
 function globeLoop(now){
   if (globeReady && now - globeLast > 33) { globeLast = now; drawGlobe(now); }
   globeRaf = requestAnimationFrame(globeLoop);
 }
-function nearestGlobePoint(x, y, r = 9){
-  let best = null, bd = Infinity;
-  for (const d of globePoints) {
-    const hit = Math.max(r, (d.r || 2) + 5);   // dot besar = target besar; zoom dalam bikin dot renggang → tetap presisi
-    const dist = Math.hypot(d.x - x, d.y - y);
-    if (dist < hit && dist < bd) { bd = dist; best = d; }
+/* Hit-test: kumpulkan SEMUA kandidat dalam radius (bukan cuma nearest) —
+   titik yang overlap di-hover di-cycle supaya yang ketutup tetap bisa dijangkau. */
+function collectHits(list, x, y, r, hitR){
+  const out = [];
+  for (const d of list) {
+    const hit = hitR(d, r);
+    const dist = Math.hypot(d.x + globeShakeX - x, d.y + globeShakeY - y);   // +shake: posisi render = coord + offset
+    if (dist < hit) out.push({ d, dist });
   }
-  return best;
+  out.sort((a, b) => a.dist - b.dist);
+  return out;
+}
+const incHitR = (d, r) => Math.max(r, (d.r || 2) + 5);          // dot besar = target besar
+const nodeHitR = (d, r) => Math.max(r, 12, (d.r || 1) + 8);    // node sub-piksel → target minimal 12px
+// state cycle per jenis — reset kalau himpunan kandidat berubah
+const cyc = { inc: { sig: '', i: 0, t: 0 }, node: { sig: '', i: 0, t: 0 } };
+const cycId = h => h.d.p ? itemIdOf(h.d.p) : 'n:' + (h.d.node.name || '');
+function cycPick(bucket, hits, advance){
+  const sig = hits.map(cycId).join('|');
+  const now = performance.now();
+  if (sig !== bucket.sig) { bucket.sig = sig; bucket.i = 0; bucket.t = now; }
+  else if (advance && now - bucket.t > 450) { bucket.i = (bucket.i + 1) % hits.length; bucket.t = now; }
+  return hits[Math.min(bucket.i, hits.length - 1)];
+}
+// insiden selalu menang atas node — sinyal > konteks. advance=false (klik) → item yang sedang di-hover.
+function pickGlobe(x, y, r = 9, advance = true){   // default r=9 — dulu hover manggil tanpa r → Math.max(undefined)=NaN → hit-test mati total
+  const inc = collectHits(globePoints, x, y, r, incHitR);
+  if (inc.length) { const h = cycPick(cyc.inc, inc, advance); globeActInc = cycId(h); globeActNode = ''; return { d: h.d, node: false }; }
+  const nd = collectHits(globeNodePoints, x, y, r, nodeHitR);
+  if (nd.length) { const h = cycPick(cyc.node, nd, advance); globeActNode = cycId(h); globeActInc = ''; return { d: h.d, node: true }; }
+  cyc.inc.sig = cyc.node.sig = '';
+  globeActInc = globeActNode = '';
+  return null;
 }
 const precTxt = p => p.prec === 'desa' ? 'lokasi: centroid administrasi BIG (desa, perkiraan)' : p.prec === 'kelurahan' ? 'lokasi: centroid administrasi BIG (kelurahan, perkiraan)' : p.prec === 'kec' ? 'lokasi: kecamatan dikenali, titik memakai pusat kab/kota' : p.prec === 'prov' ? 'lokasi: perkiraan tingkat provinsi' : p.prec === 'region' ? 'lokasi: perkiraan wilayah' : p.prec === 'kab' ? 'lokasi: pusat kab/kota' : '';
-function showGlobeTip(e, d, touch){
+function placeSitTip(e, touch){
   const tip = $('#sit-tip');
   const wrap = $('.sit-mapwrap').getBoundingClientRect();
-  const p = d.p;
-  tip.innerHTML = `<div class="tip-k" style="color:${d.color}">${esc(p.label || CAT_LABEL[d.cat])}${p.name ? ' · ' + esc(p.name) : ''}</div>
-    <div class="tip-t">${esc(deEmoji(p.title || ''))}</div>
-    <div class="tip-m">${esc(p.src || '')} · ${esc(p.ts ? wibTime(p.ts) : '')} WIB${precTxt(p) ? ' · ' + esc(precTxt(p)) : ''}</div>${touch && p.url ? '<div class="tip-h">Ketuk lagi · buka reader</div>' : ''}`;
-  tip.hidden = false;
   const tw = tip.offsetWidth, th = tip.offsetHeight;
   let left = e.clientX - wrap.left + 12, top = e.clientY - wrap.top + 12;
   if (touch) { left = e.clientX - wrap.left - tw / 2; top = e.clientY - wrap.top - th - 22; if (top < 4) top = e.clientY - wrap.top + 22; }   // di atas jari
@@ -2447,6 +2516,24 @@ function showGlobeTip(e, d, touch){
   if (top + th > wrap.height - 6) top = e.clientY - wrap.top - th - 10;
   tip.style.left = Math.max(4, left) + 'px';
   tip.style.top = Math.max(4, top) + 'px';
+}
+function showGlobeTip(e, d, touch){
+  const tip = $('#sit-tip');
+  const p = d.p;
+  tip.innerHTML = `<div class="tip-k" style="color:${d.color}">${esc(p.label || CAT_LABEL[d.cat])}${p.name ? ' · ' + esc(p.name) : ''}</div>
+    <div class="tip-t">${esc(deEmoji(p.title || ''))}</div>
+    <div class="tip-m">${esc(p.src || '')} · ${esc(p.ts ? wibTime(p.ts) : '')} WIB${precTxt(p) ? ' · ' + esc(precTxt(p)) : ''}</div>${touch && p.url ? '<div class="tip-h">Ketuk lagi · buka reader</div>' : ''}`;
+  tip.hidden = false;
+  placeSitTip(e, touch);
+}
+function showNodeTip(e, d, touch){
+  const tip = $('#sit-tip');
+  const n = d.node;
+  tip.innerHTML = `<div class="tip-k" style="color:#8d8d8d">NODE PEMANTAUAN</div>
+    <div class="tip-t">${esc(n.name || '')}</div>
+    <div class="tip-m">${esc(n.prov || '')} · ${touch ? 'ketuk lagi untuk fokus' : 'klik untuk fokus wilayah'}</div>`;
+  tip.hidden = false;
+  placeSitTip(e, touch);
 }
 const hideGlobeTip = () => { const tip = $('#sit-tip'); if (tip) tip.hidden = true; };
 function ptrEnd(e){
@@ -2479,12 +2566,13 @@ function bindGlobeEvents(){
     }
     c.style.cursor = 'grabbing';
     hideGlobeTip();
+    globeActInc = globeActNode = '';
   });
   c.addEventListener('pointermove', e => {
     const rect = c.getBoundingClientRect();
     if (!ptrs.has(e.pointerId) && e.pointerType !== 'touch') {
-      const hit = nearestGlobePoint(e.clientX - rect.left, e.clientY - rect.top);
-      if (hit) { c.style.cursor = 'pointer'; showGlobeTip(e, hit); }
+      const hit = pickGlobe(e.clientX - rect.left, e.clientY - rect.top);
+      if (hit) { c.style.cursor = 'pointer'; hit.node ? showNodeTip(e, hit.d) : showGlobeTip(e, hit.d); }
       else { c.style.cursor = 'grab'; hideGlobeTip(); }
       return;
     }
@@ -2498,38 +2586,60 @@ function bindGlobeEvents(){
     } else if (gesture.mode === 'pinch' && ptrs.size === 2) {
       const [a, b] = [...ptrs.values()];
       const dist = Math.hypot(a.x - b.x, a.y - b.y);
-      if (gesture.dist > 0) view.zoom = clampN(gesture.zoom * dist / gesture.dist, 0.9, ZOOM_MAX);
+      if (gesture.dist > 0) {
+        const want = clampN(gesture.zoom * dist / gesture.dist, 0.9, ZOOM_MAX);
+        zoomAt((a.x + b.x) / 2, (a.y + b.y) / 2, want / view.zoom);
+      }
       gesture.moved += 1;
     }
     lastGestEnd = performance.now();
   });
   c.addEventListener('pointerup', ptrEnd);
   c.addEventListener('pointercancel', ptrEnd);
+  c.addEventListener('lostpointercapture', e => { if (ptrs.has(e.pointerId)) ptrEnd(e); });
+  // fallback: pointerup/cancel yang kelewat (capture gagal, release di luar canvas) — tanpa ini ptrs nyangkut → globe stuck "drag mode"
+  const ptrEndAny = e => { if (ptrs.has(e.pointerId)) ptrEnd(e); };
+  window.addEventListener('pointerup', ptrEndAny);
+  window.addEventListener('pointercancel', ptrEndAny);
+  window.addEventListener('blur', () => { ptrs.clear(); gesture = null; const g = $('#sit-globe'); if (g) g.style.cursor = 'grab'; hideGlobeTip(); });
   c.addEventListener('wheel', e => {
     e.preventDefault();
     flyAnim = null;
-    view.zoom = clampN(view.zoom * (e.deltaY < 0 ? 1.4 : 1 / 1.4), 0.9, ZOOM_MAX);
+    zoomAt(e.clientX, e.clientY, e.deltaY < 0 ? 1.55 : 1 / 1.55);
     lastGestEnd = performance.now();
   }, { passive: false });
-  c.addEventListener('mouseleave', () => { if (!ptrs.size) hideGlobeTip(); });
+  c.addEventListener('mouseleave', () => { if (!ptrs.size) { hideGlobeTip(); globeActInc = globeActNode = ''; } });
   c.addEventListener('click', e => {
     if (performance.now() - globeSuppressClick < 350) return;
     const rect = c.getBoundingClientRect();
     const touch = globePtrType === 'touch' || globePtrType === 'pen';
-    const hit = nearestGlobePoint(e.clientX - rect.left, e.clientY - rect.top, touch ? 22 : 9);
+    const hit = pickGlobe(e.clientX - rect.left, e.clientY - rect.top, touch ? 22 : 9, false);   // klik → item yang sedang di-hover, bukan advance
+    if (hit && hit.node) {   // node: tap2/klik → fly ke wilayah node
+      const n = hit.d.node, key = 'node|' + (n.name || '');
+      if (touch) {
+        if (key === tapKey && performance.now() - tapAt < 9000) {
+          tapKey = ''; hideGlobeTip();
+          flyTo(n.la, n.lo, Math.max(view.zoom, 11));
+          return;
+        }
+        tapKey = key; tapAt = performance.now(); showNodeTip(e, hit.d, true); return;
+      }
+      flyTo(n.la, n.lo, Math.max(view.zoom, 11)); return;
+    }
+    const inc = hit ? hit.d : null;
     if (touch) {
-      if (!hit) { tapKey = ''; hideGlobeTip(); return; }
-      const key = String(hit.p.url || hit.p.title || '');
+      if (!inc) { tapKey = ''; hideGlobeTip(); return; }
+      const key = String(inc.p.url || inc.p.title || '');
       if (key && key === tapKey && performance.now() - tapAt < 9000) {   // tap kedua di titik yang sama
         tapKey = ''; hideGlobeTip();
-        if (hit.p.url) rdOpen(hit.p.url, null, true, '').catch(() => window.open(hit.p.url, '_blank', 'noopener'));
+        if (inc.p.url) rdOpen(inc.p.url, null, true, '').catch(() => window.open(inc.p.url, '_blank', 'noopener'));
         return;
       }
       tapKey = key; tapAt = performance.now();
-      showGlobeTip(e, hit, true);
+      showGlobeTip(e, inc, true);
       return;
     }
-    if (hit && hit.p && hit.p.url) rdOpen(hit.p.url, null, true, '').catch(() => window.open(hit.p.url, '_blank', 'noopener'));
+    if (inc && inc.p && inc.p.url) rdOpen(inc.p.url, null, true, '').catch(() => window.open(inc.p.url, '_blank', 'noopener'));
   });
 }
 function renderMapLegend(st){
@@ -3353,6 +3463,8 @@ $('#catbar').addEventListener('click', e => {
   renderNews();
 });
 
+// mirror BANNED_SRC di server.js — GN feed bisa narik blog/opini (kompasiana dll)
+const NEWS_BANNED = /infopublik|kompasiana/i;
 function parseRss(xmlText, srcId){
   const doc = new DOMParser().parseFromString(xmlText, 'text/xml');
   const out = [];
@@ -3360,7 +3472,8 @@ function parseRss(xmlText, srcId){
     const title = (it.querySelector('title') || {}).textContent || '';
     const link  = (it.querySelector('link') || {}).textContent || '';
     const date  = (it.querySelector('pubDate') || {}).textContent || '';
-    if (title && link) out.push({ src:srcId, title:title.trim(), url:link.trim(), ts: date ? Date.parse(date) : 0 });
+    const src   = (it.querySelector('source') || {}).textContent || '';
+    if (title && link && !NEWS_BANNED.test(title + ' ' + link + ' ' + src)) out.push({ src:srcId, title:title.trim(), url:link.trim(), ts: date ? Date.parse(date) : 0 });
   });
   return out;
 }
