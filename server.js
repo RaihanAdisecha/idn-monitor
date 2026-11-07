@@ -359,6 +359,7 @@ function collect(o, out) {
       text: (nt && nt.text) || o.legacy.full_text,
       urls: extractedUrls,
       ts: Date.parse(o.legacy.created_at) || 0,
+      created_at: o.legacy.created_at || '',
       url: h ? `https://x.com/${h}/status/${o.rest_id}` : '',
       replies: o.legacy.reply_count || 0,
       reposts: o.legacy.retweet_count || 0,
@@ -466,7 +467,7 @@ const xposts = () => memo('x', 300000, async () => {
   const hotTop = meta0.trending.slice(0, 2);
   for (const e of all) if (ADHOC.some(a => a.id === e.t) || hotTop.includes(e.t)) sel.set(e.q, e);
   const queries = [...sel.values()], errs = [], batch = [], now = Date.now();
-  let rawN = 0, dropTs = 0, dropTag = 0;
+  let rawN = 0, dropTs = 0, dropTag = 0, dropSample = null;
   for (let i = 0; i < queries.length; i += 5) {
     const chunk = queries.slice(i, i + 5);
     const rs = await Promise.allSettled(chunk.map(e => xSearch(e.q)));
@@ -475,7 +476,7 @@ const xposts = () => memo('x', 300000, async () => {
       if (r.status === 'rejected') { errs.push(e.t + ': ' + String(r.reason && r.reason.message || r.reason)); return; }
       for (const p of r.value) {
         rawN++;
-        if (!p.ts || now - p.ts > 48 * 3600e3) { dropTs++; continue; }
+        if (!p.ts || now - p.ts > 48 * 3600e3) { dropTs++; if (!dropSample) dropSample = { ts: p.ts, ca: p.created_at, txt: String(p.text || '').slice(0, 60) }; continue; }
         if (!tagX(p)) { dropTag++; continue; }
         p.q = e.t; p.qs = p.topics.slice();
         batch.push(p);
@@ -485,7 +486,7 @@ const xposts = () => memo('x', 300000, async () => {
   histMerge(xHist, batch, HIST_MAX.x, path.join(HIST_DIR, 'x-history.json'));
   const posts = [...xHist.values()].sort((a, b) => histTs(b) - histTs(a));
   let err = errs.join(' | ');
-  if (!posts.length && !err) err = '0 post lolos filter: ' + rawN + ' tweet dari ' + queries.length + ' query (drop ts:' + dropTs + ' topik:' + dropTag + ')';
+  if (!posts.length && !err) err = '0 post lolos filter: ' + rawN + ' tweet dari ' + queries.length + ' query (drop ts:' + dropTs + ' topik:' + dropTag + ')' + (dropSample ? ' | contoh ts=' + dropSample.ts + ' created_at="' + dropSample.ca + '" "' + dropSample.txt + '"' : '');
   return { ok: posts.length > 0, err, posts, ...socMeta(), at: Date.now() };
 });
 /* ---------- X lazy: satu topik on-demand (klik chip yang masih kosong) ---------- */
