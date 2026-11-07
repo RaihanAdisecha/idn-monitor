@@ -1829,9 +1829,8 @@ const focusHoldUntil = Date.now() + 20000;   // 20 dtk pertama: antrian diisi ta
 const saveSeen = () => { try { sessionStorage.setItem(SEEN_KEY, JSON.stringify([...seenIds].slice(-3000))); } catch (e) {} };
 const itemIdOf = p => p.url || ((p.title || '') + '|' + (p.src || ''));
 const focusQueue = [];        // item fresh yang belum sempat diumumkan — tidak ditelan, diuras satu per evaluasi
-let lastAutoFocus = 0, rotIdx = 0, rotSig = '', focusedHome = true;
+let lastAutoFocus = 0, focusedHome = true;
 const FOCUS_COOLDOWN = 90000; // anti-yank: globe tidak boleh dansa tiap cycle
-const ROTATE_AFTER = 60000;   // antrean kosong → rotasi item terbaru tiap ~60 dtk setelah fokus terakhir
 const HOME_VIEW = { lat: -2.5, lon: 118, zoom: 2.2 };
 const MAG_MIN_FOCUS = 4.5;    // gempa kecil tetap jadi titik, tapi tidak merebut fokus
 const magOf = p => {
@@ -1860,11 +1859,12 @@ function focusCandidates(){
 // Urutan queue: gunung api & gempa M>=5 yang masih "panas" (<90 mnt) didahulukan; selebihnya murni terbaru.
 const focusRank = p => ((p.sub === 'volcano' || (p.sub === 'gempa' && (magOf(p) || 0) >= 5)) && Date.now() - (p.ts || 0) < HOT_MS) ? 1 : 0;
 const focusSort = (a, b) => (focusRank(b) - focusRank(a)) || (b.ts || 0) - (a.ts || 0);
-function doFocus(t, silent){
+// INVARIAN: setiap flyTo ke titik insiden WAJIB toast — tidak ada fokus senyap.
+function doFocus(t){
   lastAutoFocus = Date.now();
   focusedHome = false;
   flyTo(t.la, t.lo, Math.max(view.zoom, 9));
-  if (!silent) { setLinkItem(t); showSitAlert(t); }   // rotasi senyap tidak boleh sentuh linkItem — dim akan stuck
+  setLinkItem(t); showSitAlert(t);
 }
 function maybeFocusFresh(){
   const now = Date.now();
@@ -1896,19 +1896,7 @@ function maybeFocusFresh(){
     doFocus(focusQueue.shift());
     return;
   }
-  idleRotate(items, now);
-}
-// Antrean kosong: putar bergantian di 5 item terbaru; setelah satu putaran, kembali ke tampilan Indonesia penuh.
-// Rotasi bersifat ambient: flyTo senyap (tanpa toast) dan butuh idle lebih lama supaya tidak mencuri view user.
-function idleRotate(items, now){
-  if (now - lastAutoFocus < ROTATE_AFTER) return;
-  if (performance.now() - lastGestEnd < 45000) return;   // user baru berinteraksi <45 dtk → jangan ganggu
-  if (!items.length) { goHome(); return; }
-  const top = items.slice().sort((a, b) => (b.ts || 0) - (a.ts || 0)).slice(0, 5);   // rotasi = yang terbaru, bukan yang paling besar
-  const sig = top.map(itemIdOf).join('|');
-  if (sig !== rotSig) { rotSig = sig; rotIdx = 0; }   // set berubah → mulai putaran dari awal, jangan skip item baru
-  if (rotIdx >= top.length) { rotIdx = 0; goHome(); return; }
-  doFocus(top[rotIdx++], true);
+  goHome();   // antrian kosong → tidak ada rotasi senyap; globe hanya pulang ke overview
 }
 function goHome(){
   if (focusedHome || !globeReady) return;
@@ -1918,7 +1906,7 @@ function goHome(){
 }
 setInterval(() => {   // heartbeat: antrian diuras + rotasi jalan walau tidak ada fetch baru
   if (document.hidden || !globeReady) return;
-  maybeFocusFresh();   // urus queue → cooldown → idleRotate sendiri; guard gesture 25 dtk di dalamnya
+  maybeFocusFresh();   // urus queue → cooldown → goHome; guard gesture di dalamnya
 }, 15000);
 // Wire/breaking dapat berita baru → segera tarik insiden supaya titik + fokus ikut (server memo 55 dtk).
 let globeSyncT = 0;
