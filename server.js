@@ -2276,6 +2276,9 @@ function rdBlocks(html, finalURL) {
   let s = String(html)
     .replace(/<!--[\s\S]*?-->/g, ' ')
     .replace(/<(script|style|noscript|svg|form|nav|header|footer|aside|button|select|template)\b[^>]*>[\s\S]*?<\/\1>/gi, ' ');
+  // halaman galeri/listing punya banyak <article> saudara (satu per foto/berita terkait) — buang semua kecuali yang pertama
+  let artSeen = false;
+  s = s.replace(/<article\b[^>]*>[\s\S]*?<\/article\s*>/gi, m => artSeen ? ' ' : (artSeen = true, m));
   s = rdStripJunkContainers(s);   // sidebar/related/widget dibuang dulu, supaya video & gambar mereka tak ikut
   s = s.replace(/<iframe\b[^>]*>[\s\S]*?<\/iframe\s*>|<video\b[^>]*>[\s\S]*?<\/video\s*>/gi, m => {
     if (vids.length >= 4) return ' ';
