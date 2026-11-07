@@ -476,14 +476,39 @@ a{color:inherit;text-decoration:none;text-underline-offset:2px}
 /* ============================================================ TOOLS / INPUTS */
 .tools{display:flex;gap:8px;padding:8px 12px;border-bottom:1px solid var(--border);background:var(--bg)}
 .tools[hidden]{display:none}
-.pane-fab{position:relative}
-.flt-fab{position:absolute;top:76px;right:14px;z-index:30;display:flex;flex-direction:column;align-items:flex-end;gap:8px}
-.flt-tools{flex-direction:row;align-items:center;width:290px;padding:8px;border:1px solid var(--border);border-radius:10px;background:var(--bg);box-shadow:0 8px 28px rgba(0,0,0,.55)}
-.flt-tools .inp{flex:1;min-width:0}
-.flt-pill{display:inline-flex;align-items:center;gap:5px;padding:5px 12px;background:var(--bg);border:1px solid var(--border);border-radius:99px;cursor:pointer;font:600 9px/1 var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--text3);box-shadow:0 4px 14px rgba(0,0,0,.45);transition:color .12s,border-color .12s}
-.flt-pill:hover{color:var(--text2);border-color:var(--text3)}
-.flt-pill[aria-expanded="true"]{color:var(--text);border-color:var(--text3)}
-.flt-cv{font-size:11px;line-height:1}
+.flt-wrap{position:relative;z-index:6}
+.flt-drawer{display:grid;grid-template-rows:0fr;transition:grid-template-rows .22s cubic-bezier(.2,.8,.3,1)}
+.flt-wrap.open .flt-drawer{grid-template-rows:1fr}
+.flt-in{min-height:0;overflow:hidden;display:flex;align-items:center;gap:8px;padding:0 12px;background:var(--bg);border-bottom:1px solid transparent;transition:padding .22s,border-color .22s}
+.flt-wrap.open .flt-in{padding:10px 12px 14px;border-bottom-color:var(--border)}
+/* form pencarian: satu field dengan ikon, hint tombol "/", tombol hapus; Topik sebagai chip toggle */
+.flt-field{position:relative;flex:1;min-width:0;display:flex;align-items:center;height:34px;background:var(--field);border:1px solid var(--border);border-bottom-color:var(--border2);transition:border-color .12s,box-shadow .12s}
+.flt-field:focus-within{border-color:var(--text3);box-shadow:inset 0 -1px 0 var(--text3)}
+.flt-si{flex:none;width:14px;height:14px;margin-left:10px;color:var(--text3);transition:color .12s}
+.flt-field:focus-within .flt-si{color:var(--text)}
+.flt-in .flt-field .inp{flex:1;min-width:0;height:100%;padding:0 8px;background:transparent;border:0;box-shadow:none;outline:0}
+.flt-in .flt-field .inp::-webkit-search-cancel-button,.flt-in .flt-field .inp::-webkit-search-decoration{-webkit-appearance:none;display:none}
+.flt-kb{flex:none;margin-right:8px;padding:2px 5px;border:1px solid var(--border2);font:600 8px/1 var(--mono);color:var(--text3)}
+.flt-field.has .flt-kb{display:none}
+.flt-x{display:none;flex:none;width:26px;height:100%;align-items:center;justify-content:center;border:0;background:transparent;color:var(--text3);cursor:pointer}
+.flt-x:hover{color:var(--text)}
+.flt-field.has .flt-x{display:inline-flex}
+.flt-chip{flex:none;display:inline-flex;align-items:center;gap:6px;height:34px;padding:0 11px;background:transparent;border:1px solid var(--border);color:var(--text3);cursor:pointer;font:600 9px/1 var(--mono);letter-spacing:.1em;text-transform:uppercase;transition:color .12s,border-color .12s,background .12s}
+.flt-chip:hover{color:var(--text2);border-color:var(--text3)}
+.flt-chip svg{width:10px;height:10px;opacity:0;transition:opacity .12s}
+.flt-chip[aria-pressed="true"]{background:var(--text);border-color:var(--text);color:#161616}
+.flt-chip[aria-pressed="true"] svg{opacity:1}
+.flt-tab{position:absolute;left:50%;top:100%;transform:translateX(-50%);margin-top:-1px;display:inline-flex;align-items:center;gap:6px;height:18px;padding:0 12px;
+  background:var(--bg);border:1px solid var(--border);border-top-color:var(--bg);border-radius:0 0 8px 8px;cursor:pointer;
+  font:600 8px/1 var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--text3);transition:color .12s,border-color .12s}
+.flt-tab:hover,.flt-wrap.open .flt-tab{color:var(--text)}
+.flt-tab:focus-visible{outline:1px solid var(--text3);outline-offset:1px}
+.flt-cv{flex:none;display:block;transition:transform .22s}
+.flt-lb{display:block;line-height:1}
+.flt-wrap.open .flt-cv{transform:rotate(180deg)}
+.flt-dot{display:none;width:5px;height:5px;border-radius:50%;background:var(--accent)}
+.flt-wrap.on .flt-dot{display:inline-block}
+@media (prefers-reduced-motion:reduce){.flt-drawer,.flt-in,.flt-cv{transition:none}}
 .inp{
   flex:1;min-width:0;height:30px;padding:0 10px;background:var(--field);
   border:1px solid var(--border);border-bottom-color:var(--border2);
@@ -1257,6 +1282,14 @@ a{color:inherit;text-decoration:none;text-underline-offset:2px}
   <symbol id="i-sg-kesehatan" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6.1"/><path d="M8 5v6M5 8h6"/></symbol>
   <symbol id="i-sg-ekonomi" viewBox="0 0 16 16"><path d="M2.5 13.5h11"/><path d="M4.5 13.5v-4.2M8 13.5V6M11.5 13.5V9"/></symbol>
   <symbol id="i-sg-politik" viewBox="0 0 16 16"><path d="M2.5 13.5h11"/><path d="M4 13.5v-6.4M8 13.5V4.6M12 13.5v-6.4"/><path d="M2.5 3.4 8 1.9l5.5 1.5"/></symbol>
+  <symbol id="i-gauge" viewBox="0 0 16 16"><path d="M3.4 12.9a5.8 5.8 0 1 1 9.2 0"/><path d="M8 12.9 10.8 8.8"/><circle cx="8" cy="12.9" r=".8" fill="currentColor" stroke="none"/></symbol>
+  <symbol id="i-activity" viewBox="0 0 16 16"><path d="M1.8 8.4h2.8l1.5-4 2.9 8 1.6-4h4"/></symbol>
+  <symbol id="i-mountain" viewBox="0 0 16 16"><path d="M1.6 13.4 5.8 6.4l2.6 3.7 1.9-2.6 4.1 5.9H1.6Z"/></symbol>
+  <symbol id="i-cloud" viewBox="0 0 16 16"><path d="M4.4 12.4h7.4a3 3 0 0 0 .4-5.95A4.4 4.4 0 0 0 4.2 6.4a3 3 0 0 0 .2 6Z"/></symbol>
+  <symbol id="i-wind" viewBox="0 0 16 16"><path d="M2.2 4.8h7.3a1.9 1.9 0 1 0-1.8-2.5"/><path d="M2.2 8.4h10.4a1.9 1.9 0 1 1-1.8 2.5"/><path d="M2.2 12h6.1"/></symbol>
+  <symbol id="i-cloud-rain" viewBox="0 0 16 16"><path d="M4.4 9.8h7.4a3 3 0 0 0 .4-5.95A4.4 4.4 0 0 0 4.2 3.8a3 3 0 0 0 .2 6Z"/><path d="M6.2 11.6l-.7 2.2M9.8 11.6l-.7 2.2M8 11.6l-.7 2.2"/></symbol>
+  <symbol id="i-satellite" viewBox="0 0 16 16"><circle cx="8" cy="4.4" r="1.5"/><path d="M5 7.6a4.4 4.4 0 0 1 6 0"/><path d="M3.2 10.2a7.4 7.4 0 0 1 9.6 0"/><path d="M8 13.9v-3"/><path d="M6 12.4 8 14.4l2-2"/></symbol>
+  <symbol id="i-drop" viewBox="0 0 16 16"><path d="M8 2.2c2.6 3.2 4.2 5.2 4.2 7.2a4.2 4.2 0 0 1-8.4 0c0-2 1.6-4 4.2-7.2Z"/></symbol>
 </svg>
 
 <header class="hdr">
@@ -1387,16 +1420,23 @@ a{color:inherit;text-decoration:none;text-underline-offset:2px}
   </section>
 
   <!-- 04 NEWS -->
-  <section class="pane pane-fab" aria-label="Wire berita">
+  <section class="pane" aria-label="Wire berita">
     <div class="ph"><span class="ph-k">04</span><h2 class="ph-t">News Wire</h2><span class="ph-m" id="nmeta">—</span></div>
     <div class="pb">
       <div class="catbar" id="catbar" role="group" aria-label="Kategori berita"></div>
-      <div class="flt-fab">
-        <div class="tools flt-tools" id="newstools" hidden>
-          <input class="inp" id="fq" type="search" placeholder="Saring berita… (/)" aria-label="Saring berita">
-          <button class="tgl" id="ontopic" type="button" aria-pressed="true" title="Hanya berita demo, kebakaran, banjir, bencana, atau insiden">Topik</button>
+      <div class="flt-wrap" id="fltwrap">
+        <div class="flt-drawer" id="newstools" role="search">
+          <div class="flt-in">
+            <label class="flt-field" id="fltfield">
+              <svg class="flt-si" viewBox="0 0 14 14" aria-hidden="true"><circle cx="6" cy="6" r="4.2" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M9.2 9.2 12.5 12.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="square"/></svg>
+              <input class="inp" id="fq" type="search" placeholder="Saring berita" aria-label="Saring berita" autocomplete="off" spellcheck="false" tabindex="-1">
+              <kbd class="flt-kb" aria-hidden="true">/</kbd>
+              <button class="flt-x" id="fltclear" type="button" aria-label="Hapus pencarian" tabindex="-1"><svg viewBox="0 0 10 10" width="9" height="9" aria-hidden="true"><path d="M2 2 8 8M8 2 2 8" stroke="currentColor" stroke-width="1.3" stroke-linecap="square"/></svg></button>
+            </label>
+            <button class="flt-chip" id="ontopic" type="button" aria-pressed="true" tabindex="-1" title="Hanya berita demo, kebakaran, banjir, bencana, atau insiden"><svg viewBox="0 0 10 10" aria-hidden="true"><path d="M1.8 5.3 4 7.5 8.3 2.8" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="square"/></svg>Topik</button>
+          </div>
         </div>
-        <button class="flt-pill" id="fltpill" type="button" aria-expanded="false" aria-controls="newstools"><span class="flt-cv">⌄</span>filter</button>
+        <button class="flt-tab" id="fltpill" type="button" aria-expanded="false" aria-controls="newstools"><svg class="flt-cv" viewBox="0 0 10 10" width="9" height="9" aria-hidden="true"><path d="M2 3.5 5 6.5 8 3.5" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="square"/></svg><span class="flt-lb">filter</span><i class="flt-dot" aria-hidden="true"></i></button>
       </div>
       <div id="lead"></div>
       <div id="nlist"><div class="empty">Menghubungkan ke wire…</div></div>
@@ -1448,28 +1488,28 @@ a{color:inherit;text-decoration:none;text-underline-offset:2px}
     <button class="mly" type="button" data-layer="ttinc" aria-pressed="false" title="TomTom Insiden" aria-label="TomTom Insiden"><svg class="ic" aria-hidden="true"><use href="#i-alert"></use></svg><span>Insid.</span></button>
     <button class="mly" type="button" data-layer="ttdata" aria-pressed="false" title="Data Insiden TomTom" aria-label="Data Insiden TomTom"><svg class="ic" aria-hidden="true"><use href="#i-map"></use></svg><span>Data</span></button>
     <button class="mly" type="button" data-layer="rute" aria-pressed="false" title="Rute & Jarak" aria-label="Rute & Jarak"><svg class="ic" aria-hidden="true"><use href="#i-route"></use></svg><span>Rute</span></button>
-    <button class="mly" type="button" data-layer="lalin" aria-pressed="false" title="Cek Kecepatan Jalan" aria-label="Cek Kecepatan Jalan"><svg class="ic" aria-hidden="true"><use href="#i-flow"></use></svg><span>Lalin</span></button></span>
+    <button class="mly" type="button" data-layer="lalin" aria-pressed="false" title="Cek Kecepatan Jalan" aria-label="Cek Kecepatan Jalan"><svg class="ic" aria-hidden="true"><use href="#i-gauge"></use></svg><span>Lalin</span></button></span>
     <span class="mly-unit"><span class="mly-grp">Transport</span>
     <button class="mly" type="button" data-layer="flight" aria-pressed="false" title="Penerbangan" aria-label="Penerbangan"><svg class="ic" aria-hidden="true"><use href="#i-plane"></use></svg><span>Flt</span></button>
     <button class="mly" type="button" data-layer="ship" aria-pressed="false" title="Kapal" aria-label="Kapal"><svg class="ic" aria-hidden="true"><use href="#i-ship"></use></svg><span>Kpl</span></button>
     <button class="mly" type="button" data-layer="transit" aria-pressed="false" title="Transit" aria-label="Transit"><svg class="ic" aria-hidden="true"><use href="#i-bus"></use></svg><span>Bjkt</span></button></span>
     <span class="mly-unit"><span class="mly-grp">Bencana</span>
-    <button class="mly" type="button" data-layer="gempa" aria-pressed="false" title="Gempa BMKG (hari ini)" aria-label="Gempa"><svg class="ic" aria-hidden="true"><use href="#i-alert"></use></svg><span>Gempa</span></button>
-    <button class="mly" type="button" data-layer="gunung" aria-pressed="false" title="Gunung Api MAGMA (Siaga+)" aria-label="Gunung api"><svg class="ic" aria-hidden="true"><use href="#i-alert"></use></svg><span>Gn.Api</span></button></span>
+    <button class="mly" type="button" data-layer="gempa" aria-pressed="false" title="Gempa BMKG (hari ini)" aria-label="Gempa"><svg class="ic" aria-hidden="true"><use href="#i-activity"></use></svg><span>Gempa</span></button>
+    <button class="mly" type="button" data-layer="gunung" aria-pressed="false" title="Gunung Api MAGMA (Siaga+)" aria-label="Gunung api"><svg class="ic" aria-hidden="true"><use href="#i-mountain"></use></svg><span>Gn.Api</span></button></span>
     </div>
     <div class="mly-sub">
     <span class="mly-unit"><span class="mly-grp">Cuaca</span>
-    <button class="mly" type="button" data-layer="cuaca" aria-pressed="false" title="Cuaca &amp; Angin (Open-Meteo)" aria-label="Cuaca dan angin"><svg class="ic" aria-hidden="true"><use href="#i-flow"></use></svg><span>Cuaca</span></button>
-    <button class="mly" type="button" data-layer="wind" aria-pressed="false" title="Partikel Angin Animasi (Open-Meteo)" aria-label="Partikel angin"><svg class="ic" aria-hidden="true"><use href="#i-flow"></use></svg><span>Wind</span></button>
-    <button class="mly" type="button" data-layer="radar" aria-pressed="false" title="Radar hujan RainViewer (timeline)" aria-label="Radar hujan timeline"><svg class="ic" aria-hidden="true"><use href="#i-cam"></use></svg><span>Radar</span></button>
-    <button class="mly" type="button" data-layer="radarbmkg" aria-pressed="false" title="Radar Curah Hujan BMKG" aria-label="Radar BMKG"><svg class="ic" aria-hidden="true"><use href="#i-cam"></use></svg><span>BMKG</span></button></span>
+    <button class="mly" type="button" data-layer="cuaca" aria-pressed="false" title="Cuaca &amp; Angin (Open-Meteo)" aria-label="Cuaca dan angin"><svg class="ic" aria-hidden="true"><use href="#i-cloud"></use></svg><span>Cuaca</span></button>
+    <button class="mly" type="button" data-layer="wind" aria-pressed="false" title="Partikel Angin Animasi (Open-Meteo)" aria-label="Partikel angin"><svg class="ic" aria-hidden="true"><use href="#i-wind"></use></svg><span>Wind</span></button>
+    <button class="mly" type="button" data-layer="radar" aria-pressed="false" title="Radar hujan RainViewer (timeline)" aria-label="Radar hujan timeline"><svg class="ic" aria-hidden="true"><use href="#i-radar"></use></svg><span>Radar</span></button>
+    <button class="mly" type="button" data-layer="radarbmkg" aria-pressed="false" title="Radar Curah Hujan BMKG" aria-label="Radar BMKG"><svg class="ic" aria-hidden="true"><use href="#i-cloud-rain"></use></svg><span>BMKG</span></button></span>
     <span class="mly-unit"><span class="mly-grp">Satelit</span>
     <button class="mly" type="button" data-layer="sat-ir" aria-pressed="true" title="Himawari-9 IR Enhanced (update 10 menit)" aria-label="IR Enhanced"><svg class="ic" aria-hidden="true"><use href="#i-heat"></use></svg><span>IR</span></button>
-    <button class="mly" type="button" data-layer="sat-nc" aria-pressed="false" title="Himawari-9 Natural Color (siang)" aria-label="Natural Color"><svg class="ic" aria-hidden="true"><use href="#i-radar"></use></svg><span>Nat</span></button>
-    <button class="mly" type="button" data-layer="sat-wv" aria-pressed="false" title="Himawari-9 Water Vapor Enhanced" aria-label="Water Vapor"><svg class="ic" aria-hidden="true"><use href="#i-flow"></use></svg><span>WV</span></button>
+    <button class="mly" type="button" data-layer="sat-nc" aria-pressed="false" title="Himawari-9 Natural Color (siang)" aria-label="Natural Color"><svg class="ic" aria-hidden="true"><use href="#i-satellite"></use></svg><span>Nat</span></button>
+    <button class="mly" type="button" data-layer="sat-wv" aria-pressed="false" title="Himawari-9 Water Vapor Enhanced" aria-label="Water Vapor"><svg class="ic" aria-hidden="true"><use href="#i-drop"></use></svg><span>WV</span></button>
     <button class="mly" type="button" data-layer="sat-rain" aria-pressed="false" title="Himawari-9 Rainfall Potential (produk turunan)" aria-label="Rainfall Potential"><svg class="ic" aria-hidden="true"><use href="#i-bolt"></use></svg><span>Rain</span></button></span>
     <span class="mly-unit"><span class="mly-grp">API</span>
-    <button class="mly" type="button" data-layer="fires" aria-pressed="false" title="NASA FIRMS hotspot (hingga 24 jam)" aria-label="NASA FIRMS hotspot"><svg class="ic" aria-hidden="true"><use href="#i-alert"></use></svg><span>Hotspot</span></button>
+    <button class="mly" type="button" data-layer="fires" aria-pressed="false" title="NASA FIRMS hotspot (hingga 24 jam)" aria-label="NASA FIRMS hotspot"><svg class="ic" aria-hidden="true"><use href="#i-sg-burst"></use></svg><span>Hotspot</span></button>
     <button class="mly" type="button" data-layer="peringatan" aria-pressed="true" title="Peringatan Dini Cuaca (BMKG CAP)" aria-label="Peringatan dini"><svg class="ic" aria-hidden="true"><use href="#i-alert"></use></svg><span>Warn</span></button></span>
     <span class="tt-status" id="tt-status" title="Status TomTom" role="img" aria-label="Status TomTom"><i></i></span>
     <button class="mly" type="button" id="tt-refresh" title="Refresh TomTom" aria-label="Refresh TomTom"><svg class="ic" aria-hidden="true"><use href="#i-sync"></use></svg></button>
@@ -3216,18 +3256,30 @@ function renderNlist(){
     return (r.head ? `<div class="nw-day">${esc(r.d)}</div>` : '') + newsHtml(r.h, full);
   }).join('');
 }
+function fltPaint(){
+  const w = $('#fltwrap'), open = w.classList.contains('open');
+  $('#fltfield').classList.toggle('has', !!$('#fq').value);
+  w.classList.toggle('on', !!($('#fq').value.trim() || !onlyTopic));
+  $('#fltpill').setAttribute('aria-expanded', open ? 'true' : 'false');
+  for (const el of [$('#fq'), $('#ontopic'), $('#fltclear')]) el.tabIndex = open ? 0 : -1;   // laci tertutup → input tidak bisa difokus lewat Tab
+}
+function fltSet(open, focus){
+  $('#fltwrap').classList.toggle('open', open);
+  fltPaint();
+  if (open && focus) $('#fq').focus({ preventScroll: true });
+}
 $('#ontopic').addEventListener('click', e => {
   onlyTopic = !onlyTopic;
   e.currentTarget.setAttribute('aria-pressed', onlyTopic ? 'true' : 'false');
-  renderNews();
+  fltPaint(); renderNews();
 });
-$('#fq').addEventListener('input', debounce(renderNews, 140));
-$('#fltpill').addEventListener('click', () => {
-  const t = $('#newstools'), open = t.hidden;
-  t.hidden = !open;
-  $('#fltpill').setAttribute('aria-expanded', open ? 'true' : 'false');
-  $('#fltpill .flt-cv').textContent = open ? '⌃' : '⌄';
-  if (open) $('#fq').focus();
+$('#fq').addEventListener('input', debounce(() => { fltPaint(); renderNews(); }, 140));
+$('#fltclear').addEventListener('click', () => { $('#fq').value = ''; fltPaint(); renderNews(); $('#fq').focus({ preventScroll: true }); });
+$('#fltpill').addEventListener('click', () => fltSet(!$('#fltwrap').classList.contains('open'), true));
+$('#fltwrap').addEventListener('keydown', e => { if (e.key === 'Escape') { fltSet(false); $('#fltpill').focus(); } });
+$('#fltwrap').addEventListener('focusout', e => {   // keluar dari laci tanpa filter aktif → tutup sendiri
+  if (e.relatedTarget && $('#fltwrap').contains(e.relatedTarget)) return;
+  setTimeout(() => { const w = $('#fltwrap'); if (!w.contains(document.activeElement) && !w.classList.contains('on')) fltSet(false); }, 150);
 });
 
 /* ============================================================
@@ -3617,7 +3669,7 @@ addEventListener('keydown', e => {
     if ($('#mapwrap').classList.contains('on')) { closeMap(); return; }
     if (tvOn) { tvClose(); return; }
   }
-  if (e.key === '/' && !/^(INPUT|TEXTAREA)$/.test(document.activeElement.tagName)) { e.preventDefault(); if ($('#newstools').hidden) $('#fltpill').click(); $('#fq').focus(); }
+  if (e.key === '/' && !/^(INPUT|TEXTAREA)$/.test(document.activeElement.tagName)) { e.preventDefault(); fltSet(true, true); }
   if ((e.key === 'r' || e.key === 'R') && !/^(INPUT|TEXTAREA)$/.test(document.activeElement.tagName)) refreshAll(true);
 });
 async function pullAlive(){
