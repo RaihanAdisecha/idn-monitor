@@ -105,23 +105,26 @@ a{color:inherit;text-decoration:none;text-underline-offset:2px}
   display:flex;align-items:center;gap:8px;padding:0 10px 0 14px;background:var(--accent);color:#fff;
   font:600 10px/1 var(--mono);letter-spacing:.13em;text-transform:uppercase;white-space:nowrap;
 }
-.tk-lbl .ic{width:12px;height:12px}
-.tk-lbl b{
-  display:inline-flex;align-items:center;justify-content:center;min-width:18px;height:16px;padding:0 4px;
-  background:rgba(0,0,0,.3);font:600 9px/1 var(--mono);letter-spacing:.03em;font-variant-numeric:tabular-nums;
+.tk-lbl .tk-ic{
+  display:inline-flex;align-items:center;justify-content:center;width:17px;height:17px;flex:none;
+  border:1px solid rgba(255,255,255,.42);border-radius:3px;
 }
-.tk-lbl b.fresh{animation:countflash 2.4s ease-out}
-@keyframes countflash{0%,55%{background:#fff;color:var(--accent)}100%{background:rgba(0,0,0,.3);color:#fff}}
+.tk-lbl .tk-ic .ic{width:11px;height:11px;animation:tkpulse 2.2s ease-in-out infinite}
+@keyframes tkpulse{0%,100%{opacity:1}50%{opacity:.4}}
 .tk-fetch{
   position:relative;display:flex;align-items:center;gap:7px;padding:0 11px 0 10px;
-  border-right:1px solid var(--border);background:#121212;
+  border-right:1px solid var(--border);background:#121212;cursor:pointer;user-select:none;
   font:500 9px/1 var(--mono);letter-spacing:.08em;text-transform:uppercase;white-space:nowrap;color:var(--text3);
 }
+.tk-fetch:hover{background:#181818}
+.tk-fetch:focus-visible{outline:1px solid rgba(255,255,255,.28);outline-offset:-1px}
 .tk-fetch .ic{width:11px;height:11px;color:var(--text2);transition:color .15s}
 .tk-fetch-t{color:var(--text2);font-variant-numeric:tabular-nums}
 .tk-fetch[data-state="fetch"] .ic{color:var(--accent);animation:spin 1.15s linear infinite}
 .tk-fetch[data-state="fetch"] .tk-fetch-t{color:var(--accent)}
 .tk-fetch[data-state="fail"] .ic,.tk-fetch[data-state="fail"] .tk-fetch-t{color:var(--warn)}
+.tk-cur{display:inline-block;width:6px;height:10px;margin-left:2px;background:var(--text2);animation:tkblink 1.1s steps(1) infinite}
+@keyframes tkblink{50%{opacity:0}}
 @keyframes spin{to{transform:rotate(360deg)}}
 .tk-vp{
   position:relative;overflow:hidden;display:flex;align-items:center;
@@ -170,7 +173,7 @@ a{color:inherit;text-decoration:none;text-underline-offset:2px}
 
 /* ============================================================ CONSOLE GRID */
 .console{
-  flex:1;min-height:0;display:grid;gap:1px;background:var(--border);margin-top:6px;
+  flex:1;min-height:0;display:grid;gap:1px;background:var(--border);
   grid-template-columns:420px minmax(0,.78fr) minmax(0,1.06fr) minmax(0,1.08fr);
   grid-template-rows:auto minmax(0,1fr);
 }
@@ -1493,14 +1496,14 @@ button.mp-src{background:none;border-top:0;border-left:0;border-right:0;cursor:p
 
 <div class="ticker" id="ticker" aria-label="Breaking news wire">
   <div class="tk-lbl">
-    <svg class="ic solid" aria-hidden="true"><use href="#i-bolt"></use></svg>
+    <span class="tk-ic"><svg class="ic" aria-hidden="true"><use href="#i-activity"></use></svg></span>
     <span>Breaking</span>
-    <b id="tk-count">0</b>
   </div>
-  <div class="tk-fetch" id="tk-fetch" data-state="idle" title="Breaking wire: fetch otomatis tiap 45 detik">
+  <div class="tk-fetch" id="tk-fetch" data-state="idle" role="button" tabindex="0" title="Breaking wire: fetch otomatis tiap 45 detik — klik untuk fetch sekarang">
     <svg class="ic" aria-hidden="true"><use href="#i-radar"></use></svg>
     <span class="tk-fetch-t" id="tk-state">Fetch</span>
     <span id="tk-meta">00:45</span>
+    <span class="tk-cur" aria-hidden="true"></span>
   </div>
   <div class="tk-vp">
     <div class="tk-rail" id="ticker-track"><span class="tk tk-empty">Menghubungkan ke wire…</span></div>
@@ -1825,19 +1828,23 @@ button.mp-src{background:none;border-top:0;border-left:0;border-right:0;cursor:p
    SITREP console — data masuk lewat server.js (/api/news, /api/x,
    /api/cams, /hls). Tanpa server, halaman jatuh ke mode browser.
    ============================================================ */
-/* Resolusi token gerbang: param URL > localStorage > meta sitrep-token. */
+/* Resolusi token gerbang: param URL > meta (otoritatif, segar per-boot) > localStorage.
+   Meta HARUS menang atas localStorage: tanpa SITREP_TOKEN server bikin token acak
+   tiap boot, jadi token lama di localStorage kalau diprioritaskan akan bikin 403
+   permanen setelah restart. localStorage cuma fallback untuk mode ?api= lintas-origin
+   yang tidak punya meta. */
 const SITREP_TOKEN = (() => {
   let t = null;
   try {
+    t = document.querySelector('meta[name="sitrep-token"]')?.content || null;
     const qp = new URLSearchParams(location.search).get('token');
     if (qp) {
       t = qp;
       try { localStorage.setItem('sitrep-token', qp); } catch (e) {}
-    } else {
+    } else if (!t) {
       try { t = localStorage.getItem('sitrep-token'); } catch (e) {}
     }
   } catch (e) {}
-  if (!t) t = document.querySelector('meta[name="sitrep-token"]')?.content || null;
   return t;
 })();
 if (!SITREP_TOKEN) console.warn('[SITREP] No API token available; gated /api/* and media proxies will return 403.');
@@ -2446,40 +2453,6 @@ function drawGlobe(now){
     const d = nodePts.find(q => q.node && 'n:' + (q.node.name || '') === globeActNode);
     if (d) { ctx.beginPath(); ctx.arc(d.x, d.y, 6.5, 0, Math.PI * 2); ctx.strokeStyle = 'rgba(255,255,255,.75)'; ctx.lineWidth = 1.3; ctx.stroke(); }
   }
-  // Connector toast: digambar di canvas SEBELUM label wilayah → label menumpuk di atas garis (interplay)
-  const alertEl = $('#sit-alert');
-  const fp = linkItem && alertEl && !alertEl.hidden && alertEl.classList.contains('show')
-    ? pts.find(d => d.p && itemIdOf(d.p) === itemIdOf(linkItem)) : null;
-  if (fp) {
-    const wrapR = c.getBoundingClientRect(), ar = alertEl.getBoundingClientRect();
-    const ex = ar.left - wrapR.left, ey = ar.top - wrapR.top;
-    let ax = clampN(fp.x, ex, ex + ar.width), ay = clampN(fp.y, ey, ey + ar.height);
-    const onH = ay <= ey + 0.5 || ay >= ey + ar.height - 0.5;
-    const onV = ax <= ex + 0.5 || ax >= ex + ar.width - 0.5;
-    if (Math.abs(ax - fp.x) < 6 && onH) ax = clampN(ax + (ax + 26 <= ex + ar.width ? 26 : -26), ex + 6, ex + ar.width - 6);
-    else if (Math.abs(ay - fp.y) < 6 && onV) ay = clampN(ay + (ay + 26 <= ey + ar.height ? 26 : -26), ey + 6, ey + ar.height - 6);
-    const col = fp.color || '#8d8d8d';
-    ctx.save();
-    ctx.globalAlpha = .8; ctx.strokeStyle = col; ctx.fillStyle = col;
-    ctx.lineWidth = 1.2; ctx.lineCap = 'round'; ctx.setLineDash([5, 7]);
-    const dx = ax - fp.x, dy = ay - fp.y;
-    ctx.beginPath();
-    if (Math.abs(dx) < 1 || Math.abs(dy) < 1) {
-      ctx.moveTo(fp.x, fp.y); ctx.lineTo(ax, ay);
-    } else {
-      const r = Math.min(10, Math.abs(dx) / 2, Math.abs(dy) / 2);
-      const sx = Math.sign(dx), sy2 = Math.sign(dy);
-      ctx.moveTo(fp.x, fp.y);
-      ctx.lineTo(ax - sx * r, fp.y);
-      ctx.quadraticCurveTo(ax, fp.y, ax, fp.y + sy2 * r);
-      ctx.lineTo(ax, ay);
-    }
-    ctx.stroke();
-    ctx.setLineDash([]);
-    ctx.beginPath(); ctx.arc(fp.x, fp.y, 3, 0, Math.PI * 2); ctx.fill();
-    ctx.beginPath(); ctx.arc(ax, ay, 1.6, 0, Math.PI * 2); ctx.fill();
-    ctx.restore();
-  }
   // Label wilayah saat zoom cukup dalam, biar klaster terbaca per wilayah.
   // Skip selama gesture — measureText×ratusan + collision check mahal dan
   // label tidak terbaca saat globe berputar cepat.
@@ -2514,6 +2487,41 @@ function drawGlobe(now){
       ctx.fillText(text, box.x + 3, box.y + box.h / 2 + 0.5);
       placed.push(box);
     }
+  }
+  // Connector toast: digambar SETELAH label wilayah → garis putus-putus boleh
+  // menimpa label region supaya fokus insiden tidak terputus visual.
+  const alertEl = $('#sit-alert');
+  const fp = linkItem && alertEl && !alertEl.hidden && alertEl.classList.contains('show')
+    ? pts.find(d => d.p && itemIdOf(d.p) === itemIdOf(linkItem)) : null;
+  if (fp) {
+    const wrapR = c.getBoundingClientRect(), ar = alertEl.getBoundingClientRect();
+    const ex = ar.left - wrapR.left, ey = ar.top - wrapR.top;
+    let ax = clampN(fp.x, ex, ex + ar.width), ay = clampN(fp.y, ey, ey + ar.height);
+    const onH = ay <= ey + 0.5 || ay >= ey + ar.height - 0.5;
+    const onV = ax <= ex + 0.5 || ax >= ex + ar.width - 0.5;
+    if (Math.abs(ax - fp.x) < 6 && onH) ax = clampN(ax + (ax + 26 <= ex + ar.width ? 26 : -26), ex + 6, ex + ar.width - 6);
+    else if (Math.abs(ay - fp.y) < 6 && onV) ay = clampN(ay + (ay + 26 <= ey + ar.height ? 26 : -26), ey + 6, ey + ar.height - 6);
+    const col = fp.color || '#8d8d8d';
+    ctx.save();
+    ctx.globalAlpha = .8; ctx.strokeStyle = col; ctx.fillStyle = col;
+    ctx.lineWidth = 1.2; ctx.lineCap = 'round'; ctx.setLineDash([5, 7]);
+    const dx = ax - fp.x, dy = ay - fp.y;
+    ctx.beginPath();
+    if (Math.abs(dx) < 1 || Math.abs(dy) < 1) {
+      ctx.moveTo(fp.x, fp.y); ctx.lineTo(ax, ay);
+    } else {
+      const r = Math.min(10, Math.abs(dx) / 2, Math.abs(dy) / 2);
+      const sx = Math.sign(dx), sy2 = Math.sign(dy);
+      ctx.moveTo(fp.x, fp.y);
+      ctx.lineTo(ax - sx * r, fp.y);
+      ctx.quadraticCurveTo(ax, fp.y, ax, fp.y + sy2 * r);
+      ctx.lineTo(ax, ay);
+    }
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.beginPath(); ctx.arc(fp.x, fp.y, 3, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(ax, ay, 1.6, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
   }
   globePoints = pts;
   globeNodePoints = nodePts;
@@ -3936,6 +3944,12 @@ function setBreakState(s){
 function paintBreak(){
   $('#tk-meta').textContent = '00:' + String(breakRemain).padStart(2, '0');
 }
+// fetch manual: elemen tk-fetch kini clickable — menarik wire saja, bukan semua sumber
+const tkFetchEl = $('#tk-fetch');
+tkFetchEl.addEventListener('click', () => { if (!breakBusy) pullBreaking(); });
+tkFetchEl.addEventListener('keydown', e => {
+  if ((e.key === 'Enter' || e.key === ' ') && !breakBusy) { e.preventDefault(); pullBreaking(); }
+});
 const TK_SIG = { demo:'#i-tk-demo', fire:'#i-tk-fire', flood:'#i-tk-flood', disaster:'#i-tk-disaster',
   insiden:'#i-tk-insiden', siber:'#i-tk-siber', kriminal:'#i-tk-kriminal',
   kesehatan:'#i-tk-kesehatan', ekonomi:'#i-tk-ekonomi', politik:'#i-tk-politik' };
@@ -4043,11 +4057,6 @@ async function pullBreaking(){
     breakAt = Date.now();
     buildTicker();
     if (hasNew) syncGlobeSoon();
-    $('#tk-count').textContent = items.length;
-    if (hasNew) {
-      const b = $('#tk-count');
-      b.classList.remove('fresh'); void b.offsetWidth; b.classList.add('fresh');
-    }
     $('#tk-fetch').title = 'Breaking wire · ' + items.length + ' item' +
       (scanned ? ' · ' + scanned + ' headline dipindai' : '') +
       ' · sync ' + wibTime(breakAt) + ' WIB · auto ' + BREAK_CYCLE + 's';

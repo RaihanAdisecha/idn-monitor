@@ -3112,9 +3112,12 @@ function rdExtract(html, finalURL) {
     if (tail && (s.includes(tail) || tail.includes(s))) title = title.slice(0, dc.index).trim();
   }
   const sep = title.match(/\s*[|–—]\s*([^|–—]{2,45})\s*$/) || title.match(/\s+-\s+([^-]{2,45})\s*$/);
-  if (sep && site) {
-    const tail = sep[1].trim().toLowerCase(), s = site.toLowerCase();
-    if (tail === s || tail.includes(s) || s.includes(tail)) title = title.slice(0, sep.index).trim();
+  if (sep) {
+    // og:site_name bisa "Galeri Papua" sementara tail "Galeripapua.com" —
+    // bandingkan bentuk ternormalisasi terhadap site MAUPUN host.
+    const norm = x => x.toLowerCase().replace(/[^a-z0-9]+/g, '');
+    const tail = norm(sep[1]), cands = [norm(site), norm(rdHost(finalURL))].filter(x => x.length >= 4);
+    if (tail && cands.some(s => s === tail || s.includes(tail) || tail.includes(s))) title = title.slice(0, sep.index).trim();
   }
   const desc = meta['og:description'] || meta['twitter:description'] || meta.description || '';
   let img = meta['og:image'] || meta['og:image:secure_url'] || meta['twitter:image'] || '';
@@ -3226,6 +3229,16 @@ function rdJinaMd(text, url) {
     if (paras.length >= 45) break;
   }
   { const kept = rdPruneNoise(paras.map(t => ({ k: 'p', t })), title).map(b => b.t); paras.length = 0; paras.push(...kept); }
+  // Jina "title:" bawa ekor "– NamaSitus" mentah — strip sama seperti rdExtract
+  if (title) {
+    const host = rdHost(url);
+    const sm = title.match(/\s*[|–—]\s*([^|–—]{2,45})\s*$/);
+    if (sm && host) {
+      const norm = x => x.toLowerCase().replace(/[^a-z0-9]+/g, '');
+      const tail = norm(sm[1]), s = norm(host);
+      if (tail && (s === tail || s.includes(tail) || tail.includes(s))) title = title.slice(0, sm.index).trim();
+    }
+  }
   return { ok: true, url, final: url, title: title || rdHost(url) || 'Tanpa judul',
     site: rdHost(url), byline: '', time: '', img: '', desc: '', paras, thin: paras.length < 2, via: 'reader' };
 }

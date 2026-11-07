@@ -87,10 +87,10 @@ npm test                      # jalankan test suite Node
 node scripts/audit-reader.js  # audit noise reader: [maxPerSource] [baseUrl]
 ```
 
-Kalau skrip `test` belum terdaftar di `package.json`, pakai `npm run test:signals` (regresi sinyal & signal-engine). `audit-reader.js` default `maxPerSource=2` / `baseUrl=http://localhost:8787`, hasil ditulis ke `scripts/audit-output.json`.
+`npm test` menjalankan seluruh `tests/*.js` (sinyal, geo, event-merge, token gate API, worker Python, pipeline klasifikasi). `npm run test:signals` tersedia untuk regresi sinyal & signal-engine saja. `audit-reader.js` default `maxPerSource=2` / `baseUrl=http://localhost:8787`, hasil ditulis ke `scripts/audit-output.json`; skrip ini butuh token (lihat **Token API**).
 
 ## Catatan
 
 - X scraping memakai cookie akun sendiri — rotasi `auth_token`/`ct0` berkala.
 - Endpoint `/img`, `/api/read`, proxy endpoints memblokir host privat (SSRF guard). `/img`, `/hls`, `/vhs` juga melewati gate token (lihat **Token API**).
-- Validasi TLS **tidak lagi** diatur lewat `config.json` — flag `"insecure_tls"` di `config.json` kini **diabaikan** `server.js`. Untuk mematikannya wajib set env **`SITREP_INSECURE_TLS=1`** secara eksplisit (hanya debugging, jangan di produksi).
+- Validasi TLS **tidak lagi** diatur lewat `config.json` — flag `"insecure_tls"` sudah dihapus dari `config.json` dan tidak dibaca `server.js`. Untuk mematikannya wajib set env **`SITREP_INSECURE_TLS=1`** secara eksplisit (hanya debugging, jangan di produksi).
