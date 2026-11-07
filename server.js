@@ -467,147 +467,6 @@ const xqLazy = q => memo('xq:' + String(q).toLowerCase(), 600000, async () => {
   return [...xHist.values()].sort((a, b) => (b.ts || 0) - (a.ts || 0)).slice(0, HIST_MAX.x);
 });
 
-/* ---------- Claude Referral Sniper ---------- */
-const claudeHist = new Map();
-const CLAUDE_HIST_FILE = path.join(HIST_DIR, 'claude-referral-history.json');
-try {
-  if (fs.existsSync(CLAUDE_HIST_FILE)) {
-    const j = JSON.parse(fs.readFileSync(CLAUDE_HIST_FILE, 'utf8'));
-    for (const item of (j.items || [])) {
-      if (item.url) claudeHist.set(item.url, item);
-    }
-  }
-} catch (e) {}
-
-function saveClaudeHist() {
-  try {
-    fs.mkdirSync(HIST_DIR, { recursive: true });
-    const items = [...claudeHist.values()].sort((a, b) => (b.found_at || b.ts || 0) - (a.found_at || a.ts || 0)).slice(0, 100);
-    fs.writeFileSync(CLAUDE_HIST_FILE, JSON.stringify({ items, updated_at: Date.now() }, null, 2));
-  } catch (e) {}
-}
-
-const CLAUDE_REF_REGEX = /https?:\/\/(?:www\.)?claude\.ai\/referral\/([a-zA-Z0-9_\-]+)/gi;
-
-function extractClaudeReferrals(post) {
-  const matches = [];
-  const text = (post.text || '') + ' ' + (post.urls || []).join(' ');
-  let m;
-  const re = new RegExp(CLAUDE_REF_REGEX.source, 'gi');
-  while ((m = re.exec(text)) !== null) {
-    const fullUrl = m[0];
-    const code = m[1];
-    matches.push({
-      code,
-      url: fullUrl,
-      tweet_id: post.id,
-      tweet_url: post.url,
-      author: post.handle,
-      name: post.name,
-      avatar: post.avatar,
-      text: post.text,
-      ts: post.ts,
-      found_at: Date.now()
-    });
-  }
-  return matches;
-}
-
-const claudeScanState = {
-  running: false,
-  last_scan: 0,
-  error: null,
-  total_scanned: 0
-};
-let claudeRateLimitedUntil = 0;
-
-const claudeSseClients = new Set();
-function broadcastClaudeSse(data) {
-  const msg = `data: ${JSON.stringify(data)}\n\n`;
-  for (const client of claudeSseClients) {
-    try { client.write(msg); } catch (e) { claudeSseClients.delete(client); }
-  }
-}
-
-function getClaudeItems() {
-  return [...claudeHist.values()].sort((a, b) => (b.found_at || b.ts || 0) - (a.found_at || a.ts || 0)).slice(0, 50);
-}
-
-async function claudeSniperScan() {
-  if (claudeScanState.running) return { ok: true, status: 'already_scanning', items: getClaudeItems(), last_scan: claudeScanState.last_scan };
-  if (Date.now() < claudeRateLimitedUntil) {
-    const remainSec = Math.ceil((claudeRateLimitedUntil - Date.now()) / 1000);
-    return { ok: false, error: `Rate limited X (cooldown ${remainSec}s)`, items: getClaudeItems(), last_scan: claudeScanState.last_scan };
-  }
-  if (!xHas()) {
-    return { ok: false, error: 'X auth_token / ct0 belum diisi di .env atau config.json', items: getClaudeItems(), last_scan: claudeScanState.last_scan };
-  }
-  claudeScanState.running = true;
-  claudeScanState.error = null;
-  const newFound = [];
-  try {
-    const q = 'claude.ai/referral';
-    try {
-      const posts = await xSearch(q);
-      claudeScanState.total_scanned += posts.length;
-      for (const p of posts) {
-        const refs = extractClaudeReferrals(p);
-        for (const ref of refs) {
-          if (!claudeHist.has(ref.url)) {
-            claudeHist.set(ref.url, ref);
-            newFound.push(ref);
-          }
-        }
-      }
-    } catch (err) {
-      const msg = err.message || String(err);
-      if (msg.includes('429')) {
-        claudeRateLimitedUntil = Date.now() + 50000;
-        claudeScanState.error = 'X Rate limit 429. Cooldown 50s.';
-      } else {
-        claudeScanState.error = msg;
-      }
-    }
-    for (const p of xHist.values()) {
-      const refs = extractClaudeReferrals(p);
-      for (const ref of refs) {
-        if (!claudeHist.has(ref.url)) {
-          claudeHist.set(ref.url, ref);
-          newFound.push(ref);
-        }
-      }
-    }
-    if (newFound.length > 0) {
-      saveClaudeHist();
-      broadcastClaudeSse({
-        type: 'new_links',
-        new_count: newFound.length,
-        links: newFound,
-        total: claudeHist.size,
-        last_scan: Date.now()
-      });
-    }
-    claudeScanState.last_scan = Date.now();
-    broadcastClaudeSse({
-      type: 'scan_pulse',
-      last_scan: claudeScanState.last_scan,
-      total: claudeHist.size,
-      error: claudeScanState.error
-    });
-  } catch (e) {
-    claudeScanState.error = e.message || String(e);
-  } finally {
-    claudeScanState.running = false;
-  }
-  return {
-    ok: true,
-    new_count: newFound.length,
-    total: claudeHist.size,
-    last_scan: claudeScanState.last_scan,
-    items: getClaudeItems()
-  };
-}
-
 /* ---------- Threads: toolzerhub/threads-scraper (MIT) lewat worker Python ---------- */
 const { execFile } = require('child_process');
 const TH = CFG.threads || {};
@@ -2590,40 +2449,6 @@ http.createServer(async (req, res) => {
       try { return json({ ok: true, posts: await xqLazy(q), at: Date.now() }); }
       catch (e) { return json({ ok: false, err: String(e.message || e).slice(0, 200) }); }
     }
-    if (u.pathname === '/api/claude-sniper') {
-      const scanNow = u.searchParams.get('scan') === '1' || u.searchParams.get('refresh') === '1';
-      if (scanNow) {
-        const resObj = await claudeSniperScan();
-        return json(resObj);
-      }
-      return json({
-        ok: true,
-        running: claudeScanState.running,
-        last_scan: claudeScanState.last_scan,
-        total: claudeHist.size,
-        items: getClaudeItems(),
-        x_configured: xHas(),
-        error: claudeScanState.error
-      });
-    }
-    if (u.pathname === '/api/claude-sniper/stream') {
-      res.writeHead(200, {
-        'content-type': 'text/event-stream',
-        'cache-control': 'no-cache, no-transform',
-        'connection': 'keep-alive',
-        'access-control-allow-origin': '*'
-      });
-      res.write(`data: ${JSON.stringify({ type: 'init', total: claudeHist.size, last_scan: claudeScanState.last_scan, items: getClaudeItems() })}\n\n`);
-      claudeSseClients.add(res);
-      req.on('close', () => {
-        claudeSseClients.delete(res);
-      });
-      return;
-    }
-    if (u.pathname === '/api/claude-sniper/scan') {
-      const resObj = await claudeSniperScan();
-      return json(resObj);
-    }
     if (u.pathname === '/api/thread') {
       try { return json(await threadOf(u.searchParams.get('u') || '')); }
       catch (e) { return json({ ok: false, err: String(e.message || e).slice(0, 220) }); }
@@ -2700,15 +2525,6 @@ http.createServer(async (req, res) => {
   situation().then(r => console.log('Situasi warm: ' + r.total + ' insiden')).catch(() => {});
   news().then(rs => console.log('News warm: ' + rs.filter(s => s.ok).length + '/' + rs.length + ' feed')).catch(() => {});
   xposts().then(r => console.log('X warm: ' + r.posts.length + ' post')).catch(e => console.log('X warm gagal: ' + e.message));
-  claudeSniperScan().then(r => console.log('Claude Sniper warm: ' + (r.items ? r.items.length : 0) + ' link referral')).catch(e => console.log('Claude Sniper warm error: ' + (e.message || e)));
   setTimeout(() => warmCctv().catch(() => {}), 20000);
   setInterval(() => { warmCctv().catch(() => {}); }, 1800000);
-  setInterval(() => {
-    if (xHas()) claudeSniperScan().catch(() => {});
-  }, 15000);
-  setInterval(() => {
-    for (const client of claudeSseClients) {
-      try { client.write(': ping\n\n'); } catch (e) { claudeSseClients.delete(client); }
-    }
-  }, 15000);
 });
