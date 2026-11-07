@@ -1978,14 +1978,46 @@ function idRegion(la, lo){
     if (la >= Math.min(a, b) && la <= Math.max(a, b) && lo >= Math.min(c2, d2) && lo <= Math.max(c2, d2)) return n;
   return 'Lainnya';
 }
-async function cctvBpjt(){
-  // halaman ~1MB dan bisa lambat — timeout longgar + 1x retry
-  let h = '';
-  for (let i = 0; i < 2; i++) {
-    try { const r = await get('https://bpjt.pu.go.id/cctv/', {}, 45000); h = await r.text(); if (h.includes('allStreams')) break; h = ''; }
-    catch (e) { if (i === 1) throw e; await new Promise(s => setTimeout(s, 3000)); }
+/* IP datacenter (Railway) diblokir situs pemda/pemerintah — fallback lewat public proxy
+   seperti news(). Proxy dipakai hanya kalau direct gagal. */
+async function cctvFetch(url, ms){
+  const attempts = [url,
+    'https://api.codetabs.com/v1/proxy?quest=' + encodeURIComponent(url),
+    'https://api.allorigins.win/raw?url=' + encodeURIComponent(url),
+    'https://corsproxy.io/?url=' + encodeURIComponent(url)];
+  let lastErr = '';
+  for (const u of attempts) {
+    try {
+      const r = await get(u, {}, ms);
+      if (r.ok) return await r.text();
+      lastErr = 'HTTP ' + r.status;
+    } catch (e) { lastErr = String(e.message || e); }
   }
-  if (!h) return [];
+  throw new Error(lastErr || 'fetch gagal');
+}
+/* Firecrawl render — terakhir untuk halaman berat yang diblokir IP datacenter
+   (bpjt.pu.go.id). API key sudah dipakai reader; catalog di-memo 30 mnt supaya
+   tidak bakar credit tiap refresh. */
+async function cctvFirecrawl(url){
+  const FC_KEY = process.env.FIRECRAWL_API_KEY || CFG.firecrawl_key || '';
+  if (!FC_KEY) return '';
+  try {
+    const r = await get('https://api.firecrawl.dev/v1/scrape', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: 'Bearer ' + FC_KEY },
+      body: JSON.stringify({ url, formats: ['html'], onlyMainContent: false, timeout: 30000 })
+    }, 40000);
+    if (!r.ok) return '';
+    const j = await r.json();
+    return (j && j.data && j.data.html) || '';
+  } catch (e) { return ''; }
+}
+async function cctvBpjtFetch(){
+  // halaman ~1MB dan bisa lambat — timeout longgar, direct dulu baru proxy
+  let h = '';
+  try { h = await cctvFetch('https://bpjt.pu.go.id/cctv/', 30000); } catch (e) {}
+  if (!h || !h.includes('allStreams')) h = await cctvFirecrawl('https://bpjt.pu.go.id/cctv/');
+  if (!h || !h.includes('allStreams')) return [];
   const m = h.match(/const allStreams = (\{[\s\S]*?\});\s*\n/);
   if (!m) return [];
   const groups = JSON.parse(m[1]), seen = new Set(), out = [];
@@ -2001,9 +2033,10 @@ async function cctvBpjt(){
   }
   return out;
 }
+const cctvBpjt = () => memo('cctv:bpjt', 1800000, cctvBpjtFetch, v => v.length > 0);
 async function cctvBekasi(){
-  const r = await get('https://eofficev2.bekasikota.go.id/backupcctv/m3/list.json', {}, 15000);
-  const d = await r.json();
+  let d = null;
+  try { d = JSON.parse(await cctvFetch('https://eofficev2.bekasikota.go.id/backupcctv/m3/list.json', 20000)); } catch (e) {}
   if (!Array.isArray(d)) return [];
   return d.filter(x => x && x.path).map(x => ({
     n: String(x.name || x.path).replace(/_/g, ' '),
