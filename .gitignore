@@ -19,3 +19,6 @@ About this file. This is Muse's persona.
 
 # deps
 node_modules/
+
+# local agent/workspace metadata (not application source)
+.workbuddy-ai/

@@ -562,11 +562,16 @@ a{color:inherit;text-decoration:none;text-underline-offset:2px}
   padding:15px 14px 13px;border-bottom:1px solid var(--border);transition:background .12s;
 }
 .tw:hover{background:#1b1b1b}
-.tw.fresh::before{
-  content:"";position:absolute;left:0;top:0;bottom:0;width:2px;background:var(--accent);
-  animation:fadeout 5s forwards;
+/* post baru: skeleton dulu, baru konten asli muncul (reveal) */
+.tw-sk{cursor:default}
+.tw-sk:hover{background:none}
+.av-sk{
+  width:40px;height:40px;border-radius:50%;flex:none;
+  background:linear-gradient(90deg,#191919 20%,#292929 48%,#191919 76%);
+  background-size:220% 100%;animation:nw-shimmer 1.35s ease-in-out infinite;
 }
-@keyframes fadeout{0%,65%{opacity:1}100%{opacity:0}}
+.tw-in{animation:tw-in .38s ease-out}
+@keyframes tw-in{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:none}}
 .av{
   position:relative;width:40px;height:40px;border-radius:50%;overflow:hidden;flex:none;
   background:hsl(var(--h,210) 22% 30%);display:grid;place-items:center;
@@ -3290,7 +3295,7 @@ const I = {
 const VF = `<svg class="ic solid vf" aria-label="Terverifikasi" role="img"><use href="#i-verified"></use></svg>`;
 
 let xLastErr = '';
-let xPosts = [], xQuery = '', xQueries = [], xTrending = [], xSeen = new Set(), xFresh = new Set();
+let xPosts = [], xQuery = '', xQueries = [], xTrending = [], xSeen = new Set(), xFresh = new Set(), xReveal = new Set(), xSkTimer = 0;
 const xAll = new Map(); let xShown = 30;
 
 function linkify(t){
@@ -3313,12 +3318,28 @@ function avatar(p){
     : '';
   return `<span class="av" style="--h:${hue(p.handle || name)}">${ini}${img}</span>`;
 }
+function skCard(){
+  return `<article class="tw tw-sk" aria-hidden="true">
+    <span class="av-sk"></span>
+    <div class="tw-b">
+      <div class="sk-row" style="display:flex;gap:8px;align-items:center">
+        <span class="nw-sk-line" style="width:36%;height:10px"></span>
+        <span class="nw-sk-line" style="width:16%;height:8px"></span>
+        <span class="nw-sk-line" style="width:11%;height:8px"></span>
+      </div>
+      <span class="nw-sk-line" style="display:block;width:34%;height:8px;margin:8px 0 9px"></span>
+      <span class="nw-sk-line" style="display:block;height:9px;margin:0 0 6px"></span>
+      <span class="nw-sk-line" style="display:block;width:76%;height:9px;margin:0 0 13px"></span>
+      <span class="nw-sk-line" style="display:block;width:20%;height:8px"></span>
+    </div>
+  </article>`;
+}
 function tweetCard(p){
   const key = p.url || p.text || '';
-  const fresh = xFresh.has(key);
+  if (xFresh.has(key)) return skCard();
   const t = p.ts ? rel(p.ts) : (p.time || '');
   const title = p.ts ? wibFull(p.ts) + ' WIB' : '';
-  return `<article class="tw${fresh ? ' fresh' : ''}" data-url="${esc(p.url || '')}">
+  return `<article class="tw${xReveal.has(key) ? ' tw-in' : ''}" data-url="${esc(p.url || '')}">
     ${avatar(p)}
     <div class="tw-b">
       <div class="tw-h">
@@ -3403,7 +3424,14 @@ function renderX(){
     : `<div class="empty">${xPosts.length ? 'Tidak ada post yang cocok dengan saringan ini.' : 'Belum ada post X' + (xLastErr ? ': ' + esc(xLastErr.slice(0, 220)) : '. Server belum selesai menarik, atau X mengembalikan hasil kosong.')}</div>`) +
     (list.length > xShown ? `<button class="xmore" type="button">Muat ${Math.min(30, list.length - xShown)} lagi · ${list.length - xShown} tersisa</button>` : '');
   $('#f-x').textContent = xPosts.length;
-  xFresh.clear();
+  xReveal.clear();
+  if (xFresh.size && !xSkTimer) {
+    xSkTimer = setTimeout(() => {
+      xSkTimer = 0;
+      xReveal = new Set(xFresh); xFresh.clear();
+      renderX();
+    }, 850);
+  }
   updateDistress();
 }
 $('#xlist').addEventListener('click', e => {
