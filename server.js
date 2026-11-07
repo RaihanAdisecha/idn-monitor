@@ -493,7 +493,7 @@ const xposts = () => memo('x', 300000, async () => {
 const xqLazy = q => memo('xq:' + String(q).toLowerCase(), 600000, async () => {
   if (!xHas()) throw new Error('auth_token / ct0 belum diisi');
   const tp = topicOf(q), extra = tp ? ADHOC : ADHOC.concat(SOC.socAdhoc([q]));
-  const qs = tp ? tp.x : ['"' + q + '" lang:id -filter:replies'];
+  const qs = tp ? tp.x : ['"' + q + '" -filter:replies'];
   const rs = await Promise.allSettled(qs.map(x => xSearch(x)));
   const now = Date.now(), batch = [];
   for (const r of rs) if (r.status === 'fulfilled') for (const p of r.value) {
@@ -2603,7 +2603,7 @@ http.createServer(async (req, res) => {
     }
     if (u.pathname === '/api/x') return json(await xposts());
     if (u.pathname === '/api/xdiag') {   // bandingkan bentuk query: mana yang dapat hasil basi di host ini
-      const tests = ['kebakaran', 'kebakaran lang:id', 'kebakaran -filter:replies', 'kebakaran lang:id -filter:replies', '(kebakaran OR damkar) lang:id -filter:replies', 'kebakaran since_time:' + Math.floor((Date.now() - 46 * 3600e3) / 1000)];
+      const SQ = require('./social.js').socQueries('x', []); const tests = u.searchParams.get('all') ? SQ.map(e => e.q) : ['kebakaran', 'kebakaran lang:id', 'kebakaran -filter:replies', 'kebakaran lang:id -filter:replies', '(kebakaran OR damkar) lang:id -filter:replies', 'kebakaran since_time:' + Math.floor((Date.now() - 46 * 3600e3) / 1000)];
       const out = [];
       for (const q of tests) {
         try { const sv = Date.now; const r = await xSearch(q.replace(/ since_time:\d+/, '')); const n = r.reduce((m, p) => Math.max(m, p.ts), 0);
