@@ -1814,7 +1814,8 @@ function tickFly(now){
 }
 const SEEN_KEY = 'sitrep.seenIds';
 const seenIds = new Set((() => { try { return JSON.parse(sessionStorage.getItem(SEEN_KEY) || '[]'); } catch (e) { return []; } })());
-const seenWasEmpty = seenIds.size === 0;   // sesi baru: jangan umumkan item lama sebagai "baru"
+const seenWasEmpty = seenIds.size === 0;   // sesi baru: backlog awal ditandai seen diam-diam
+const bootUntil = seenWasEmpty ? Date.now() + 150e3 : 0;   // suppress backlog hanya ~150 dtk pertama setelah load
 const saveSeen = () => { try { sessionStorage.setItem(SEEN_KEY, JSON.stringify([...seenIds].slice(-800))); } catch (e) {} };
 const itemIdOf = p => p.url || ((p.title || '') + '|' + (p.src || ''));
 const focusQueue = [];        // item fresh yang belum sempat diumumkan — tidak ditelan, diuras satu per evaluasi
@@ -1860,12 +1861,15 @@ function maybeFocusFresh(){
     if (!id) continue;
     liveIds.add(id);
     if (!seenIds.has(id)) {
-      // sesi baru: hanya kedatangan < 10 mnt yang diumumkan; backlog ditandai sudah-dilihat
-      if (!(seenWasEmpty && now - p.ts > 600e3) && !focusQueue.some(q => itemIdOf(q) === id)) focusQueue.push(p);
+      // backlog suppression hanya selama boot window — sesudah itu item unseen selalu antri
+      if (!(bootUntil && Date.now() < bootUntil && now - p.ts > 600e3) && !focusQueue.some(q => itemIdOf(q) === id)) focusQueue.push(p);
       seenIds.add(id);
     }
   }
-  for (let i = focusQueue.length - 1; i >= 0; i--) if (!liveIds.has(itemIdOf(focusQueue[i]))) focusQueue.splice(i, 1);
+  for (let i = focusQueue.length - 1; i >= 0; i--) {   // item yang keluar kandidat di-unsee — boleh antri ulang kalau muncul lagi
+    const qid = itemIdOf(focusQueue[i]);
+    if (!liveIds.has(qid)) { focusQueue.splice(i, 1); seenIds.delete(qid); }
+  }
   if (seenIds.size > 800) { const keep = [...seenIds].slice(-800); seenIds.clear(); keep.forEach(x => seenIds.add(x)); }
   saveSeen();
   if (performance.now() - lastGestEnd < 25000) return;   // jangan rebut globe dari user
@@ -1893,11 +1897,9 @@ function goHome(){
   focusedHome = true;
   flyTo(HOME_VIEW.lat, HOME_VIEW.lon, HOME_VIEW.zoom);
 }
-setInterval(() => {   // heartbeat: rotasi/pulang tetap jalan walau tidak ada fetch baru
+setInterval(() => {   // heartbeat: antrian diuras + rotasi jalan walau tidak ada fetch baru
   if (document.hidden || !globeReady) return;
-  if (performance.now() - lastGestEnd < 25000) return;
-  if (focusQueue.length) return;                        // antrian didahulukan — jangan dipotong rotasi
-  idleRotate(focusCandidates(), Date.now());
+  maybeFocusFresh();   // urus queue → cooldown → idleRotate sendiri; guard gesture 25 dtk di dalamnya
 }, 15000);
 // Wire/breaking dapat berita baru → segera tarik insiden supaya titik + fokus ikut (server memo 55 dtk).
 let globeSyncT = 0;
