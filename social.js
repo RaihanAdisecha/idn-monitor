@@ -54,6 +54,11 @@ const SOC_TOPICS = [
     th: ['banjir'] },
   { id: 'gempa', local: true,
     pos: /(gempa|tsunami|magnitudo|erupsi|letusan gunung)/i,
+    // "tsunami" sendirian sering kiasan: "blue/blauwe tsunami" = gerakan protes politik,
+    // tsunami finance/sport — wajib konteks seismik atau lokasi bencana
+    neg: /(blue|blauwe)\s+tsunami|tsunami\s+(biru|politik|protes)/i,
+    strong: /(gempa|magnitudo|erupsi|letusan)/i,
+    ctx: /(jepang|japan|indonesia|jakarta|jkt|sumatera|pantai|beach|gelombang|dahsyat|air bah|megathrust|pesisir|tepi laut|gempa|earthquake|gelombang pasang|\brob\b|banjir rob|palung|waspada|peringatan|imau|bnpb|bpbd)/i,
     x: ['(gempa OR tsunami OR magnitudo OR erupsi) -filter:replies'],
     th: ['gempa'] },
   { id: 'kecelakaan', local: true,

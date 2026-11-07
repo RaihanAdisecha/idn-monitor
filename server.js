@@ -32,7 +32,7 @@ const NEWS = [
   ['GNEWS · DEMO', gn('demo OR "unjuk rasa" OR "aksi massa"')],
   ['GNEWS · KEBAKARAN', gn('kebakaran OR karhutla OR "kebakaran hutan"')],
   ['GNEWS · BANJIR', gn('banjir OR longsor OR "cuaca ekstrem"')],
-  ['GNEWS · BENCANA', gn('gempa OR tsunami OR erupsi OR bencana')],
+  ['GNEWS · BENCANA', gn('gempa OR tsunami OR erupsi OR letusan')],   // "bencana" saja terlalu longgar: tas bencana, pusdalops, bantuan — bukan kejadian
   ['GNEWS · INSIDEN', gn('kecelakaan OR ledakan OR ambruk')],
   ['GNEWS · KRIMINAL', gn('penembakan OR pembunuhan OR penangkapan OR terorisme')],
   ['GNEWS · KESEHATAN', gn('wabah OR dbd OR "flu burung" OR "stunting"')],
@@ -252,7 +252,7 @@ const CATS = [
   { id:'ekonomi', label:'Ekonomi', sev:0.5, geo:false, re:/(phk|rupiah|kurs dollar|inflasi|defisit|apbn|apbd|ihsg|bursa efek|saham|emiten|dividen|stock split|buyback|right issue|utang negara|subsidi|bbm|pertamax|solar|listrik padam|padam listrik|pemadaman listrik|pertamina|\bpln\b|ojk|bank indonesia|umk\b|ump\b|thr\b|belanja negara|bea cukai|ekspor|impor|suku bunga|bappebti|kripto|bitcoin|pinjol|fintech|paylater|harga (cabai|beras|daging|minyak|emas))/i },
   { id:'politik', label:'Politik', sev:0.55, geo:false, re:/(pilpres|pilkada|pemilu|kpu\b|capres|cawapres|\bdpr\b|\bdprd\b|parlemen|pelantikan|menteri|wakil presiden|\bistana\b|bansos|rapat paripurna|mahkamah konstitusi|impeachment|program mbg|makan bergizi)/i }
 ];
-const SKIP_RE = /(pascabencana|pascagempa|pascabanjir|mitigasi|kesiapsiagaan|potensi bencana|rawan bencana|risiko bencana|kajian risiko|simulasi|edukasi|sosialisasi|pelatihan|antisipasi|siaga bencana|hadapi bencana|menghadapi bencana|peringatan dini|early warning|asuransi|operasi patuh|imbau|himbau|ingatkan|waspada|waspadai|ranperda|perda|godok|korupsi|dana bencana|modus|ruu|boikot dirinya|joget|liga|top skor|voli|sepak bola|piala|kualifikasi|gaun|mahalini|fashion|penghargaan|jasa raharja|warisan|turun-temurun|sepanjang 20\d\d|berdampak ke ekonomi|brasil|brazil|amerika serikat|filipina|thailand|malaysia|korea|jepang|tiongkok|china|inggris|prancis|jerman|australia|india|pakistan|iran|israel|palestina|ukraina|rusia|gaza)/i;
+const SKIP_RE = /(pascabencana|pascagempa|pascabanjir|mitigasi|kesiapsiagaan|potensi bencana|rawan bencana|risiko bencana|kajian risiko|simulasi|edukasi|sosialisasi|pelatihan|antisipasi|siaga bencana|hadapi bencana|menghadapi bencana|peringatan dini|early warning|asuransi|operasi patuh|imbau|himbau|ingatkan|waspada|waspadai|ranperda|perda|godok|korupsi|dana bencana|tas bencana|go[- ]?bag|pusdalops|kebutuhan darurat|peralatan bencana|salurkan bantuan|menyalurkan|penyaluran|modus|ruu|boikot dirinya|joget|liga|top skor|voli|sepak bola|piala|kualifikasi|gaun|mahalini|fashion|penghargaan|jasa raharja|warisan|turun-temurun|sepanjang 20\d\d|berdampak ke ekonomi|brasil|brazil|amerika serikat|filipina|thailand|malaysia|korea|jepang|tiongkok|china|inggris|prancis|jerman|australia|india|pakistan|iran|israel|palestina|ukraina|rusia|gaza)/i;
 const catMeta = id => CATS.find(c => c.id === id) || { id:'', label:'Insiden', sev:0.5, geo:true };
 const catOf = t => SKIP_RE.test(t) ? '' : ((CATS.find(c => c.re.test(t)) || {}).id || '');
 const INCIDENT_RE = new RegExp(CATS.map(c => c.re.source).join('|'), 'i');
