@@ -2188,10 +2188,12 @@ function drawGlobe(now){
       continue;
     }
     if (d.fresh && !dim) {
-      // Fresh = статичное тонкое кольцо + яркое ядро. НЕ expand-пульс —
-      // он визуально конфликтовал с сейсмическими кольцами gempa.
-      ctx.beginPath(); ctx.arc(d.x, d.y, d.r + 3, 0, Math.PI * 2);
-      ctx.strokeStyle = hexA(d.color, 0.55);
+      // Fresh = один мягкий pulse-ring: короткий ход, слабая альфа —
+      // читается как "пульс", но не конкурирует с тройными кольцами gempa.
+      const prog = REDUCED ? 0.5 : (((((now / 1000) * 0.9 + d.p.la * 7.3 + Math.abs(d.p.lo)) % 1) + 1) % 1);
+      const ringR = d.r + 3 + prog * 9;
+      ctx.beginPath(); ctx.arc(d.x, d.y, ringR, 0, Math.PI * 2);
+      ctx.strokeStyle = hexA(d.color, REDUCED ? 0.4 : (1 - prog) * 0.5);
       ctx.lineWidth = 1;
       ctx.stroke();
     }
