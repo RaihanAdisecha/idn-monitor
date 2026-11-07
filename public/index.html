@@ -1767,7 +1767,10 @@ function showSitAlert(p){
 (function(){
   const el = $('#sit-alert');
   if (!el) return;
-  el.addEventListener('click', () => { if (sitAlertUrl) window.open(sitAlertUrl, '_blank', 'noopener'); });
+  el.addEventListener('click', () => {
+    if (!sitAlertUrl) return;
+    rdOpen(sitAlertUrl, null, true, '').catch(() => window.open(sitAlertUrl, '_blank', 'noopener'));
+  });
 })();
 function drawGlobe(now){
   now = now || performance.now();

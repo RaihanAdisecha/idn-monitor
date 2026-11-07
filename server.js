@@ -1558,27 +1558,10 @@ function ogReuse(host, imgUrl, article) {
   return seen;
 }
 
-async function thumb(u) {
-  const x = publicURL(u);
-  if (!x) throw new Error('url tidak valid');
-  const hit = thumbCache.get(u);
-  if (hit && Date.now() - hit.at < (hit.v.img ? 600000 : 60000)) return hit.v;
-  let article = u;
-  if (/(^|\.)news\.google\.com$/i.test(x.hostname) && GN_PATH.test(x.pathname)) {
-    article = await decodeGNews(u);
-    if (article === u) throw new Error('gagal resolve google news');
-  }
-  let r = null, lastErr = null;
-  for (let i = 0; i < 2; i++) {
-    try {
-      r = await get(article, { headers: article !== u ? { referer: 'https://news.google.com/' } : {} }, 12000);
-      if (r.ok) break;
-      lastErr = new Error('HTTP ' + r.status);
-    } catch (e) { lastErr = e; }
-    if (i === 0) await new Promise(res => setTimeout(res, 700));
-  }
-  if (!r || !r.ok) throw lastErr || new Error('fetch gagal');
-  const html = (await r.text()).slice(0, 1800000);
+/* core pemilihan gambar dari HTML yang sudah di-fetch — dipakai thumb() dan rdFinish()
+   supaya reader tidak fetch artikel dua kali */
+async function thumbFromHtml(rawHtml, article) {
+  const html = String(rawHtml || '').slice(0, 1800000);
   // body scan dibatasi ke container artikel (rdArticleCandidates[0] = paling presisi)
   // dan dipotong sebelum seksi "berita terkait" — menghilangkan thumbnail related/news lain
   let bodySrc = rdArticleCandidates(html)[0] || html;
@@ -1612,6 +1595,30 @@ async function thumb(u) {
       .find(p => p.w >= 600 && ogReuse(host, p.img, article) < 2) || null;
   }
   const v = best ? { img: best.img, w: best.w, h: best.h, src: article } : { img: '', src: article };
+  return v;
+}
+
+async function thumb(u) {
+  const x = publicURL(u);
+  if (!x) throw new Error('url tidak valid');
+  const hit = thumbCache.get(u);
+  if (hit && Date.now() - hit.at < (hit.v.img ? 600000 : 60000)) return hit.v;
+  let article = u;
+  if (/(^|\.)news\.google\.com$/i.test(x.hostname) && GN_PATH.test(x.pathname)) {
+    article = await decodeGNews(u);
+    if (article === u) throw new Error('gagal resolve google news');
+  }
+  let r = null, lastErr = null;
+  for (let i = 0; i < 2; i++) {
+    try {
+      r = await get(article, { headers: article !== u ? { referer: 'https://news.google.com/' } : {} }, 12000);
+      if (r.ok) break;
+      lastErr = new Error('HTTP ' + r.status);
+    } catch (e) { lastErr = e; }
+    if (i === 0) await new Promise(res => setTimeout(res, 700));
+  }
+  if (!r || !r.ok) throw lastErr || new Error('fetch gagal');
+  const v = await thumbFromHtml(await r.text(), article);
   thumbCache.set(u, { v, at: Date.now() });
   if (thumbCache.size > 200) thumbCache.delete(thumbCache.keys().next().value);
   return v;
@@ -2261,13 +2268,21 @@ function rdAssembleBlocks(d) {
   d.blocks = out;
   return d;
 }
-async function rdFinish(d, url) {
+async function rdFinish(d, url, html) {
   d = await rdHydrateVideos(d, url);
   d = rdAssembleBlocks(d);
   // hero disamakan dengan pipeline thumb() news wire — og:image mentah sering logo/aset situs.
-  // thumb() memoized 10 mnt bersama wire → konsisten + murah. Gagal → pertahankan og:image.
-  if (!/youtube\.com|youtu\.be/i.test(url)) {
-    try { const t = await thumb(url); if (t && t.img) d.img = t.img; } catch (e) {}
+  // html sudah di-fetch rdRead → pakai thumbFromHtml (zero fetch tambahan). Tanpa html → thumb() fallback.
+  // Hasil ikut di-cache supaya wire lead tidak fetch ulang.
+  if (html !== null && !/youtube\.com|youtu\.be/i.test(url)) {
+    try {
+      const t = html ? await thumbFromHtml(html, url) : await thumb(url);
+      if (t && t.img) {
+        d.img = t.img;
+        thumbCache.set(url, { v: t, at: Date.now() });
+        if (thumbCache.size > 200) thumbCache.delete(thumbCache.keys().next().value);
+      }
+    } catch (e) {}
   }
   return d;
 }
@@ -2316,7 +2331,7 @@ async function rdRead(raw) {
       let html = await r.text();
       if (html.length > 3e6) html = html.slice(0, 3e6);
       const d = tryHtml(html, url);
-      if (d) return await rdFinish(d, url);
+      if (d) return await rdFinish(d, url, html);
       lastErr = new Error('halaman challenge/block');
     } catch (e) { lastErr = e; }
     // 2) Jina reader — paling andal, dicoba sebelum rantai proxy publik yang lambat
@@ -2332,7 +2347,7 @@ async function rdRead(raw) {
               if (!d.videos || !d.videos.length) d.videos = metaD.videos || [];
               if (!d.time && metaD.time) d.time = metaD.time;
             }
-            return await rdFinish(d, target);
+            return await rdFinish(d, target, null);   // Jina = markdown, bukan html — jangan fetch ulang untuk thumb
           }
         }
       }
@@ -2358,7 +2373,7 @@ async function rdRead(raw) {
               if (!d.desc && (md.ogDescription || md['og:description'])) d.desc = md.ogDescription || md['og:description'];
               if (!d.byline && md.author) d.byline = md.author;
               if (!d.time && md['article:published_time']) d.time = md['article:published_time'];
-              return await rdFinish(d, target);
+              return await rdFinish(d, target, String(html));
             }
           }
         }
@@ -2375,7 +2390,7 @@ async function rdRead(raw) {
         let html = await r.text();
         if (html.length > 3e6) html = html.slice(0, 3e6);
         const d = tryHtml(html, target);
-        if (d) return await rdFinish(d, target);
+        if (d) return await rdFinish(d, target, html);
       } catch (e) { lastErr = e; }
     }
     // semua jalur gagal → tetap sajikan meta (judul/gambar/video/deskripsi) daripada error kosong
@@ -2384,7 +2399,7 @@ async function rdRead(raw) {
       const d = { ...metaD, paras, thin: paras.length < 2, via: 'meta' };
       d.blocks = (metaD.blocks && metaD.blocks.length ? metaD.blocks : paras.map(t => ({ k: 'p', t })))
         .filter(b => b.k !== 'p' || paras.includes(b.t));
-      return await rdFinish(d, target);
+      return await rdFinish(d, target, null);   // semua fetch gagal — thumb() juga akan gagal, jangan buang waktu
     }
     throw lastErr || new Error('fetch failed');
   });
