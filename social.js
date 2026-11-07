@@ -22,6 +22,14 @@ function socNonLatin(t) {
   const lat = (s.match(/[A-Za-zÀ-ɏ]/g) || []).length;
   return nl >= 20 && nl > lat;
 }
+// Vietnam Latin tapi penuh diakritik khas (đ/ă/ơ/ư + vokal bernada) — spam crypto/exchange VN lolos cek non-Latin
+const SOC_VI_RE = /[àáạảãâầấậẩẫăằắặẳẵèéẹẻẽêềếệểễìíịỉĩòóọỏõôồốộổỗơờớợởỡùúụủũưừứựửữỳýỵỷỹđ]/g;
+function socVi(t) {
+  const s = String(t || '');
+  const vi = (s.match(SOC_VI_RE) || []).length;
+  const lat = (s.match(/[A-Za-z]/g) || []).length;
+  return vi >= 15 && vi * 4 >= lat;
+}
 
 // kata negara asing: membuang "penembakan di Texas", "gempa Jepang" dst. KECUALI ada petunjuk lokal Indonesia.
 const SOC_FOREIGN_RE = /\b(amerika|texas|california|new york|brasil|brazil|filipina|thailand|malaysia|korea|jepang|tiongkok|china|inggris|prancis|perancis|jerman|australia|india|pakistan|iran|israel|palestina|ukraina|rusia|gaza|turki|meksiko|kanada|nigeria|afrika|trump)\b/i;
@@ -58,7 +66,7 @@ const SOC_TOPICS = [
     // tsunami finance/sport — wajib konteks seismik atau lokasi bencana
     neg: /(blue|blauwe)\s+tsunami|tsunami\s+(biru|politik|protes)/i,
     strong: /(gempa|magnitudo|erupsi|letusan)/i,
-    ctx: /(jepang|japan|indonesia|jakarta|jkt|sumatera|pantai|beach|gelombang|dahsyat|air bah|megathrust|pesisir|tepi laut|gempa|earthquake|gelombang pasang|\brob\b|banjir rob|palung|waspada|peringatan|imau|bnpb|bpbd)/i,
+    ctx: /(gempa|earthquake|megathrust|gelombang pasang|air bah|pesisir|tepi laut|palung|bmkg|bnpb|bpbd|tsunami warning|peringatan(?: dini)? tsunami|tsunami (?:menerjang|melanda|menghantam) (?:pantai|pesisir))/i,
     x: ['(gempa OR tsunami OR magnitudo OR erupsi) -filter:replies'],
     th: ['gempa'] },
   { id: 'kecelakaan', local: true,
@@ -109,15 +117,19 @@ const SOC_TOPICS = [
     pos: /(pemilu|pilkada|pilpres|\bkpu\b|bawaslu)/i,
     x: ['(pemilu OR pilkada OR pilpres OR KPU OR Bawaslu) -filter:replies'],
     th: ['pemilu', 'pilkada'] },
-  { id: 'ransomware',
+  { id: 'ransomware', local: true,
     pos: /(ransomware|malware)/i,
+    // "malware" dipakai kiasan ("humans were malware infected") dan disebut dalam daftar kejahatan
+    // artikel regulasi — wajib konteks insiden siber nyata
+    neg: /(humans?|manusia|people|manusiawi|otak|hati|jiwa|semangat|energi|pikiran)[^.\n]{0,40}(malware|virus)|(malware|virus)[^.\n]{0,40}(humans?|manusia|people|manusiawi|otak|hati|jiwa|semangat|pikiran)/i,
+    ctx: /(ransomware|malware|peretasan|diretas|bocor data|kebocoran data|\bddos\b|botnet|encrypt|enkripsi|decrypt|tebusan|jaringan|bssn|\bpdn\b|phishing|zero[- ]?day|data breach|dompet kripto|p2p|usdt|sanksi|daftar hitam|finCEN|suspend|hostage|akun (dibajak|diretas|dibobol|kena))/i,
     x: ['(ransomware OR malware) -filter:replies'],
     th: ['ransomware'] },
-  { id: 'serangan siber',
+  { id: 'serangan siber', local: true,
     pos: /(serangan siber|serangan cyber|peretasan|diretas|kebocoran data|bocor data|\bddos\b|data breach|\bbssn\b|\bpdn\b)/i,
     x: ['("serangan siber" OR peretasan OR diretas OR "kebocoran data" OR BSSN OR DDoS) -filter:replies'],
     th: ['serangan siber', 'kebocoran data'] },
-  { id: 'akun dibajak',
+  { id: 'akun dibajak', local: true,
     pos: /akun[^.\n]{0,25}(dibajak|diretas|kena hack|di-hack|dibobol)/i,
     x: ['(akun (dibajak OR diretas OR dibobol)) -filter:replies'],
     th: ['akun dibajak'] }
@@ -128,12 +140,15 @@ for (const t of SOC_TOPICS) t.adhoc = false;
 function socTopics(text, extra) {
   const t = String(text || '');
   if (!t || SOC_NOISE_RE.test(t) || SOC_SPAM_RE.test(t) || socHashCount(t) >= 10) return [];
-  const foreign = (SOC_FOREIGN_RE.test(t) || socNonLatin(t)) && !SOC_LOCAL_RE.test(t);
+  const foreign = (SOC_FOREIGN_RE.test(t) || socNonLatin(t) || socVi(t)) && !SOC_LOCAL_RE.test(t);
   const out = [];
   for (const tp of extra && extra.length ? SOC_TOPICS.concat(extra) : SOC_TOPICS) {
     if (!tp.pos.test(t)) continue;
-    if (tp.neg && tp.neg.test(t)) continue;
-    if (tp.ctx && !(tp.strong && tp.strong.test(t)) && !tp.ctx.test(t)) continue;
+    // Strip metaphor spans only for this topic, preserving independent physical reports.
+    const evidence = tp.id === 'gempa' ? t.replace(/(?:blue|blauwe)\s+tsunami|tsunami\s+(?:biru|politik|protes|suara|pemilu|dukungan|saham|cuan)(?:\s+\w+){0,2}/gi, ' ') : t;
+    if (!tp.pos.test(evidence)) continue;
+    if (tp.neg && tp.neg.test(evidence)) continue;
+    if (tp.ctx && !(tp.strong && tp.strong.test(evidence)) && !tp.ctx.test(evidence)) continue;
     if (tp.local && foreign) continue;
     out.push(tp.id);
   }
