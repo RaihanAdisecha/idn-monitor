@@ -5652,7 +5652,7 @@ function rdPrefetch(url) {
     .catch(() => {})
     .finally(() => rdPrefetching.delete(url));
 }
-const RD_PREF_SEL = 'a.lead, a.nw, a.si, a.th-link, a.srcl';
+const RD_PREF_SEL = 'a.lead, a.nw, a.si, a.tk, a.th-link, a.srcl, a.tw-txt a, a.th-txt a';
 document.addEventListener('pointerover', e => {
   const a = e.target.closest && e.target.closest(RD_PREF_SEL);
   if (a && a.href && a.target === '_blank') rdPrefetch(a.href);
@@ -5840,30 +5840,6 @@ document.addEventListener('click', e => {
   e.preventDefault();
   rdPost(isX ? 'x' : 'threads', p, card);
 });
-
-/* Prefetch /api/read saat hover — klik berikutnya langsung render dari rdCache */
-const rdPrefetching = new Set();
-let rdPrefetchT = null, rdPrefetchU = '';
-function rdPrefetch(u){
-  if (!u || !/^https?:/i.test(u) || isSocialPost(u) || API == null) return;
-  if (rdCache.has(u) || rdPrefetching.has(u)) return;
-  clearTimeout(rdPrefetchT); rdPrefetchU = u;
-  rdPrefetchT = setTimeout(async () => {
-    if (rdCache.has(u) || rdPrefetching.has(u)) return;
-    rdPrefetching.add(u);
-    try {
-      const d = await getJson(API + '/api/read?u=' + encodeURIComponent(u), 45000);
-      if (d && d.ok) { rdCache.set(u, d); if (rdCache.size > 80) rdCache.delete(rdCache.keys().next().value); }
-    } catch (e) {} finally { rdPrefetching.delete(u); }
-  }, 350);
-}
-document.addEventListener('mouseover', e => {
-  const a = e.target.closest && e.target.closest('a.lead, a.nw, a.si, a.tk, a.th-link, a.srcl, a.tw-txt a, a.th-txt a');
-  if (!a || !a.href || a.href === rdPrefetchU) return;
-  rdPrefetchU = a.href;
-  rdPrefetch(a.href);
-});
-
 
 // Mobile: tiap pane collapsible lewat header-nya
 $$('.pane').forEach(p => {
