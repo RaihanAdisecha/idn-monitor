@@ -906,6 +906,10 @@ a{color:inherit;text-decoration:none;text-underline-offset:2px}
 .map-f .sp{margin-left:auto;color:var(--text3);overflow:hidden;text-overflow:ellipsis}
 .map-f .cred{flex:none;color:#6f6f6f;font-size:8px;letter-spacing:.06em}
 .leaflet-container{background:#0b0b0b!important;font-family:var(--mono)!important}
+/* Canvas visual-only (heat/wind/fire) tidak menangkap pointer. Jangan matikan
+   Leaflet Canvas renderer: CircleMarker interaktif melakukan hit-test di canvas itu. */
+.leaflet-overlay-pane canvas.leaflet-layer,
+.leaflet-overlay-pane canvas.velocity-overlay{pointer-events:none}
 #map .leaflet-tile-pane{filter:grayscale(.25) contrast(1.04) brightness(.78)}
 #map .leaflet-heatmap-layer{opacity:.92!important;filter:saturate(1.35) brightness(1.08)}
 #map .leaflet-bar a{
@@ -1796,7 +1800,7 @@ const CAT_COLOR = { demo:'#f1c21b', fire:'#da1e28', flood:'#4589ff', disaster:'#
 const CAT_LABEL = { demo:'Demo', fire:'Kebakaran', flood:'Banjir', disaster:'Bencana', insiden:'Insiden', siber:'Siber', kriminal:'Kriminal', kesehatan:'Kesehatan', ekonomi:'Ekonomi', politik:'Politik' };
 const CAT_GEO = { demo:1, fire:1, flood:1, disaster:1, insiden:1, kriminal:1, kesehatan:1 };
 const CAT_RE = {
-  demo:/(\bdemo\b(?!\s*(aplikasi|game|produk|sistem|fitur|cara|tutorial))|unjuk rasa|aksi massa|protes|mogok|kerusuhan|bentrok|\bmassa\b|long march|audiensi)/i,
+  demo:/(\bdemo\b(?!\s*(aplikasi|game|produk|sistem|fitur|cara|tutorial|masak|memasak|kuliner|spesial|special))(?<!cooking demo|cooking\s+demo)|unjuk rasa|aksi massa|protes|mogok|kerusuhan|bentrok|\bmassa\b|long march|audiensi|women'?s\s+march|international\s+women'?s\s+day|hari\s+buruh|buruh\s+sedunia|labour\s+day|labor\s+day)/i,
   fire:/(kebakaran|karhutla|kebakaran hutan|kebakaran lahan|terbakar|kobaran api|asap tebal)/i,
   flood:/(banjir|genangan|longsor|tanah longsor|cuaca ekstrem|hujan deras|\brob\b)/i,
   disaster:/(gempa|tsunami|erupsi|letusan|bencana|evakuasi|korban jiwa|ambruk|tenggelam|hanyut|banjir bandang)/i,
@@ -1807,7 +1811,7 @@ const CAT_RE = {
   ekonomi:/(phk|rupiah|kurs dollar|inflasi|defisit|apbn|apbd|ihsg|bursa efek|saham|emiten|dividen|stock split|buyback|right issue|utang negara|subsidi|bbm|pertamax|solar|listrik padam|padam listrik|pemadaman listrik|pertamina|\bpln\b|ojk|bank indonesia|umk\b|ump\b|thr\b|belanja negara|bea cukai|ekspor|impor|suku bunga|bappebti|kripto|bitcoin|pinjol|fintech|paylater|harga (cabai|beras|daging|minyak|emas))/i,
   politik:/(pilpres|pilkada|pemilu|kpu\b|capres|cawapres|\bdpr\b|\bdprd\b|parlemen|pelantikan|menteri|wakil presiden|\bistana\b|bansos|rapat paripurna|mahkamah konstitusi|impeachment|program mbg|makan bergizi)/i
 };
-const CAT_SKIP = /(pascabencana|pascagempa|pascabanjir|mitigasi|kesiapsiagaan|potensi bencana|rawan bencana|risiko bencana|kajian risiko|simulasi|edukasi|sosialisasi|pelatihan|antisipasi|siaga bencana|hadapi bencana|menghadapi bencana|peringatan dini|early warning|asuransi|operasi patuh|imbau|himbau|ingatkan|waspada|waspadai|ranperda|perda|godok|korupsi|dana bencana|modus|ruu|boikot dirinya|joget|liga|top skor|voli|sepak bola|piala|kualifikasi|gaun|mahalini|fashion|penghargaan|jasa raharja|warisan|turun-temurun|sepanjang 20\d\d|berdampak ke ekonomi|brasil|brazil|amerika serikat|filipina|thailand|malaysia|korea|jepang|tiongkok|china|inggris|prancis|jerman|australia|india|pakistan|iran|israel|palestina|ukraina|rusia|gaza)/i;
+const CAT_SKIP = /(pascabencana|pascagempa|pascabanjir|mitigasi|kesiapsiagaan|potensi bencana|rawan bencana|risiko bencana|kajian risiko|simulasi|edukasi|sosialisasi|pelatihan|antisipasi|siaga bencana|hadapi bencana|menghadapi bencana|peringatan dini|early warning|asuransi|operasi patuh|imbau|himbau|ingatkan|waspada|waspadai|ranperda|perda|godok|korupsi|dana bencana|modus|ruu|boikot dirinya|joget|cooking demo|demo (masak|memasak|kuliner|spesial)|liga|top skor|voli|sepak bola|piala|kualifikasi|gaun|mahalini|fashion|penghargaan|jasa raharja|warisan|turun-temurun|sepanjang 20\d\d|berdampak ke ekonomi|brasil|brazil|amerika serikat|filipina|thailand|malaysia|korea|jepang|tiongkok|china|inggris|prancis|perancis|paris|jerman|australia|india|pakistan|iran|israel|palestina|ukraina|rusia|gaza)/i;
 const catOfTitle = t => {
   if (CAT_SKIP.test(t)) return '';
   for (const c of CAT_ORDER) if (CAT_RE[c] && CAT_RE[c].test(t)) return c;
@@ -3425,6 +3429,46 @@ function renderNews(){
     }
     items.length = 0; items.push(...collapsed);
   }
+  // pass 2: cerita sama yang redaksinya beda — per kategori, gabung kalau
+  // Jaccard >0.5 ATAU punya >=2 token langka bersama (entitas: ruben onsu,
+  // malioboro, women's march). Item tanpa kategori di-skip (nanti terfilter).
+  {
+    const toks = t => new Set(t.toLowerCase().replace(/[^a-z0-9 ]/g, ' ').split(/\s+/).filter(w => w.length > 2));
+    const jac = (a, b) => { let n = 0; for (const w of a) if (b.has(w)) n++; return n / (a.size + b.size - n || 1); };
+    const df = new Map();
+    items.forEach(h => toks(h.title).forEach(w => df.set(w, (df.get(w) || 0) + 1)));
+    const rareOf = h => new Set([...toks(h.title)].filter(w => w.length > 4 && (df.get(w) || 0) <= 20));
+    const byCat = new Map(), rest = [];
+    items.forEach(h => {
+      if (!h.cat) { rest.push(h); return; }
+      if (!byCat.has(h.cat)) byCat.set(h.cat, []);
+      byCat.get(h.cat).push(h);
+    });
+    const out = [...rest];
+    for (const list2 of byCat.values()) {
+      if (list2.length > 150) { out.push(...list2); continue; }   // grup raksasa: biarkan pass-1 saja
+      const sig = list2.map(h => ({ set: toks(h.title), rare: rareOf(h) }));
+      const par = list2.map((_, i) => i);
+      const find = i => par[i] === i ? i : (par[i] = find(par[i]));
+      const uni = (a, b) => { const ra = find(a), rb = find(b); if (ra !== rb) par[ra] = rb; };
+      for (let i = 0; i < list2.length; i++) for (let k = i + 1; k < list2.length; k++) {
+        if (jac(sig[i].set, sig[k].set) > 0.5) { uni(i, k); continue; }
+        let shared = 0;
+        for (const w of sig[i].rare) if (sig[k].rare.has(w) && ++shared >= 2) { uni(i, k); break; }
+      }
+      const groups = new Map();
+      list2.forEach((h, i) => { const r = find(i); if (!groups.has(r)) groups.set(r, []); groups.get(r).push(h); });
+      for (const g of groups.values()) {
+        if (g.length === 1) { out.push(g[0]); continue; }
+        g.sort((a, b) => (b.ts || 0) - (a.ts || 0));
+        out.push({ ...g[0], n: g.reduce((s, x) => s + (x.n || 1), 0),
+          srcs: new Set(g.flatMap(x => [...(x.srcs || [x.pub || x.src || ''])])),
+          ts: Math.max(...g.map(x => x.ts || 0)) });
+      }
+    }
+    out.sort((a, b) => (b.ts || 0) - (a.ts || 0));
+    items.length = 0; items.push(...out);
+  }
   const q = ($('#fq').value || '').toLowerCase();
   const list = items.filter(h => (!onlyTopic || topicOK(h)) && (catFilter === 'semua' || h.cat === catFilter) &&
     (!q || (h.title + ' ' + h.src + ' ' + (h.pub || '')).toLowerCase().includes(q)));
@@ -4098,6 +4142,7 @@ function fireInit(){
   if (fireInitDone || !map) return;
   fireInitDone = true;
   fireCvLayer = L.canvasLayer({ pane: map.getPane('overlayPane') }).delegate({ onDrawLayer: firePaint }).addTo(map);
+  fireCvLayer._canvas.style.pointerEvents = 'none';   // canvas penuh-map tidak boleh menelan klik/drag
   map.on('click', e => {
     if (!layerOn.fires || !fireData.length) return;
     let best = null, bd = 20 * 20;

@@ -209,15 +209,18 @@ const cleanPub = v => {
   if (/^(https?:)?\/\//i.test(v) || /^www\./i.test(v)) { try { return new URL(/^www\./i.test(v) ? 'https://' + v : v).hostname.replace(/^www\./i, ''); } catch (e) { return ''; } }
   return v;
 };
+// domain/sumber yang dilarang — item langsung dibuang dari semua feed
+const BANNED_SRC = /infopublik\.id|infopublik/i;
 function parseFeed(xml) {
   const out = [];
   for (const m of xml.matchAll(/<item[\s>]([\s\S]*?)<\/item>/gi)) {
     const b = m[1], title = tag(b, 'title'), url = tag(b, 'link') || tag(b, 'guid'), d = tag(b, 'pubDate');
-    if (title && url) out.push({ title, url, ts: d ? Date.parse(d) || 0 : 0, img: feedImage(b), pub: cleanPub(tag(b, 'source')), desc: descOf(b) });
+    if (title && url && !BANNED_SRC.test(title + ' ' + url + ' ' + tag(b, 'source'))) out.push({ title, url, ts: d ? Date.parse(d) || 0 : 0, img: feedImage(b), pub: cleanPub(tag(b, 'source')), desc: descOf(b) });
   }
   for (const m of xml.matchAll(/<entry[\s>]([\s\S]*?)<\/entry>/gi)) {
     const b = m[1], l = b.match(/<link[^>]*href="([^"]+)"/i) || b.match(/<link[^>]*>([^<]+)<\/link>/i), d = tag(b, 'updated') || tag(b, 'published');
-    if (l) out.push({ title: tag(b, 'title'), url: (l[1] || '').trim(), ts: Date.parse(d) || 0 });
+    const t = tag(b, 'title');
+    if (l && t && !BANNED_SRC.test(t + ' ' + (l[1] || ''))) out.push({ title: t, url: (l[1] || '').trim(), ts: Date.parse(d) || 0 });
   }
   return out;
 }
@@ -280,7 +283,7 @@ const news = () => Promise.all(NEWS.map(([id, url]) => memo('n:' + id, 55000, as
 // geo:true = kejadian fisik/lokal → boleh jadi pin peta, node globe, dan masuk marquee.
 // geo:false = topik naratif (ekonomi, politik, siber) → hanya News Wire & statistik situasi.
 const CATS = [
-  { id:'demo', label:'Demo', sev:0.82, geo:true, re:/(\bdemo\b(?!\s*(aplikasi|game|produk|sistem|fitur|cara|tutorial|masak|memasak|kuliner|spesial|special))(?<!cooking demo|cooking\s+demo)|unjuk rasa|aksi massa|protes|mogok|kerusuhan|bentrok|\bmassa\b|long march|audiensi)/i },
+  { id:'demo', label:'Demo', sev:0.82, geo:true, re:/(\bdemo\b(?!\s*(aplikasi|game|produk|sistem|fitur|cara|tutorial|masak|memasak|kuliner|spesial|special))(?<!cooking demo|cooking\s+demo)|unjuk rasa|aksi massa|protes|mogok|kerusuhan|bentrok|\bmassa\b|long march|audiensi|women'?s\s+march|international\s+women'?s\s+day|hari\s+buruh|buruh\s+sedunia|labour\s+day|labor\s+day)/i },
   { id:'fire', label:'Kebakaran', sev:0.96, geo:true, re:/(kebakaran|karhutla|kebakaran hutan|kebakaran lahan|terbakar|kobaran api|asap tebal)/i },
   { id:'flood', label:'Banjir', sev:0.86, geo:true, re:/(banjir|genangan|longsor|tanah longsor|cuaca ekstrem|hujan deras|\brob\b)/i },
   { id:'disaster', label:'Bencana', sev:1, geo:true, re:/(gempa|tsunami|erupsi|letusan|bencana|evakuasi|korban jiwa|ambruk|tenggelam|hanyut|banjir bandang)/i },
@@ -291,7 +294,7 @@ const CATS = [
   { id:'ekonomi', label:'Ekonomi', sev:0.5, geo:false, re:/(phk|rupiah|kurs dollar|inflasi|defisit|apbn|apbd|ihsg|bursa efek|saham|emiten|dividen|stock split|buyback|right issue|utang negara|subsidi|bbm|pertamax|solar|listrik padam|padam listrik|pemadaman listrik|pertamina|\bpln\b|ojk|bank indonesia|umk\b|ump\b|thr\b|belanja negara|bea cukai|ekspor|impor|suku bunga|bappebti|kripto|bitcoin|pinjol|fintech|paylater|harga (cabai|beras|daging|minyak|emas))/i },
   { id:'politik', label:'Politik', sev:0.55, geo:false, re:/(pilpres|pilkada|pemilu|kpu\b|capres|cawapres|\bdpr\b|\bdprd\b|parlemen|pelantikan|menteri|wakil presiden|\bistana\b|bansos|rapat paripurna|mahkamah konstitusi|impeachment|program mbg|makan bergizi)/i }
 ];
-const SKIP_RE = /(pascabencana|pascagempa|pascabanjir|mitigasi|kesiapsiagaan|potensi bencana|rawan bencana|risiko bencana|kajian risiko|simulasi|edukasi|sosialisasi|pelatihan|antisipasi|siaga bencana|hadapi bencana|menghadapi bencana|peringatan dini|early warning|asuransi|operasi patuh|imbau|himbau|ingatkan|waspada|waspadai|ranperda|perda|godok|korupsi|dana bencana|tas bencana|go[- ]?bag|pusdalops|kebutuhan darurat|peralatan bencana|salurkan bantuan|menyalurkan|penyaluran|modus|ruu|boikot dirinya|joget|liga|top skor|voli|sepak bola|piala|kualifikasi|gaun|mahalini|fashion|penghargaan|jasa raharja|warisan|turun-temurun|sepanjang 20\d\d|berdampak ke ekonomi|brasil|brazil|amerika serikat|filipina|thailand|malaysia|korea|jepang|tiongkok|china|inggris|prancis|jerman|australia|india|pakistan|iran|israel|palestina|ukraina|rusia|gaza)/i;
+const SKIP_RE = /(pascabencana|pascagempa|pascabanjir|mitigasi|kesiapsiagaan|potensi bencana|rawan bencana|risiko bencana|kajian risiko|simulasi|edukasi|sosialisasi|pelatihan|antisipasi|siaga bencana|hadapi bencana|menghadapi bencana|peringatan dini|early warning|asuransi|operasi patuh|imbau|himbau|ingatkan|waspada|waspadai|ranperda|perda|godok|korupsi|dana bencana|tas bencana|go[- ]?bag|pusdalops|kebutuhan darurat|peralatan bencana|salurkan bantuan|menyalurkan|penyaluran|modus|ruu|boikot dirinya|joget|liga|top skor|voli|sepak bola|piala|kualifikasi|gaun|mahalini|fashion|penghargaan|jasa raharja|warisan|turun-temurun|sepanjang 20\d\d|berdampak ke ekonomi|brasil|brazil|amerika serikat|filipina|thailand|malaysia|korea|jepang|tiongkok|china|inggris|prancis|perancis|paris|jerman|australia|india|pakistan|iran|israel|palestina|ukraina|rusia|gaza)/i;
 const catMeta = id => CATS.find(c => c.id === id) || { id:'', label:'Insiden', sev:0.5, geo:true };
 const assessNews = t => SOC.socAssess(t);
 const catOf = t => {

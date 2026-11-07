@@ -37,8 +37,8 @@ const SOC_LOCAL_RE = /(indonesia|\bwni\b|jakarta|jabar|jateng|jatim|jawa|sumater
 
 const SOC_TOPICS = [
   { id: 'demo', local: true,
-    pos: /(unjuk rasa|demonstrasi|demonstran|pengunjuk rasa|aksi massa|\bdemo\b)/i,
-    strong: /(unjuk rasa|demonstrasi|demonstran|pengunjuk rasa|aksi massa)/i,   // tanpa ini, kata "demo" polos butuh konteks
+    pos: /(unjuk rasa|demonstrasi|demonstran|pengunjuk rasa|aksi massa|\bdemo\b|women'?s\s+march|international\s+women'?s\s+day|hari\s+buruh|buruh\s+sedunia|labour\s+day|labor\s+day)/i,
+    strong: /(unjuk rasa|demonstrasi|demonstran|pengunjuk rasa|aksi massa|women'?s\s+march|international\s+women'?s\s+day|hari\s+buruh|buruh\s+sedunia|labour\s+day|labor\s+day)/i,   // tanpa ini, kata "demo" polos butuh konteks
     ctx: /(tuntut|tolak|mahasiswa|\bbem\b|buruh|ojol|\bdpr\b|dprd|gedung|polisi|aparat|gas air mata|\baksi\b|\bmassa\b|orasi|turun ke jalan|spanduk|ricuh|bentrok|rusuh|ditangkap|diamankan|bubarkan|barikade|molotov|water cannon|kapolda|kapolres|reformasi|pemerintah|istana|patung kuda|march|aksi damai|long march)/i,
     neg: /(demo (lagu|musik|reel|reels|app|apps|aplikasi|akun|produk|plane|game|beat|tape|masak|memasak|cooking|vokal|record|rekaman|day|link|version|ui|web|website|bot|trading)|free demo|live demo|cooking demo|demonstrasi (produk|alat|masak|memasak|fitur)|\bdemo\b.{0,20}#(music|musik|beat))/i,
     x: ['(unjuk rasa OR demonstrasi OR "aksi massa" OR demonstran) -filter:replies',
