@@ -327,12 +327,26 @@ function collect(o, out) {
     const uc = (u && u.core) || {};
     const h = uc.screen_name || lg.screen_name || '';
     const nt = o.note_tweet && o.note_tweet.note_tweet_results && o.note_tweet.note_tweet_results.result;
+    const extractedUrls = [];
+    if (o.legacy.entities && Array.isArray(o.legacy.entities.urls)) {
+      for (const uo of o.legacy.entities.urls) {
+        if (uo.expanded_url) extractedUrls.push(uo.expanded_url);
+        else if (uo.url) extractedUrls.push(uo.url);
+      }
+    }
+    if (nt && nt.entity_set && Array.isArray(nt.entity_set.urls)) {
+      for (const uo of nt.entity_set.urls) {
+        if (uo.expanded_url) extractedUrls.push(uo.expanded_url);
+        else if (uo.url) extractedUrls.push(uo.url);
+      }
+    }
     out.set(o.rest_id, {
       id: o.rest_id,
       handle: h ? '@' + h : '',
       name: uc.name || lg.name || h,
       avatar: String((u && u.avatar && u.avatar.image_url) || lg.profile_image_url_https || '').replace(/_normal(\.\w+)$/, '_bigger$1'),
       text: (nt && nt.text) || o.legacy.full_text,
+      urls: extractedUrls,
       ts: Date.parse(o.legacy.created_at) || 0,
       url: h ? `https://x.com/${h}/status/${o.rest_id}` : '',
       replies: o.legacy.reply_count || 0,
@@ -355,7 +369,14 @@ async function xSearch(q) {
     'x-csrf-token': X.ct0, 'x-twitter-auth-type': 'OAuth2Session', 'x-twitter-active-user': 'yes',
     'x-twitter-client-language': 'id', referer: 'https://x.com/search?q=' + encodeURIComponent(q) + '&f=live' },
     body: JSON.stringify({ variables: vars, features: X.features || FEATURES }) }, 20000);
-  if (!r.ok) throw new Error('X HTTP ' + r.status + (r.status === 401 || r.status === 403 ? ' (cookie kadaluarsa?)' : '') + ' ' + (await r.text()).slice(0, 160));
+  if (!r.ok) {
+    const textSnippet = (await r.text()).slice(0, 160);
+    const err = new Error('X HTTP ' + r.status + (r.status === 401 || r.status === 403 ? ' (cookie kadaluarsa?)' : '') + ' ' + textSnippet);
+    err.status = r.status;
+    const resetHdr = r.headers.get('x-rate-limit-reset');
+    err.resetTime = resetHdr ? parseInt(resetHdr, 10) * 1000 : 0;
+    throw err;
+  }
   const j = await r.json(), out = new Map(); collect(j, out);
   if (!out.size && j.errors) throw new Error(JSON.stringify(j.errors).slice(0, 200));
   return [...out.values()].map(p => ({ ...p, q }));
@@ -397,10 +418,10 @@ const trendingQueries = () => memo('trending', 10 * 60e3, async () => {
     return out;
   } catch (e) { return []; }
 });
-const xposts = () => memo('x', 90000, async () => {
-  const tr = (await trendingQueries()).slice(0, 6);
-  const base = (X.queries || []).map(q => String(q).toLowerCase());
-  const queries = (X.queries || []).concat(tr.filter(t => !base.includes(String(t).toLowerCase())));
+const xposts = () => memo('x', 300000, async () => {
+  const tr = (await trendingQueries()).slice(0, 4);
+  const base = (X.queries || []).slice(0, 8);
+  const queries = base.concat(tr.filter(t => !base.includes(String(t).toLowerCase()))).slice(0, 10);
   if (!xHas()) return { ok: false, err: 'auth_token / ct0 belum diisi di config.json', posts: [], queries, trending: tr };
   const all = new Map(), errs = [];
   // paralel per 5 query: sinkron tetap cepat, satu query gagal tidak menjatuhkan yang lain
@@ -445,6 +466,147 @@ const xqLazy = q => memo('xq:' + String(q).toLowerCase(), 600000, async () => {
   histMerge(xHist, batch, HIST_MAX.x, path.join(HIST_DIR, 'x-history.json'));
   return [...xHist.values()].sort((a, b) => (b.ts || 0) - (a.ts || 0)).slice(0, HIST_MAX.x);
 });
+
+/* ---------- Claude Referral Sniper ---------- */
+const claudeHist = new Map();
+const CLAUDE_HIST_FILE = path.join(HIST_DIR, 'claude-referral-history.json');
+try {
+  if (fs.existsSync(CLAUDE_HIST_FILE)) {
+    const j = JSON.parse(fs.readFileSync(CLAUDE_HIST_FILE, 'utf8'));
+    for (const item of (j.items || [])) {
+      if (item.url) claudeHist.set(item.url, item);
+    }
+  }
+} catch (e) {}
+
+function saveClaudeHist() {
+  try {
+    fs.mkdirSync(HIST_DIR, { recursive: true });
+    const items = [...claudeHist.values()].sort((a, b) => (b.found_at || b.ts || 0) - (a.found_at || a.ts || 0)).slice(0, 100);
+    fs.writeFileSync(CLAUDE_HIST_FILE, JSON.stringify({ items, updated_at: Date.now() }, null, 2));
+  } catch (e) {}
+}
+
+const CLAUDE_REF_REGEX = /https?:\/\/(?:www\.)?claude\.ai\/referral\/([a-zA-Z0-9_\-]+)/gi;
+
+function extractClaudeReferrals(post) {
+  const matches = [];
+  const text = (post.text || '') + ' ' + (post.urls || []).join(' ');
+  let m;
+  const re = new RegExp(CLAUDE_REF_REGEX.source, 'gi');
+  while ((m = re.exec(text)) !== null) {
+    const fullUrl = m[0];
+    const code = m[1];
+    matches.push({
+      code,
+      url: fullUrl,
+      tweet_id: post.id,
+      tweet_url: post.url,
+      author: post.handle,
+      name: post.name,
+      avatar: post.avatar,
+      text: post.text,
+      ts: post.ts,
+      found_at: Date.now()
+    });
+  }
+  return matches;
+}
+
+const claudeScanState = {
+  running: false,
+  last_scan: 0,
+  error: null,
+  total_scanned: 0
+};
+let claudeRateLimitedUntil = 0;
+
+const claudeSseClients = new Set();
+function broadcastClaudeSse(data) {
+  const msg = `data: ${JSON.stringify(data)}\n\n`;
+  for (const client of claudeSseClients) {
+    try { client.write(msg); } catch (e) { claudeSseClients.delete(client); }
+  }
+}
+
+function getClaudeItems() {
+  return [...claudeHist.values()].sort((a, b) => (b.found_at || b.ts || 0) - (a.found_at || a.ts || 0)).slice(0, 50);
+}
+
+async function claudeSniperScan() {
+  if (claudeScanState.running) return { ok: true, status: 'already_scanning', items: getClaudeItems(), last_scan: claudeScanState.last_scan };
+  if (Date.now() < claudeRateLimitedUntil) {
+    const remainSec = Math.ceil((claudeRateLimitedUntil - Date.now()) / 1000);
+    return { ok: false, error: `Rate limited X (cooldown ${remainSec}s)`, items: getClaudeItems(), last_scan: claudeScanState.last_scan };
+  }
+  if (!xHas()) {
+    return { ok: false, error: 'X auth_token / ct0 belum diisi di .env atau config.json', items: getClaudeItems(), last_scan: claudeScanState.last_scan };
+  }
+  claudeScanState.running = true;
+  claudeScanState.error = null;
+  const newFound = [];
+  try {
+    const q = 'claude.ai/referral';
+    try {
+      const posts = await xSearch(q);
+      claudeScanState.total_scanned += posts.length;
+      for (const p of posts) {
+        const refs = extractClaudeReferrals(p);
+        for (const ref of refs) {
+          if (!claudeHist.has(ref.url)) {
+            claudeHist.set(ref.url, ref);
+            newFound.push(ref);
+          }
+        }
+      }
+    } catch (err) {
+      const msg = err.message || String(err);
+      if (msg.includes('429')) {
+        claudeRateLimitedUntil = Date.now() + 50000;
+        claudeScanState.error = 'X Rate limit 429. Cooldown 50s.';
+      } else {
+        claudeScanState.error = msg;
+      }
+    }
+    for (const p of xHist.values()) {
+      const refs = extractClaudeReferrals(p);
+      for (const ref of refs) {
+        if (!claudeHist.has(ref.url)) {
+          claudeHist.set(ref.url, ref);
+          newFound.push(ref);
+        }
+      }
+    }
+    if (newFound.length > 0) {
+      saveClaudeHist();
+      broadcastClaudeSse({
+        type: 'new_links',
+        new_count: newFound.length,
+        links: newFound,
+        total: claudeHist.size,
+        last_scan: Date.now()
+      });
+    }
+    claudeScanState.last_scan = Date.now();
+    broadcastClaudeSse({
+      type: 'scan_pulse',
+      last_scan: claudeScanState.last_scan,
+      total: claudeHist.size,
+      error: claudeScanState.error
+    });
+  } catch (e) {
+    claudeScanState.error = e.message || String(e);
+  } finally {
+    claudeScanState.running = false;
+  }
+  return {
+    ok: true,
+    new_count: newFound.length,
+    total: claudeHist.size,
+    last_scan: claudeScanState.last_scan,
+    items: getClaudeItems()
+  };
+}
 
 /* ---------- Threads: toolzerhub/threads-scraper (MIT) lewat worker Python ---------- */
 const { execFile } = require('child_process');
@@ -1766,6 +1928,71 @@ const alive = () => memo('alive', 150000, async () => {
   return { alive: res, at: Date.now() };
 });
 
+/* ---------- CCTV multi-source catalog: tol BPJT + pemda (non-Jakarta) ---------- */
+const BPJT_OP = { jm:'Jasa Marga', hk:'Hutama Karya', wtr:'Waskita', tbs:'Trans Bumi Serbaraja',
+  pptr:'Pembangunan Perumahan', ppsd:'PP Superblok', smr:'SMR', mbmr:'MBM', cct:'Citra Catur',
+  ctp:'Cipta Trans', mun:'Murni Sago', lms:'Lamsida', csj:'Citra Loka', mms:'Marga Mandalasakti',
+  hmw:'HM Wijaya', wsp:'Wika Sidoarjo', btb:'Bintaro', tjt:'TJT', kkdm:'KKDM', jtd:'JTD',
+  jlb:'Jelajah Bahari', wst:'Wika Sumbertama', mhi:'MH Indonesia', pbtr:'PB', man:'Mandala',
+  ckjt:'CKJT', cmlj:'Cikarang-Madura', mlj:'Madura', tlkj:'Tanjung Priok', cw:'Citra Wijaya',
+  cmnp:'Citra Marga', cms:'Citra Marga Sentosa', mtn:'Matanusa',
+  'pt bintaro serpong damai':'Bintaro' };
+async function cctvBpjt(){
+  const r = await get('https://bpjt.pu.go.id/cctv/', {}, 25000);
+  const h = await r.text();
+  const m = h.match(/const allStreams = (\{[\s\S]*?\});\s*\n/);
+  if (!m) return [];
+  const groups = JSON.parse(m[1]), seen = new Set(), out = [];
+  for (const g of Object.values(groups)) for (const c of g) {
+    const s = String(c.streamhls || '');
+    if (!/m3u8/i.test(s) || seen.has(s)) continue;
+    if (!['online', '1'].includes(String(c.status))) continue;
+    const la = +c.lat, lo = +c.lon;
+    if (!isFinite(la) || !isFinite(lo) || (la === 0 && lo === 0)) continue;
+    seen.add(s);
+    out.push({ n: String(c.nama_km || c.nama_segment || 'CCTV') + ' · ' + String(c.nama_ruas || '').replace(/-/g, ' '),
+      s, e: '', la, lo, c: 'Tol ' + (BPJT_OP[String(c.bujt || '').toLowerCase()] || c.bujt || 'Lainnya') });
+  }
+  return out;
+}
+async function cctvBekasi(){
+  const r = await get('https://eofficev2.bekasikota.go.id/backupcctv/m3/list.json', {}, 15000);
+  const d = await r.json();
+  if (!Array.isArray(d)) return [];
+  return d.filter(x => x && x.path).map(x => ({
+    n: String(x.name || x.path).replace(/_/g, ' '),
+    s: 'https://eofficev2.bekasikota.go.id/backupcctv/m3/' + x.path,
+    e: '', la: null, lo: null, c: 'Bekasi'
+  }));
+}
+/* probe playlist tiap cam di background — yang upstream-nya kosong/404 dibuang dari catalog */
+const cctvProbe = { dead: new Set(), done: new Set(), running: false, last: 0 };
+async function warmCctv(){
+  if (cctvProbe.running || Date.now() - cctvProbe.last < 1200000) return;
+  cctvProbe.running = true; cctvProbe.last = Date.now();
+  try {
+    const cams = await cctvBpjt().catch(() => []);
+    cctvProbe.dead.clear(); cctvProbe.done.clear();
+    let i = 0;
+    await Promise.all(Array.from({ length: 24 }, async () => { while (i < cams.length) { const c = cams[i++];
+      try {
+        const r = await get(c.s, { headers: { 'user-agent': UA, referer: 'https://bpjt.pu.go.id/' } }, 7000);
+        const t = r.ok ? await r.text() : '';
+        cctvProbe.done.add(c.s);
+        if (!t.includes('#EXTM3U')) cctvProbe.dead.add(c.s);
+      } catch (e) { cctvProbe.done.add(c.s); cctvProbe.dead.add(c.s); }
+    } }));
+    console.log('[cctv] probe selesai:', cams.length - cctvProbe.dead.size, '/', cams.length, 'hidup');
+  } catch (e) {} finally { cctvProbe.running = false; }
+}
+const cctvCatalog = () => memo('cctvcat', 600000, async () => {
+  const rs = await Promise.allSettled([cctvBpjt(), cctvBekasi()]);
+  let cams = rs.flatMap(r => r.status === 'fulfilled' ? r.value : []);
+  if (cctvProbe.dead.size)   // probe sudah jalan → buang yang confirmed mati, unprobed tetap ikut
+    cams = cams.filter(c => !cctvProbe.dead.has(c.s));
+  return { ok: true, cams, at: Date.now() };
+});
+
 /* ---------- READ: ekstrak teks halaman buat panel baca (bukan iframe) ---------- */
 const ENT = { amp:'&', lt:'<', gt:'>', quot:'"', apos:"'", nbsp:' ', hellip:'…', mdash:'—', ndash:'–',
   lsquo:'‘', rsquo:'’', ldquo:'“', rdquo:'”', laquo:'«', raquo:'»', bull:'•', middot:'·', copy:'©', reg:'®',
@@ -2363,6 +2590,40 @@ http.createServer(async (req, res) => {
       try { return json({ ok: true, posts: await xqLazy(q), at: Date.now() }); }
       catch (e) { return json({ ok: false, err: String(e.message || e).slice(0, 200) }); }
     }
+    if (u.pathname === '/api/claude-sniper') {
+      const scanNow = u.searchParams.get('scan') === '1' || u.searchParams.get('refresh') === '1';
+      if (scanNow) {
+        const resObj = await claudeSniperScan();
+        return json(resObj);
+      }
+      return json({
+        ok: true,
+        running: claudeScanState.running,
+        last_scan: claudeScanState.last_scan,
+        total: claudeHist.size,
+        items: getClaudeItems(),
+        x_configured: xHas(),
+        error: claudeScanState.error
+      });
+    }
+    if (u.pathname === '/api/claude-sniper/stream') {
+      res.writeHead(200, {
+        'content-type': 'text/event-stream',
+        'cache-control': 'no-cache, no-transform',
+        'connection': 'keep-alive',
+        'access-control-allow-origin': '*'
+      });
+      res.write(`data: ${JSON.stringify({ type: 'init', total: claudeHist.size, last_scan: claudeScanState.last_scan, items: getClaudeItems() })}\n\n`);
+      claudeSseClients.add(res);
+      req.on('close', () => {
+        claudeSseClients.delete(res);
+      });
+      return;
+    }
+    if (u.pathname === '/api/claude-sniper/scan') {
+      const resObj = await claudeSniperScan();
+      return json(resObj);
+    }
     if (u.pathname === '/api/thread') {
       try { return json(await threadOf(u.searchParams.get('u') || '')); }
       catch (e) { return json({ ok: false, err: String(e.message || e).slice(0, 220) }); }
@@ -2391,6 +2652,7 @@ http.createServer(async (req, res) => {
     if (u.pathname === '/api/alerts') return json(await alerts());
     if (u.pathname === '/api/radar') return json(await radar());
     if (u.pathname === '/api/cams') return json(await alive());
+    if (u.pathname === '/api/cctv') return json(await cctvCatalog());
     if (u.pathname === '/api/tomtom/status') return json({ ok: true, keyConfigured: ttHas(), source: process.env.TOMTOM_API_KEY ? 'env' : (CFG.tomtom ? 'config' : 'none'), at: Date.now() });
     if (u.pathname === '/api/tomtom/flow') {
       const lat = parseFloat(u.searchParams.get('lat')), lon = parseFloat(u.searchParams.get('lon')), zoom = parseFloat(u.searchParams.get('zoom') || '10');
@@ -2438,4 +2700,15 @@ http.createServer(async (req, res) => {
   situation().then(r => console.log('Situasi warm: ' + r.total + ' insiden')).catch(() => {});
   news().then(rs => console.log('News warm: ' + rs.filter(s => s.ok).length + '/' + rs.length + ' feed')).catch(() => {});
   xposts().then(r => console.log('X warm: ' + r.posts.length + ' post')).catch(e => console.log('X warm gagal: ' + e.message));
+  claudeSniperScan().then(r => console.log('Claude Sniper warm: ' + (r.items ? r.items.length : 0) + ' link referral')).catch(e => console.log('Claude Sniper warm error: ' + (e.message || e)));
+  setTimeout(() => warmCctv().catch(() => {}), 20000);
+  setInterval(() => { warmCctv().catch(() => {}); }, 1800000);
+  setInterval(() => {
+    if (xHas()) claudeSniperScan().catch(() => {});
+  }, 15000);
+  setInterval(() => {
+    for (const client of claudeSseClients) {
+      try { client.write(': ping\n\n'); } catch (e) { claudeSseClients.delete(client); }
+    }
+  }, 15000);
 });

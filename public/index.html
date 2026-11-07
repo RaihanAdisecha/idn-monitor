@@ -3486,7 +3486,7 @@ function pump(){
   all.sort((a, b) => (b[1].vis - a[1].vis) || (a[1].idx - b[1].idx));
   for (const [c, p] of all) {
     if (p.loading) continue;
-    if (!p.h) { if (loading < MAXL) { startCell(c); loading++; } }
+    if (!p.h) { if (p.vis && loading < MAXL) { startCell(c); loading++; } }   // hanya sel yang terlihat/dekat viewport yang load — ratusan cam tidak membanjiri
     else if (p.loaded && p.stopped && p.vis && playing < MAXP) { startCell(c); playing++; }
   }
 }
@@ -3599,6 +3599,19 @@ addEventListener('keydown', e => {
 async function pullAlive(){
   if (API == null) return;
   try { aliveMap = (await getJson(API + '/api/cams', 60000)).alive; } catch (e) {}
+}
+let cctvMerged = false;
+async function pullCctv(){
+  if (API == null || cctvMerged) return;
+  try {
+    const d = await getJson(API + '/api/cctv', 30000);
+    if (!d || !Array.isArray(d.cams) || !d.cams.length) return;
+    const have = new Set(CAMS.map(c => c.s));
+    const add = d.cams.filter(c => c && c.s && c.n && !have.has(c.s));
+    if (!add.length) { cctvMerged = true; return; }
+    CAMS.push(...add); cctvMerged = true;
+    drawCityBar(); renderCams();
+  } catch (e) {}
 }
 
 /* ============================================================
@@ -5107,6 +5120,7 @@ async function refreshAll(manual){
     pullThreads();
     pullIncidents();
     pullAlive();
+    pullCctv();
     P.forEach((p, c) => { if (p.dead) { p.dead = false; p.tries = 0; badge(c, 'wait', 'Antre'); } });
     pump();
     $('#lastsync').textContent = 'sync ' + wibTime(Date.now()) + ' WIB';

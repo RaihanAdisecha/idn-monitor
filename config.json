@@ -27,7 +27,14 @@
   },
   "cctv_hosts": [
     "balitower.co.id",
-    "jakarta.go.id"
+    "jakarta.go.id",
+    "jasamarga.com",
+    "hk-opt.com",
+    "eofficev2.bekasikota.go.id",
+    "camera.jtd.co.id",
+    "cctv.mms-corp.id",
+    "cctv.kkdm.co.id",
+    "streetside.mugnimaestra.dev"
   ],
   "tv_hosts": [
     "edge.medcom.id",
