@@ -2187,20 +2187,14 @@ function drawGlobe(now){
       ctx.lineWidth = .9; ctx.strokeStyle = '#0d0d0d'; ctx.stroke();
       continue;
     }
-    if (d.fresh && !dim) {
-      // Fresh = один мягкий pulse-ring: короткий ход, слабая альфа —
-      // читается как "пульс", но не конкурирует с тройными кольцами gempa.
-      const prog = REDUCED ? 0.5 : (((((now / 1000) * 0.9 + d.p.la * 7.3 + Math.abs(d.p.lo)) % 1) + 1) % 1);
-      const ringR = d.r + 3 + prog * 9;
-      ctx.beginPath(); ctx.arc(d.x, d.y, ringR, 0, Math.PI * 2);
-      ctx.strokeStyle = hexA(d.color, REDUCED ? 0.4 : (1 - prog) * 0.5);
-      ctx.lineWidth = 1;
-      ctx.stroke();
-    }
     ctx.beginPath(); ctx.arc(d.x, d.y, d.r, 0, Math.PI * 2);
     ctx.save();
     ctx.shadowColor = d.color;
-    ctx.shadowBlur = dim ? 0 : 7;
+    // Fresh: пульсирует сам glow (мягкое дыхание 5↔12), не кольца
+    const glowPulse = d.fresh && !dim
+      ? (REDUCED ? 8 : 5 + (Math.sin(now / 420 + d.p.la * 3 + Math.abs(d.p.lo)) * 0.5 + 0.5) * 7)
+      : 7;
+    ctx.shadowBlur = dim ? 0 : glowPulse;
     ctx.fillStyle = hexA(d.color, (d.fresh ? 0.96 : 0.65) * (dim ? 0.3 : 1));
     ctx.fill();
     ctx.restore();
