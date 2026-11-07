@@ -324,7 +324,7 @@ async function xQueryId() {
       try {
         const js = await (await get(u, {}, 25000)).text();
         const m = js.match(/queryId:"([\w-]+)",operationName:"SearchTimeline"/);
-        if (m) return m[1];
+        if (m) { console.log('[x] SearchTimeline queryId:', m[1]); return m[1]; }
       } catch (e) {}
     }
     throw new Error('queryId SearchTimeline tidak ketemu; isi x.query_id manual di config.json');
@@ -2602,6 +2602,16 @@ http.createServer(async (req, res) => {
       return json(await breaking());
     }
     if (u.pathname === '/api/x') return json(await xposts());
+    if (u.pathname === '/api/xdiag') {   // bandingkan bentuk query: mana yang dapat hasil basi di host ini
+      const tests = ['kebakaran', 'kebakaran lang:id', 'kebakaran -filter:replies', 'kebakaran lang:id -filter:replies', '(kebakaran OR damkar) lang:id -filter:replies', 'kebakaran since_time:' + Math.floor((Date.now() - 46 * 3600e3) / 1000)];
+      const out = [];
+      for (const q of tests) {
+        try { const sv = Date.now; const r = await xSearch(q.replace(/ since_time:\d+/, '')); const n = r.reduce((m, p) => Math.max(m, p.ts), 0);
+          out.push({ q, n: r.length, newest: n ? new Date(n).toISOString() : '-', ageH: n ? +((Date.now() - n) / 3600e3).toFixed(1) : null }); }
+        catch (e) { out.push({ q, err: String(e.message).slice(0, 120) }); }
+      }
+      return json({ host: process.env.RAILWAY_ENVIRONMENT ? 'railway' : 'local', qid: X.query_id || 'auto', out });
+    }
     if (u.pathname === '/api/xq') {
       const q = (u.searchParams.get('q') || '').trim().slice(0, 60);
       if (!q) return json({ ok: false, err: 'query kosong' });
