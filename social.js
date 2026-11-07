@@ -52,7 +52,7 @@ const SOC_TOPICS = [
   { id: 'karhutla', local: true,
     pos: /(karhutla|kebakaran (hutan|lahan)|titik panas|hotspot|kabut asap)/i,
     // "titik panas" juga dipakai wabah/kesehatan — wajib konteks kebakaran lahan
-    strong: /(karhutla|kebakaran (hutan|lahan)|kabut asap|hotspot)/i,
+    strong: /(karhutla|kebakaran (hutan|lahan)|kabut asap)/i,
     ctx: /(hutan|lahan|karhutla|asap|kebakaran|riau|sumatera|kalimantan|papua|jambi|sumsel)/i,
     x: ['(karhutla OR "kebakaran hutan" OR "kebakaran lahan" OR "kabut asap") -filter:replies'],
     th: ['karhutla'] },
@@ -106,7 +106,7 @@ const SOC_TOPICS = [
     // "blackout" sendirian terlalu longgar: dipakai kampanye K-pop (#Blackoutforboom),
     // EDM, dan spam tiket — wajib konteks utilitas/Indonesia
     strong: /(listrik padam|padam listrik|pemadaman listrik|mati listrik|byarpet)/i,
-    ctx: /(listrik|pln|pemadaman|padam|mati|gelap|indonesia|jakarta|\bjkt\b|jabar|jateng|jatim|sumatera|kalimantan|sulawesi|papua|bali\b|aceh|riau|banten|bekasi|bogor|depok|tangerang|bandung|surabaya|medan|makassar|semarang|yogya|denpasar|bpbd|bnpb|pemkot|pemkab)/i,
+    ctx: /(listrik|pln|pemadaman listrik|padam listrik|mati listrik)/i,
     x: ['("listrik padam" OR "mati listrik" OR "pemadaman listrik" OR blackout) -filter:replies'],
     th: ['listrik padam'] },
   { id: 'wabah',
@@ -117,12 +117,23 @@ const SOC_TOPICS = [
     pos: /(pemilu|pilkada|pilpres|\bkpu\b|bawaslu)/i,
     x: ['(pemilu OR pilkada OR pilpres OR KPU OR Bawaslu) -filter:replies'],
     th: ['pemilu', 'pilkada'] },
+  { id: 'insiden', local: true,
+    pos: /(ambruk|runtuh|pohon tumbang|tenggelam|kapal karam|kapal tenggelam|hanyut|tergelincir|jatuh dari gedung)/i,
+    x: ['(ambruk OR runtuh OR "pohon tumbang" OR tenggelam OR karam) -filter:replies'],
+    th: ['ambruk', 'kapal tenggelam'] },
+  { id: 'kriminal', local: true,
+    pos: /(pembunuhan|dibunuh|pengeroyokan|dikeroyok|begal|curat|perampokan|dirampok|terorisme|narkoba|penculikan|perkosaan|rudapaksa)/i,
+    x: ['(pembunuhan OR pengeroyokan OR begal OR perampokan OR penculikan OR narkoba) -filter:replies'],
+    th: ['pembunuhan', 'begal'] },
+  { id: 'kesehatan', local: true,
+    pos: /(demam berdarah|dbd|covid|korona|flu burung|h1n1|malaria|tuberkulosis|tb|diare|keracunan|gagal ginjal)/i,
+    x: ['("demam berdarah" OR DBD OR COVID OR "keracunan massal") -filter:replies'],
+    th: ['demam berdarah', 'keracunan massal'] },
   { id: 'ransomware', local: true,
     pos: /(ransomware|malware)/i,
     // "malware" dipakai kiasan ("humans were malware infected") dan disebut dalam daftar kejahatan
     // artikel regulasi — wajib konteks insiden siber nyata
     neg: /(humans?|manusia|people|manusiawi|otak|hati|jiwa|semangat|energi|pikiran)[^.\n]{0,40}(malware|virus)|(malware|virus)[^.\n]{0,40}(humans?|manusia|people|manusiawi|otak|hati|jiwa|semangat|pikiran)/i,
-    ctx: /(ransomware|malware|peretasan|diretas|bocor data|kebocoran data|\bddos\b|botnet|encrypt|enkripsi|decrypt|tebusan|jaringan|bssn|\bpdn\b|phishing|zero[- ]?day|data breach|dompet kripto|p2p|usdt|sanksi|daftar hitam|finCEN|suspend|hostage|akun (dibajak|diretas|dibobol|kena))/i,
     x: ['(ransomware OR malware) -filter:replies'],
     th: ['ransomware'] },
   { id: 'serangan siber', local: true,
@@ -137,23 +148,11 @@ const SOC_TOPICS = [
 for (const t of SOC_TOPICS) t.adhoc = false;
 
 /* ---------- klasifikasi: teks -> topics[] ---------- */
-function socTopics(text, extra) {
-  const t = String(text || '');
-  if (!t || SOC_NOISE_RE.test(t) || SOC_SPAM_RE.test(t) || socHashCount(t) >= 10) return [];
-  const foreign = (SOC_FOREIGN_RE.test(t) || socNonLatin(t) || socVi(t)) && !SOC_LOCAL_RE.test(t);
-  const out = [];
-  for (const tp of extra && extra.length ? SOC_TOPICS.concat(extra) : SOC_TOPICS) {
-    if (!tp.pos.test(t)) continue;
-    // Strip metaphor spans only for this topic, preserving independent physical reports.
-    const evidence = tp.id === 'gempa' ? t.replace(/(?:blue|blauwe)\s+tsunami|tsunami\s+(?:biru|politik|protes|suara|pemilu|dukungan|saham|cuan)(?:\s+\w+){0,2}/gi, ' ') : t;
-    if (!tp.pos.test(evidence)) continue;
-    if (tp.neg && tp.neg.test(evidence)) continue;
-    if (tp.ctx && !(tp.strong && tp.strong.test(evidence)) && !tp.ctx.test(evidence)) continue;
-    if (tp.local && foreign) continue;
-    out.push(tp.id);
-  }
-  return out;
+const ASSESS = require('./assessment');
+function socAssess(text, extra) {
+  return ASSESS.assess(text, SOC_TOPICS.concat(extra || []), { noise: SOC_NOISE_RE, spam: SOC_SPAM_RE });
 }
+function socTopics(text, extra) { return socAssess(text, extra).topics; }
 
 /* topik ad-hoc dari judul berita (nama kasus yang lagi naik) */
 const escRe = s => String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -177,20 +176,15 @@ function socKeepTh(p) {
 
 /* ---------- balancer: satu topik / satu akun nggak boleh makan buffer ---------- */
 function socBalance(arr, max, userOf, perTopic = 0.22, perUser = 3) {
-  const capT = Math.max(8, Math.ceil(max * perTopic)), tc = Object.create(null), uc = Object.create(null), out = [], skipped = [];
-  for (const p of arr) {                       // arr harus sudah urut terbaru -> lama
-    const tps = p.topics || [];
-    if (!tps.length) continue;
-    const u = userOf(p) || '?';
-    if (tps.every(t => (tc[t] || 0) >= capT) || tps.every(t => (uc[u + '|' + t] || 0) >= perUser)) { skipped.push(p); continue; }
+  const capT = Math.max(8, Math.ceil(max * perTopic)), tc = Object.create(null), uc = Object.create(null), out = [];
+  for (const p of arr) {
+    const tps = [...new Set(p.topics || [])], u = String(userOf(p) || '?').toLowerCase();
+    if (!tps.length || tps.some(t => (tc[t] || 0) >= capT || (uc[u + '|' + t] || 0) >= perUser)) continue;
     for (const t of tps) { tc[t] = (tc[t] || 0) + 1; uc[u + '|' + t] = (uc[u + '|' + t] || 0) + 1; }
     out.push(p);
     if (out.length >= max) break;
   }
-  // data sepi: jangan biarkan buffer kosong gara-gara cap; isi sampai 50% dari sisa
-  const floor = Math.floor(max * 0.5);
-  for (let i = 0; out.length < floor && i < skipped.length; i++) out.push(skipped[i]);
-  return out.sort((a, b) => (b.ts || Date.parse(b.created_at || '') || 0) - (a.ts || Date.parse(a.created_at || '') || 0));
+  return out;
 }
 
 /* ---------- query list datar buat fetch: [{t, q}] ---------- */
@@ -204,29 +198,36 @@ function socQueries(kind, extra) {
 /* ---------- statistik + trending dari sosial itu sendiri ---------- */
 // posts: [{topics, platform:'x'|'th', user, ts}]
 function socHot(posts, now = Date.now()) {
-  const W = 90 * 60e3, B = 24 * 3600e3;
+  const W = 90 * 60e3, B = 24 * 3600e3, windows = Math.ceil(B / W);
   const st = Object.create(null);
   for (const p of posts) {
-    for (const t of p.topics || []) {
-      const e = st[t] || (st[t] = { x: 0, th: 0, rx: new Set(), rt: new Set(), base: 0 });
+    const age = now - p.ts;
+    if (!Number.isFinite(p.ts) || p.ts <= 0 || age < 0 || age > B || !['x', 'th'].includes(p.platform)) continue;
+    const author = String(p.user || '').toLowerCase().replace(/^@/, '');
+    for (const t of new Set(p.topics || [])) {
+      const e = st[t] || (st[t] = { x: 0, th: 0, rx: new Set(), rt: new Set(), buckets: new Map() });
       e[p.platform]++;
-      const age = now - p.ts;
-      if (age <= W) (p.platform === 'x' ? e.rx : e.rt).add(p.user || '?');
-      else if (age <= B) e.base++;
+      if (!author) continue;
+      if (age < W) (p.platform === 'x' ? e.rx : e.rt).add(author);
+      else {
+        const bucket = Math.floor(age / W), users = e.buckets.get(bucket) || new Set();
+        users.add(p.platform + ':' + author); e.buckets.set(bucket, users);
+      }
     }
   }
   const stats = {}, hot = [];
   for (const [t, e] of Object.entries(st)) {
     stats[t] = { x: e.x, th: e.th };
     const users = e.rx.size + e.rt.size;
-    const baseRate = e.base / ((B - W) / W);           // ekspektasi akun-per-window dari baseline
+    // Unique platform accounts in equally sized windows, not posts versus users.
+    const baseRate = [...e.buckets.values()].reduce((n, s) => n + s.size, 0) / (windows - 1);
     const both = e.rx.size > 0 && e.rt.size > 0;
     if (users < 3) continue;
-    const score = (users / (1 + baseRate)) * (both ? 1.5 : 1);
-    hot.push({ id: t, users, both, score: +score.toFixed(2) });
+    const score = users / (1 + baseRate);
+    hot.push({ id: t, users, both, score: +score.toFixed(2), coverage: 'sampled', unit: 'platform_accounts' });
   }
   hot.sort((a, b) => b.score - a.score);
   return { stats, hot: hot.slice(0, 6) };
 }
 
-module.exports = { SOC_TOPICS, socTopics, socAdhoc, socKeepX, socKeepTh, socBalance, socQueries, socHot, SOC_FOREIGN_RE, SOC_LOCAL_RE };
+module.exports = { CLASSIFIER_VERSION: ASSESS.VERSION, SOC_TOPICS, socAssess, socTopics, socAdhoc, socKeepX, socKeepTh, socBalance, socQueries, socHot, SOC_FOREIGN_RE, SOC_LOCAL_RE };

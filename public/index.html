@@ -15,6 +15,7 @@
 <style>.leaflet-velocity { pointer-events: none !important; } .velocity-overlay, canvas.velocity-overlay { pointer-events: none !important; }</style>
 <script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/leaflet.heat@0.2.0/dist/leaflet-heat.js"></script>
+<script src="signals.js"></script>
 <script>
 "use strict";L.DomUtil.setTransform||(L.DomUtil.setTransform=function(t,e,n){var i=e||new L.Point(0,0);t.style[L.DomUtil.TRANSFORM]=(L.Browser.ie3d?"translate("+i.x+"px,"+i.y+"px)":"translate3d("+i.x+"px,"+i.y+"px,0)")+(n?" scale("+n+")":"")}),L.CanvasLayer=(L.Layer?L.Layer:L.Class).extend({initialize:function(t){this._map=null,this._canvas=null,this._frame=null,this._delegate=null,L.setOptions(this,t)},delegate:function(t){return this._delegate=t,this},needRedraw:function(){return this._frame||(this._frame=L.Util.requestAnimFrame(this.drawLayer,this)),this},_onLayerDidResize:function(t){this._canvas.width=t.newSize.x,this._canvas.height=t.newSize.y},_onLayerDidMove:function(){var t=this._map.containerPointToLayerPoint([0,0]);L.DomUtil.setPosition(this._canvas,t),this.drawLayer()},getEvents:function(){var t={resize:this._onLayerDidResize,moveend:this._onLayerDidMove};return this._map.options.zoomAnimation&&L.Browser.any3d&&(t.zoomanim=this._animateZoom),t},onAdd:function(t){this._map=t,this._canvas=L.DomUtil.create("canvas","leaflet-layer"),this.tiles={};var e=this._map.getSize();this._canvas.width=e.x,this._canvas.height=e.y;var n=this._map.options.zoomAnimation&&L.Browser.any3d;L.DomUtil.addClass(this._canvas,"leaflet-zoom-"+(n?"animated":"hide")),this.options.pane.appendChild(this._canvas),t.on(this.getEvents(),this);var i=this._delegate||this;i.onLayerDidMount&&i.onLayerDidMount(),this.needRedraw();var o=this;setTimeout(function(){o._onLayerDidMove()},0)},onRemove:function(t){var e=this._delegate||this;e.onLayerWillUnmount&&e.onLayerWillUnmount(),this.options.pane.removeChild(this._canvas),t.off(this.getEvents(),this),this._canvas=null},addTo:function(t){return t.addLayer(this),this},drawLayer:function(){var t=this._map.getSize(),e=this._map.getBounds(),n=this._map.getZoom(),i=this._map.options.crs.project(this._map.getCenter()),o=this._map.options.crs.project(this._map.containerPointToLatLng(this._map.getSize())),a=this._delegate||this;a.onDrawLayer&&a.onDrawLayer({layer:this,canvas:this._canvas,bounds:e,size:t,zoom:n,center:i,corner:o}),this._frame=null},_setTransform:function(t,e,n){var i=e||new L.Point(0,0);t.style[L.DomUtil.TRANSFORM]=(L.Browser.ie3d?"translate("+i.x+"px,"+i.y+"px)":"translate3d("+i.x+"px,"+i.y+"px,0)")+(n?" scale("+n+")":"")},_animateZoom:function(t){var e=this._map.getZoomScale(t.zoom),n=L.Layer?this._map._latLngToNewLayerPoint(this._map.getBounds().getNorthWest(),t.zoom,t.center):this._map._getCenterOffset(t.center)._multiplyBy(-e).subtract(this._map._getMapPanePos());L.DomUtil.setTransform(this._canvas,n,e)}}),L.canvasLayer=function(t){return new L.CanvasLayer(t)},L.Control.Velocity=L.Control.extend({options:{position:"bottomleft",emptyString:"Unavailable",angleConvention:"bearingCCW",showCardinal:!1,speedUnit:"m/s",directionString:"Direction",speedString:"Speed",onAdd:null,onRemove:null},onAdd:function(t){return this._container=L.DomUtil.create("div","leaflet-control-velocity"),L.DomEvent.disableClickPropagation(this._container),t.on("mousemove",this._onMouseMove,this),this._container.innerHTML=this.options.emptyString,this.options.leafletVelocity.options.onAdd&&this.options.leafletVelocity.options.onAdd(),this._container},onRemove:function(t){t.off("mousemove",this._onMouseMove,this),this.options.leafletVelocity.options.onRemove&&this.options.leafletVelocity.options.onRemove()},vectorToSpeed:function(t,e,n){var i=Math.sqrt(Math.pow(t,2)+Math.pow(e,2));return"k/h"===n?this.meterSec2kilometerHour(i):"kt"===n?this.meterSec2Knots(i):"mph"===n?this.meterSec2milesHour(i):i},vectorToDegrees:function(t,e,n){n.endsWith("CCW")&&(e=0<e?e=-e:Math.abs(e));var i=Math.sqrt(Math.pow(t,2)+Math.pow(e,2)),o=180*Math.atan2(t/i,e/i)/Math.PI+180;return"bearingCW"!==n&&"meteoCCW"!==n||360<=(o+=180)&&(o-=360),o},degreesToCardinalDirection:function(t){var e="";return 0<=t&&t<11.25||348.75<=t?e="N":11.25<=t&&t<33.75?e="NNW":33.75<=t&&t<56.25?e="NW":56.25<=t&&t<78.75?e="WNW":78.25<=t&&t<101.25?e="W":101.25<=t&&t<123.75?e="WSW":123.75<=t&&t<146.25?e="SW":146.25<=t&&t<168.75?e="SSW":168.75<=t&&t<191.25?e="S":191.25<=t&&t<213.75?e="SSE":213.75<=t&&t<236.25?e="SE":236.25<=t&&t<258.75?e="ESE":258.75<=t&&t<281.25?e="E":281.25<=t&&t<303.75?e="ENE":303.75<=t&&t<326.25?e="NE":326.25<=t&&t<348.75&&(e="NNE"),e},meterSec2Knots:function(t){return t/.514},meterSec2kilometerHour:function(t){return 3.6*t},meterSec2milesHour:function(t){return 2.23694*t},_onMouseMove:function(t){var e=this.options.leafletVelocity._map.containerPointToLatLng(L.point(t.containerPoint.x,t.containerPoint.y)),n=this.options.leafletVelocity._windy.interpolatePoint(e.lng,e.lat),i="";if(n&&!isNaN(n[0])&&!isNaN(n[1])&&n[2]){var o=this.vectorToDegrees(n[0],n[1],this.options.angleConvention),a=this.options.showCardinal?" (".concat(this.degreesToCardinalDirection(o),") "):"";i="<strong> ".concat(this.options.velocityType," ").concat(this.options.directionString,": </strong> ").concat(o.toFixed(2),"°").concat(a,", <strong> ").concat(this.options.velocityType," ").concat(this.options.speedString,": </strong> ").concat(this.vectorToSpeed(n[0],n[1],this.options.speedUnit).toFixed(2)," ").concat(this.options.speedUnit)}else i=this.options.emptyString;this._container.innerHTML=i}}),L.Map.mergeOptions({positionControl:!1}),L.Map.addInitHook(function(){this.options.positionControl&&(this.positionControl=new L.Control.MousePosition,this.addControl(this.positionControl))}),L.control.velocity=function(t){return new L.Control.Velocity(t)},L.VelocityLayer=(L.Layer?L.Layer:L.Class).extend({options:{displayValues:!0,displayOptions:{velocityType:"Velocity",position:"bottomleft",emptyString:"No velocity data"},maxVelocity:10,colorScale:null,data:null},_map:null,_canvasLayer:null,_windy:null,_context:null,_timer:0,_mouseControl:null,initialize:function(t){L.setOptions(this,t)},onAdd:function(t){this._paneName=this.options.paneName||"overlayPane";var e=t._panes.overlayPane;t.getPane&&(e=(e=t.getPane(this._paneName))||t.createPane(this._paneName)),this._canvasLayer=L.canvasLayer({pane:e}).delegate(this),this._canvasLayer.addTo(t),this._map=t},onRemove:function(t){this._destroyWind()},setData:function(t){this.options.data=t,this._windy&&(this._windy.setData(t),this._clearAndRestart()),this.fire("load")},setOpacity:function(t){this._canvasLayer.setOpacity(t)},setOptions:function(t){this.options=Object.assign(this.options,t),t.hasOwnProperty("displayOptions")&&(this.options.displayOptions=Object.assign(this.options.displayOptions,t.displayOptions),this._initMouseHandler(!0)),t.hasOwnProperty("data")&&(this.options.data=t.data),this._windy&&(this._windy.setOptions(t),t.hasOwnProperty("data")&&this._windy.setData(t.data),this._clearAndRestart()),this.fire("load")},onDrawLayer:function(t,e){var n=this;this._windy?this.options.data&&(this._timer&&clearTimeout(n._timer),this._timer=setTimeout(function(){n._startWindy()},750)):this._initWindy(this)},_startWindy:function(){var t=this._map.getBounds(),e=this._map.getSize();this._windy.start([[0,0],[e.x,e.y]],e.x,e.y,[[t._southWest.lng,t._southWest.lat],[t._northEast.lng,t._northEast.lat]])},_initWindy:function(t){var e=Object.assign({canvas:t._canvasLayer._canvas,map:this._map},t.options);this._windy=new Windy(e),this._context=this._canvasLayer._canvas.getContext("2d"),this._canvasLayer._canvas.classList.add("velocity-overlay"),this.onDrawLayer(),this._map.on("dragstart",t._windy.stop),this._map.on("dragend",t._clearAndRestart),this._map.on("zoomstart",t._windy.stop),this._map.on("zoomend",t._clearAndRestart),this._map.on("resize",t._clearWind),this._initMouseHandler(!1)},_initMouseHandler:function(t){if(t&&(this._map.removeControl(this._mouseControl),this._mouseControl=!1),!this._mouseControl&&this.options.displayValues){var e=this.options.displayOptions||{};(e.leafletVelocity=this)._mouseControl=L.control.velocity(e).addTo(this._map)}},_clearAndRestart:function(){this._context&&this._context.clearRect(0,0,3e3,3e3),this._windy&&this._startWindy()},_clearWind:function(){this._windy&&this._windy.stop(),this._context&&this._context.clearRect(0,0,3e3,3e3)},_destroyWind:function(){this._timer&&clearTimeout(this._timer),this._windy&&this._windy.stop(),this._context&&this._context.clearRect(0,0,3e3,3e3),this._mouseControl&&this._map.removeControl(this._mouseControl),this._mouseControl=null,this._windy=null,this._map.removeLayer(this._canvasLayer)}}),L.velocityLayer=function(t){return new L.VelocityLayer(t)};var Windy=function(S){function o(t,e,n,i,o,a){var r=1-t,s=1-e,l=r*s,h=t*s,c=r*e,d=t*e,p=n[0]*l+i[0]*h+o[0]*c+a[0]*d,u=n[1]*l+i[1]*h+o[1]*c+a[1]*d;return[p,u,Math.sqrt(p*p+u*u)]}function d(t){var e=null,n=null;return t.forEach(function(t){switch(t.header.parameterCategory+","+t.header.parameterNumber){case"1,2":case"2,2":e=t;break;case"1,3":case"2,3":n=t;break;default:t}}),function(t,e){var n=t.data,i=e.data;return{header:t.header,data:function(t){return[n[t],i[t]]},interpolate:o}}(e,n)}function a(i,o,t){function a(t,e){var n=i[Math.round(t)];return n&&n[Math.round(e)]||h}a.release=function(){i=[]},a.randomize=function(t){for(var e,n,i=0;null===a(e=Math.round(Math.floor(Math.random()*o.width)+o.x),n=Math.round(Math.floor(Math.random()*o.height)+o.y))[2]&&i++<30;);return t.x=e,t.y=n,t},t(o,a)}function r(t){return t/180*Math.PI}function s(i,s){var e,n,l=(e=x,n=C,R.indexFor=function(t){return Math.max(0,Math.min(R.length-1,Math.round((t-e)/(n-e)*(R.length-1))))},R),h=l.map(function(){return[]}),t=Math.round(i.width*i.height*D);/android|blackberry|iemobile|ipad|iphone|ipod|opera mini|webos/i.test(navigator.userAgent)&&(t*=T);for(var o="rgba(0, 0, 0, ".concat(O,")"),a=[],r=0;r<t;r++)a.push(s.randomize({age:Math.floor(Math.random()*P)+0}));var c=S.canvas.getContext("2d");c.lineWidth=b,c.fillStyle=o,c.globalAlpha=.6;var d=Date.now();!function t(){M=requestAnimationFrame(t);var e=Date.now(),n=e-d;W<n&&(d=e-n%W,h.forEach(function(t){t.length=0}),a.forEach(function(t){t.age>P&&(s.randomize(t).age=0);var e=t.x,n=t.y,i=s(e,n),o=i[2];if(null===o)t.age=P;else{var a=e+i[0],r=n+i[1];null!==s(a,r)[2]?(t.xt=a,t.yt=r,h[l.indexFor(o)].push(t)):(t.x=a,t.y=r)}t.age+=1}),c.globalCompositeOperation="destination-in",c.fillRect(i.x,i.y,i.width,i.height),c.globalCompositeOperation="lighter",c.globalAlpha=0===O?0:.9*O,h.forEach(function(t,e){0<t.length&&(c.beginPath(),c.strokeStyle=l[e],t.forEach(function(t){c.moveTo(t.x,t.y),c.lineTo(t.xt,t.yt),t.x=t.xt,t.y=t.yt}),c.stroke())}))}()}var u,m,p,y,_,f,v,g,w,M,x=S.minVelocity||0,C=S.maxVelocity||10,l=(S.velocityScale||.005)*(Math.pow(window.devicePixelRatio,1/3)||1),P=S.particleAge||90,b=S.lineWidth||1,D=S.particleMultiplier||1/300,T=Math.pow(window.devicePixelRatio,1/3)||1.6,e=S.frameRate||15,W=1e3/e,O=.97,R=S.colorScale||["rgb(36,104, 180)","rgb(60,157, 194)","rgb(128,205,193 )","rgb(151,218,168 )","rgb(198,231,181)","rgb(238,247,217)","rgb(255,238,159)","rgb(252,217,125)","rgb(255,182,100)","rgb(252,150,75)","rgb(250,112,52)","rgb(245,64,32)","rgb(237,45,28)","rgb(220,24,32)","rgb(180,0,35)"],h=[NaN,NaN,null],c=S.data,N=function(t,e){if(!m)return null;var n,i=z(t-y,360)/f,o=(_-e)/v,a=Math.floor(i),r=a+1,s=Math.floor(o),l=s+1;if(n=m[s]){var h=n[a],c=n[r];if(A(h)&&A(c)&&(n=m[l])){var d=n[a],p=n[r];if(A(d)&&A(p))return u.interpolate(i-a,o-s,h,c,d,p)}}return null},A=function(t){return null!=t},z=function(t,e){return t-e*Math.floor(t/e)},E=function(t,e,n,i,o){var a=2*Math.PI,r=e<0?5:-5,s=n<0?5:-5,l=V(n,e+r),h=V(n+s,e),c=Math.cos(n/360*a);return[(l[0]-i)/r/c,(l[1]-o)/r/c,(h[0]-i)/s,(h[1]-o)/s]},V=function(t,e,n){var i=S.map.latLngToContainerPoint(L.latLng(t,e));return[i.x,i.y]},U=function(){F.field&&F.field.release(),M&&cancelAnimationFrame(M)},F={params:S,start:function(e,n,i,t){var o={south:r(t[0][1]),north:r(t[1][1]),east:r(t[1][0]),west:r(t[0][0]),width:n,height:i};U(),function(t,e){var n=!0;t.length<2&&(n=!1),n||console.log("Windy Error: data must have at least two components (u,v)");var i=(u=d(t)).header;if(i.hasOwnProperty("gridDefinitionTemplate")&&0!=i.gridDefinitionTemplate&&(n=!1),n||console.log("Windy Error: Only data with Latitude_Longitude coordinates is supported"),n=!0,y=i.lo1,_=i.la1,f=i.dx,v=i.dy,g=i.nx,w=i.ny,i.hasOwnProperty("scanMode")){var o=i.scanMode.toString(2),a=(o=("0"+o).slice(-8)).split("").map(Number).map(Boolean);a[0]&&(f=-f),a[1]&&(v=-v),a[2]&&(n=!1),a[3]&&(n=!1),a[4]&&(n=!1),a[5]&&(n=!1),a[6]&&(n=!1),a[7]&&(n=!1),n||console.log("Windy Error: Data with scanMode: "+i.scanMode+" is not supported.")}(p=new Date(i.refTime)).setHours(p.getHours()+i.forecastTime),m=[];for(var r=0,s=360<=Math.floor(g*f),l=0;l<w;l++){for(var h=[],c=0;c<g;c++,r++)h[c]=u.data(r);s&&h.push(h[0]),m[l]=h}e({date:p,interpolate:N})}(c,function(t){!function(w,M,t,n){var x={},e=(t.south-t.north)*(t.west-t.east),C=l*Math.pow(e,.4),P=[],i=M.x;function o(t){for(var e,n,i,o,a,r,s,l,h,c,d,p,u,m=[],y=M.y;y<=M.yMax;y+=2){var _=(d=t,p=y,void 0,[(u=S.map.containerPointToLatLng(L.point(d,p))).lng,u.lat]),f=_[0],v=_[1];if(isFinite(f)){var g=w.interpolate(f,v);g&&(e=x,n=f,i=v,o=t,a=y,r=C,void 0,l=(s=g)[0]*r,h=s[1]*r,c=E(e,n,i,o,a),s[0]=c[0]*l+c[2]*h,s[1]=c[1]*l+c[3]*h,g=s,m[y+1]=m[y]=g)}}P[t+1]=P[t]=m}!function t(){for(var e=Date.now();i<M.width;)if(o(i),i+=2,1e3<Date.now()-e)return void setTimeout(t,25);a(P,M,n)}()}(t,function(t,e,n){var i=t[0],o=t[1],a=Math.round(i[0]),r=Math.max(Math.floor(i[1],0),0);Math.min(Math.ceil(o[0],e),e-1);return{x:a,y:r,xMax:e,yMax:Math.min(Math.ceil(o[1],n),n-1),width:e,height:n}}(e,n,i),o,function(t,e){F.field=e,s(t,e)})})},stop:U,createField:a,interpolatePoint:N,setData:function(t){c=t},setOptions:function(t){t.hasOwnProperty("minVelocity")&&(x=t.minVelocity),t.hasOwnProperty("maxVelocity")&&(C=t.maxVelocity),t.hasOwnProperty("velocityScale")&&(l=(t.velocityScale||.005)*(Math.pow(window.devicePixelRatio,1/3)||1)),t.hasOwnProperty("particleAge")&&(P=t.particleAge),t.hasOwnProperty("lineWidth")&&(b=t.lineWidth),t.hasOwnProperty("particleMultiplier")&&(D=t.particleMultiplier),t.hasOwnProperty("opacity")&&(O=+t.opacity),t.hasOwnProperty("frameRate")&&(e=t.frameRate),W=1e3/e}};return F};window.cancelAnimationFrame||(window.cancelAnimationFrame=function(t){clearTimeout(t)});
 </script>
@@ -2445,19 +2446,23 @@ function buildClusters(){
   for (const it of items) {
     const place = it.place || '';
     const cat = it.cat || 'insiden';
+    const events = it.assessment?.version === SitrepSignals.VERSION ? it.assessment.events.filter(e => e.category === cat) : [];
+    if (!events.length) continue;
     const sig = toks(it.title);
-    let target = null;
+    let target = null, targetEvent = null;
     for (const g of groups) {
       if (g.place !== place || g.cat !== cat) continue;
       if (it.ts && g.latest && g.latest - it.ts > 12 * 3600e3) continue;
-      if (g.sigs.some(s => jac(s, sig) > 0.6)) { target = g; break; }
+      const compatible = events.find(e => g.events.every(member => SitrepSignals.matches(member, e)));
+      if (compatible) { target = g; targetEvent = compatible; break; }
     }
     if (!target) {
       if (groups.length >= 24) continue;
-      target = { id: groups.length + ':' + place + ':' + cat, place, cat, items: [], sigs: [], latest: 0, earliest: 0, sources: new Set() };
+      target = { id: groups.length + ':' + place + ':' + cat, place, cat, items: [], events: [], sigs: [], latest: 0, earliest: 0, sources: new Set() };
       groups.push(target);
     }
     target.items.push(it);
+    target.events.push(targetEvent || events[0]);
     target.sigs.push(sig);
     if (it.ts) {
       if (!target.latest || it.ts > target.latest) target.latest = it.ts;
@@ -2686,29 +2691,7 @@ async function pullStocks(){
 }
 setInterval(pullStocks, 60000);
 function updateDistress(){
-  if (!SIT) return;
-  const posts = socialPool().sort((a, b) => b.ts - a.ts);
-  const groups = [];
-  for (const p of posts) {
-    const cat = socialCategory(p);
-    if (!cat) continue;
-    const sig = toks(p.text);
-    let target = null;
-    for (const g of groups) {
-      if (g.cat !== cat || Math.abs(g.latest - p.ts) > 90 * 60e3) continue;
-      if (g.sigs.some(s => jac(s, sig) > 0.6)) { target = g; break; }
-    }
-    if (!target) {
-      if (groups.length >= 20) continue;
-      target = { id: p.url || p.text, cat, n: 0, posts: [], sigs: [], sample: p.text, from: p.from, latest: p.ts };
-      groups.push(target);
-    }
-    target.n++;
-    target.posts.push(p);
-    target.sigs.push(sig);
-  }
-  groups.sort((a, b) => b.n - a.n);
-  SIG_GROUPS = groups.slice(0, 8);
+  SIG_GROUPS = SitrepSignals.buildGroups(socialPool(), Date.now()).slice(0, 8);
   renderAlerts();
 }
 
@@ -2727,38 +2710,38 @@ function newsLine(x){
   return `<div class="cl-line"><time>${esc(x.ts ? wibTime(x.ts) : '')}</time>
     <span><a href="${esc(x.url)}" target="_blank" rel="noopener">${esc(deEmoji(x.title))}</a><span class="cl-s">${ic('news')} ${esc(x.src || '')}</span></span></div>`;
 }
-// Only server-classified topics can become signals. Query provenance is not evidence.
-const SOCIAL_CATEGORY = { demo:'demo', kebakaran:'fire', karhutla:'fire', banjir:'flood', gempa:'disaster', kecelakaan:'insiden', penembakan:'kriminal', pencurian:'kriminal', penangkapan:'kriminal', phk:'ekonomi', rupiah:'ekonomi', ihsg:'ekonomi', 'listrik padam':'ekonomi', wabah:'kesehatan', pemilu:'politik', ransomware:'siber', 'serangan siber':'siber', 'akun dibajak':'siber' };
-function socialCategory(p){
-  const cats = new Set((p.topics || []).map(t => SOCIAL_CATEGORY[t]).filter(Boolean));
-  return CAT_ORDER.find(c => cats.has(c)) || '';
+// Stale feeds remain visible but are not promoted to live signals.
+let xSignalCurrent = false, tSignalCurrent = false;
+function assessmentLabel(p){
+  const a = p.assessment;
+  if (!a || a.version !== SitrepSignals.VERSION) return 'Klasifikasi lama';
+  const kind = { reported:'Laporan belum terverifikasi', warning:'Peringatan belum terverifikasi', denied:'Penyangkalan', educational:'Edukasi', response:'Respons/pemulihan', historical:'Historis', commentary:'Komentar', unverified_question:'Pertanyaan/rumor', irrelevant:'Tidak relevan' };
+  return (kind[a.reportType] || 'Kandidat topik') + ' · ' + (a.scope === 'Indonesia' ? 'Indonesia' : a.scope === 'foreign' ? 'Luar Indonesia' : 'Scope belum pasti');
 }
 function socialPool(){
   const posts = [];
-  for (const p of (xPosts || [])) posts.push({ text: p.text || '', from: 'X', handle: p.handle || '', ts: p.ts || 0, url: p.url || '', topics: p.topics || [] });
-  for (const p of (tPosts || [])) posts.push({ text: p.text || '', from: 'Threads', handle: p.username ? '@' + p.username : '', ts: p.ts || Date.parse(p.created_at || '') || 0, url: p.url || '', topics: p.topics || [] });
+  if (xSignalCurrent) for (const p of xPosts) posts.push({ ...p, from:'X', handle:p.handle || '' });
+  if (tSignalCurrent) for (const p of tPosts) posts.push({ ...p, from:'Threads', handle:p.username ? '@' + p.username : '' });
   return posts;
 }
-// Require two distinctive shared tokens; a shared hazard word is insufficient.
-const EVENT_GENERIC = new Set('gempa tsunami erupsi gunung banjir kebakaran bencana korban warga terjadi kembali kabar berita update terkini hari ini tadi yang dan atau dari untuk dengan sebuah seorang para oleh pada dalam'.split(' '));
-function eventMatch(a, b){
-  let shared = 0;
-  for (const w of a) if (!EVENT_GENERIC.has(w) && b.has(w)) shared++;
-  return shared >= 2 && jac(a, b) > 0.18;
-}
-function relatedSocial(cat, sigs, n, latest){
-  const probe = (sigs || []).slice(0, 3);
-  const scored = [];
-  for (const p of socialPool()) {
-    if (socialCategory(p) !== cat || !p.ts || !latest || Math.abs(p.ts - latest) > 90 * 60e3) continue;
-    const s = toks(p.text);
-    let best = 0;
-    for (const g of probe) { const j = eventMatch(s, g) ? jac(s, g) : 0; if (j > best) best = j; }
-    scored.push({ p, j: best });
+function acceptSocialSnapshot(kind, payload){
+  const map = kind === 'x' ? xAll : tAll, prev = new Set(map.keys());
+  const r = SitrepSignals.reconcile(map, payload, { now:Date.now(), max:kind === 'x' ? 400 : 300,
+    keyOf:p => kind === 'x' ? p.url || p.text : p.code || p.url || p.text });
+  if (!r.accepted && payload?.snapshotAt < map._snapshotAt) return false;
+  if (kind === 'x') {
+    xSignalCurrent = r.accepted;
+    if (r.accepted) { xPosts = r.posts; xFresh = new Set([...map.keys()].filter(k => !prev.has(k))); }
+  } else {
+    tSignalCurrent = r.accepted;
+    if (r.accepted) { tPosts = r.posts; tAt = payload.at || Date.now(); }
   }
-  const matched = scored.filter(x => x.j > 0.12).sort((a, b) => b.j - a.j || (b.p.ts || 0) - (a.p.ts || 0));
-  const items = matched.slice(0, n).map(x => x.p);
-  return { items, total: matched.length };
+  updateDistress();
+  return r.accepted;
+}
+function relatedSocial(group, n){
+  const all = SitrepSignals.related(group, socialPool(), Date.now(), 300);
+  return { items:all.slice(0, n), total:all.length };
 }
 function lanesHtml(socRes, newsItems, newsTotal){
   const soc = socRes && socRes.items.length
@@ -2769,44 +2752,32 @@ function lanesHtml(socRes, newsItems, newsTotal){
   const solo = soc && !news ? ' solo-soc' : !soc && news ? ' solo-news' : '';
   return `<div class="tr-body"><div class="tr-lanes${solo}">${soc}${news}</div></div>`;
 }
-function relatedNews(sigs, cat, n, latest){
-  if (!SIT) return [];
-  const probe = (sigs || []).slice(0, 3);
-  const same = (SIT.items || []).filter(it => (it.cat || 'insiden') === cat);
-  const scored = [];
-  for (const it of same) {
-    if (!it.ts || !latest || Math.abs(it.ts - latest) > 90 * 60e3) continue;
-    const s = toks(it.title);
-    let best = 0;
-    for (const g of probe) { const j = eventMatch(s, g) ? jac(s, g) : 0; if (j > best) best = j; }
-    scored.push({ it, j: best });
-  }
-  const matched = scored.filter(x => x.j > 0.18).sort((a, b) => b.j - a.j || (b.it.ts || 0) - (a.it.ts || 0));
-  const out = matched.slice(0, n).map(x => x.it);
-  return out;
+function relatedNews(group, n){
+  return SitrepSignals.related(group, (SIT?.items || []), Date.now(), n);
 }
 function alertCards(){
   const cards = [];
   for (const g of SIG_GROUPS) {
-    const sev = g.n >= 6 ? 'kritis' : g.n >= 3 ? 'waspada' : 'info';
+    const sev = g.severity === 'critical' ? 'kritis' : g.severity === 'warning' ? 'waspada' : 'info';
     const sample = String(g.sample || '').replace(/^@\w+\s*/, '');
     const socRes = { items: g.posts.slice(0, 6), total: g.posts.length };
-    const rel = relatedNews(g.sigs, g.cat, 6, g.latest);
-    cards.push({ id: 'd:' + g.cat + ':' + g.id, sev, cat: g.cat, place: 'Sosial', n: g.n,
-      score: g.n, latest: g.latest, title: sample,
-      meta: g.n + ' post · ' + g.from,
+    const rel = relatedNews(g, 6);
+    cards.push({ id: 'd:' + g.cat + ':' + g.id, sev, cat: g.cat, place: g.place || 'Scope belum pasti', n: g.n,
+      score: g.accounts, latest: g.latest, title: sample,
+      meta: g.n + ' post · ' + g.accounts + ' akun · ' + g.from + ' · belum terverifikasi · dampak belum diketahui',
       body: lanesHtml(socRes, rel) });
   }
   if (SIT) {
     for (const g of buildClusters().slice(0, 6)) {
       const k = g.items.length, s = g.sources.size;
       const score = s * 2 + k;
-      const sev = (s >= 3 && k >= 5) || k >= 8 ? 'kritis' : (k >= 3 || s >= 2) ? 'waspada' : 'info';
-      if (sev === 'info') continue;
+      const now = Date.now();
+      if (!g.latest || g.latest > now || now - g.latest > 90 * 60e3) continue;
+      const sev = g.events.some(e => e.severity === 'warning') ? 'waspada' : 'info';
       const lead = g.items[0];
-      const socRes = relatedSocial(g.cat, g.sigs.slice(0, 4), 6, g.latest);
+      const socRes = relatedSocial(g, 6);
       cards.push({ id: 'c' + g.id, sev, cat: g.cat, place: g.place || 'Wilayah belum pasti', n: k,
-        score, latest: g.latest || 0, title: lead.title, meta: k + ' kabar · ' + s + ' sumber',
+        score, latest: g.latest || 0, title: lead.title, meta: k + ' kabar · ' + s + ' feed · belum terverifikasi · dampak belum diketahui',
         body: lanesHtml(socRes, g.items.slice(0, 6), g.items.length) });
     }
     for (const s of (SIT.sources || [])) {
@@ -2918,6 +2889,7 @@ function tweetCard(p){
         <span class="tw-t" title="${esc(title)}">· ${esc(t)}</span>
         ${p.url ? `<a class="tw-o" href="${esc(p.url)}" target="_blank" rel="noopener noreferrer" title="Buka di X">${ic('out')}</a>` : ''}
       </div>
+      <div class="tw-t">${esc(assessmentLabel(p))}</div>
       <div class="tw-txt">${linkify(p.text || '')}</div>
       <div class="tw-a">
         ${p.replies ? `<span>${I.reply}${num(p.replies)}</span>` : `<span>${I.reply}</span>`}
@@ -2936,7 +2908,7 @@ function termHit(text, q){
   return words.every(w => t.includes(' ' + w + ' '));
 }
 function xMatchQ(p, q){
-  return (p.topics || p.qs || [p.q]).includes(q);   // topics[] diklasifikasi server (social.js), bukan tebakan kata
+  return (p.assessment?.version === SitrepSignals.VERSION ? p.assessment.topics : []).includes(q);   // topics[] diklasifikasi server (social.js), bukan tebakan kata
 }
 const xqTried = new Set();
 async function xLazy(q){
@@ -2947,13 +2919,7 @@ async function xLazy(q){
     const d = await getJson(API + '/api/xq?q=' + encodeURIComponent(q), 30000);
     if (!d || !d.ok || !d.posts) return;
     socApply(d); renderQchips(); renderQChipsTh();
-    for (const p of d.posts) {
-      const key = p.url || p.text;
-      const ex = xAll.get(key);
-      if (ex) ex.qs = [...new Set((ex.qs || [ex.q]).concat(p.qs || [p.q]))];
-      else xAll.set(key, p);
-    }
-    xPosts = [...xAll.values()].sort((a, b) => (b.ts || 0) - (a.ts || 0)).slice(0, 400);
+    acceptSocialSnapshot('x', d);
     renderX();
   } catch (e) {}
 }
@@ -3051,6 +3017,7 @@ function threadCard(p){
         <a class="th-o" href="${esc(p.url || '#')}" target="_blank" rel="noopener noreferrer" title="Buka di Threads">${ic('out')}</a>
       </div>
       ${p.is_reply && p.reply_to_username ? `<div class="th-rp">${ic('reply')}balasan untuk @${esc(deEmoji(p.reply_to_username))}</div>` : ''}
+      <div class="tw-t">${esc(assessmentLabel(p))}</div>
       <div class="th-txt">${linkifyThreads(p.text || '')}</div>
       ${link ? `<a class="th-link" href="${esc(link)}" target="_blank" rel="noopener noreferrer">${ic('out')}${esc(host || 'tautan')}</a>` : ''}
       <div class="th-a">
@@ -3064,7 +3031,7 @@ function threadCard(p){
   </article>`;
 }
 function tMatchQ(p, q){
-  return (p.topics || p.qs || [p.q]).includes(q);
+  return (p.assessment?.version === SitrepSignals.VERSION ? p.assessment.topics : []).includes(q);
 }
 function renderThreads(){
   const q = ($('#tq').value || '').toLowerCase();
@@ -3102,11 +3069,7 @@ async function thLazy(q){
     const d = await getJson(API + '/api/thq?q=' + encodeURIComponent(q), 100000);
     if (!d || !d.ok || !d.posts) return;
     socApply(d);
-    for (const p of d.posts) {
-      const key = p.code || p.url || p.text;
-      if (!tAll.has(key)) tAll.set(key, p);
-    }
-    tPosts = [...tAll.values()].sort((a, b) => Date.parse(b.created_at || 0) - Date.parse(a.created_at || 0)).slice(0, 300);
+    acceptSocialSnapshot('th', d);
     renderQChipsTh(); renderQchips(); renderThreads();
   } catch (e) { thqTried.delete(q); }
 }
@@ -3122,25 +3085,10 @@ async function pullThreads(){
       tQueries = d.queries; tTrending = d.trending || []; renderQChipsTh(); renderQchips();
       if (tQuery && !tQueries.includes(tQuery)) { tQuery = ''; renderThreads(); }
     }
-    if (d && d.posts && d.posts.length) {
-      for (const p of d.posts) {
-        const key = p.code || p.url || p.text;
-        const ex = tAll.get(key);
-        if (ex) { if (p.q && !(ex.qs || [ex.q]).includes(p.q)) (ex.qs = ex.qs || [ex.q]).push(p.q); }
-        else tAll.set(key, p);
-      }
-      tPosts = [...tAll.values()].sort((a, b) => Date.parse(b.created_at || 0) - Date.parse(a.created_at || 0)).slice(0, 300);
-      if (tAll.size > 260) {
-        const keep = new Set(tPosts.map(p => p.code || p.url || p.text));
-        for (const k of [...tAll.keys()]) if (!keep.has(k)) tAll.delete(k);
-      }
-      if (tShown > tPosts.length) tShown = Math.max(30, tPosts.length);
-      tAt = d.at || Date.now();
-    } else if (d && !d.ok) {
-      if (!tPosts.length) $('#tlist').innerHTML = '<div class="empty">Threads kosong: ' + esc((d.errs || []).map(e => e.q + ' ' + e.err).join(' · ') || 'tidak ada hasil') + '</div>';
-    }
+    acceptSocialSnapshot('th', d);
     renderThreads();
   } catch (e) {
+    tSignalCurrent = false; updateDistress();
     if (!tPosts.length) $('#tlist').innerHTML = '<div class="empty">Threads gagal: ' + esc(e.message || e) + '</div>';
     $('#tmeta').textContent = 'gagal';
   } finally { tBusy = false; }
@@ -3182,7 +3130,7 @@ const PROXIES = [
 let SRC_IDS = null, onlyTopic = true, catFilter = 'semua', seenNews = new Set(), freshNews = new Set(), firstPull = true;
 const lastGood = new Map();   // id -> { items, via, at }
 const srcState = new Map();   // id -> { ok, via }
-const topicOK = h => !!(h.cat || catOfTitle(h.title));
+const topicOK = h => h.assessment ? !!h.cat : !!catOfTitle(h.title);
 function renderCatbar(){
   const ids = ['semua', ...CAT_ORDER];
   $('#catbar').innerHTML = ids.map(c =>
@@ -3250,7 +3198,7 @@ function fallbackImgOK(u){
   return !(m && parseInt(m[1], 10) < 600);
 }
 function leadHtml(h){
-  const cat = h.cat || catOfTitle(h.title) || 'insiden';
+  const cat = (h.assessment?.version === SitrepSignals.VERSION ? (h.cat || h.feedTopic) : (h.cat || catOfTitle(h.title))) || 'insiden';
   return `<a class="lead" data-cat="${cat}" href="${esc(h.url)}" target="_blank" rel="noopener">
     ${h.img && fallbackImgOK(h.img) ? `<div class="lead-img"><img src="${esc(h.img)}" alt="" loading="eager" decoding="async" referrerpolicy="no-referrer" onerror="this.parentNode.remove()"></div>` : ''}
     <div class="lead-t"><span class="lead-cat">${CAT_LABEL[cat]}</span>Terbaru<span class="lead-meta-r"><span class="lead-by">${esc(h.pub || h.src)}</span><time>${esc(h.ts ? wibTime(h.ts) : '')} WIB</time></span></div>
@@ -3326,7 +3274,7 @@ async function hydrateLead(h){
 }
 function newsHtml(h, full){
   const isNew = freshNews.has(h.title);
-  const cat = h.cat || catOfTitle(h.title) || 'insiden';
+  const cat = (h.assessment?.version === SitrepSignals.VERSION ? (h.cat || h.feedTopic) : (h.cat || catOfTitle(h.title))) || 'insiden';
   return `<a class="nw${full ? ' nw-full' : ''}" data-cat="${cat}" href="${esc(h.url)}" target="_blank" rel="noopener">
     <div class="nw-top"><span class="nw-cat">${CAT_LABEL[cat]}</span><time>${esc(h.ts ? wibTime(h.ts) : '')}</time></div>
     <div class="nw-src">${esc(tkPub(h.pub) || h.src)}${isNew ? '<span class="new">Baru</span>' : ''}${h.n > 1 ? `<span class="dup-n" title="${esc([...h.srcs].filter(Boolean).join(', '))}">×${h.n} sumber</span>` : ''}</div>
@@ -3345,7 +3293,7 @@ function renderNews(){
       let q;
       do { q = title; title = title.replace(new RegExp('\\s*[-–—]\\s*' + pk + '\\s*$', 'i'), '').trim(); } while (title !== q);
     }
-    return { ...h, title, cat: h.cat || catOfTitle(title) };
+    return { ...h, title, cat: h.assessment ? h.cat : catOfTitle(title) };
   });
   // collapse near-dupe lintas-outlet: cerita sama judul mirip → satu kartu + badge jumlah sumber.
   // ambang 0.72 ketat — artikel beda dari pub sama dengan judul beda tidak akan kegabung.
@@ -3458,7 +3406,7 @@ const tkPub = v => {
   return v;
 };
 const renderTk = (h, isNew) => {
-  const cat = h.cat || catOfTitle(h.title) || 'insiden';
+  const cat = (h.assessment?.version === SitrepSignals.VERSION ? (h.cat || h.feedTopic) : (h.cat || catOfTitle(h.title))) || 'insiden';
   return `<a class="tk${isNew ? ' tk-new' : ''}" data-cat="${cat}" href="${esc(h.url)}" target="_blank" rel="noopener" title="${esc(h.label || CAT_LABEL[cat])}">` +
     `<svg class="ic tk-sig" aria-hidden="true"><use href="${TK_SIG[cat] || '#i-pin'}"></use></svg>` +
     `<span class="tk-time">${esc(h.ts ? wibTime(h.ts) : '')}</span>` +
@@ -3538,7 +3486,7 @@ async function pullBreaking(){
     }
     if (!items) items = mergedMedia().map(h => {
       const title = cleanTitle(h.title);
-      const cat = catOfTitle(title);
+      const cat = h.assessment?.version === SitrepSignals.VERSION ? h.cat : catOfTitle(title);
       return cat ? { ...h, title, cat, label: CAT_LABEL[cat] } : null;
     }).filter(Boolean).slice(0, 12);
     if (!items.length && breakItems.length) items = breakItems;   // jangan kosongkan marquee saat upstream transien
@@ -5337,29 +5285,19 @@ async function pullX(){
       if (xQuery && !xQueries.includes(xQuery)) { xQuery = ''; renderX(); }
     }
     if (d.ok) {
-      const prev = new Set(xAll.keys());
-      for (const p of d.posts) {
-        const key = p.url || p.text;
-        const ex = xAll.get(key);
-        if (ex) ex.qs = [...new Set((ex.qs || [ex.q]).concat(p.qs || [p.q]))];
-        else xAll.set(key, p);
-      }
-      xFresh = new Set([...xAll.keys()].filter(k => !prev.has(k)));
-      xPosts = [...xAll.values()].sort((a, b) => (b.ts || 0) - (a.ts || 0)).slice(0, 400);
-      if (xAll.size > 460) {
-        const keep = new Set(xPosts.map(p => p.url || p.text));
-        for (const k of [...xAll.keys()]) if (!keep.has(k)) xAll.delete(k);
-      }
+      acceptSocialSnapshot('x', d);
       if (xShown > xPosts.length) xShown = Math.max(30, xPosts.length);
       renderX();
       $('#xmeta').textContent = d.posts.length + ' post' + (d.err ? ' · sebagian gagal' : '');
     } else if (xPosts.length) {
+      xSignalCurrent = false; updateDistress();
       $('#xmeta').textContent = xPosts.length + ' post · data terakhir';
     } else {
       $('#xlist').innerHTML = '<div class="empty">X gagal: ' + esc(d.err || 'tidak ada hasil') + '</div>';
       $('#xmeta').textContent = 'gagal';
     }
   } catch (e) {
+    xSignalCurrent = false; updateDistress();
     if (!xPosts.length) $('#xlist').innerHTML = '<div class="empty">Server tidak merespons. Jalankan node server.js.</div>';
   }
 }
