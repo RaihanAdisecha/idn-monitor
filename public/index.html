@@ -3645,7 +3645,7 @@ $('#catbar').addEventListener('click', e => {
 });
 
 // mirror BANNED_SRC di server.js — GN feed bisa narik blog/opini (kompasiana dll)
-const NEWS_BANNED = /infopublik|kompasiana|mediacenter\.palangkaraya\.go\.id|viva\.co\.id\/foto/i;
+const NEWS_BANNED = /infopublik|kompasiana|mediacenter\.palangkaraya\.go\.id|viva\.co\.id\/foto|nokenlive/i;
 function parseRss(xmlText, srcId){
   const doc = new DOMParser().parseFromString(xmlText, 'text/xml');
   const out = [];
