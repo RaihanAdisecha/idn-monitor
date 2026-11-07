@@ -1755,7 +1755,7 @@ let openCluster = '', openAlert = '', SIG_GROUPS = [];
 let PULSE = [], DIS_PULSE = [], globeReady = false, globeCtx = null, globeIdn = null, globeProv = null, globeRaf = 0, globeLast = 0, globePoints = [], globeProj = null, globeCenter = [118, 0];
 const legendOn = Object.fromEntries(Object.keys(CAT_GEO).map(c => [c, true]));
 const REDUCED = matchMedia('(prefers-reduced-motion: reduce)').matches;
-const view = { lon: 118, lat: 0, zoom: 1 };
+const view = { lon: 118, lat: -2.5, zoom: 2.2 };
 const ZOOM_MAX = 24;   // dulu 7: titik se-centroid tidak pernah sempat melebar
 const clampN = (v, a, b) => Math.min(b, Math.max(a, v));
 let flyAnim = null, lastGestEnd = -1e9, globeSuppressClick = 0, gesture = null;
@@ -1823,7 +1823,7 @@ const focusQueue = [];        // item fresh yang belum sempat diumumkan — tida
 let lastAutoFocus = 0, rotIdx = 0, rotSig = '', focusedHome = true;
 const FOCUS_COOLDOWN = 90000; // anti-yank: globe tidak boleh dansa tiap cycle
 const ROTATE_AFTER = 60000;   // antrean kosong → rotasi item terbaru tiap ~60 dtk setelah fokus terakhir
-const HOME_VIEW = { lat: -2.5, lon: 118, zoom: 1 };
+const HOME_VIEW = { lat: -2.5, lon: 118, zoom: 2.2 };
 const MAG_MIN_FOCUS = 4.5;    // gempa kecil tetap jadi titik, tapi tidak merebut fokus
 const magOf = p => {
   if (typeof p.mag === 'number') return p.mag;
@@ -1854,7 +1854,7 @@ const focusSort = (a, b) => (focusRank(b) - focusRank(a)) || (b.ts || 0) - (a.ts
 function doFocus(t, silent){
   lastAutoFocus = Date.now();
   focusedHome = false;
-  flyTo(t.la, t.lo, Math.max(view.zoom, 5));
+  flyTo(t.la, t.lo, Math.max(view.zoom, 9));
   if (!silent) { setLinkItem(t); showSitAlert(t); }   // rotasi senyap tidak boleh sentuh linkItem — dim akan stuck
 }
 function maybeFocusFresh(){
@@ -1944,7 +1944,7 @@ function showSitAlert(p){
       el.hidden = true; el.classList.remove('hide','show'); setLinkItem(null);
       // zoom-out hanya kalau tidak ada antrian menunggu & user tidak baru berinteraksi — jangan tarik view yang baru difokuskan
       if (globeReady && !focusQueue.length && performance.now() - lastGestEnd > 10000)
-        flyTo(view.lat, view.lon, clampN(view.zoom - 1.6, 2.4, 4.5));
+        flyTo(view.lat, view.lon, clampN(view.zoom - 2.2, 3, 6));
     }, 320);
   }, 10000);
 }
