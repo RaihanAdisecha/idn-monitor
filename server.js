@@ -2095,7 +2095,7 @@ function idRegion(la, lo){
 }
 /* IP datacenter (Railway) diblokir situs pemda/pemerintah — fallback lewat public proxy
    seperti news(). Proxy dipakai hanya kalau direct gagal. */
-async function cctvFetch(url, ms){
+async function cctvFetch(url, ms, headers){
   const attempts = [url,
     'https://api.codetabs.com/v1/proxy?quest=' + encodeURIComponent(url),
     'https://api.allorigins.win/raw?url=' + encodeURIComponent(url),
@@ -2103,7 +2103,8 @@ async function cctvFetch(url, ms){
   let lastErr = '';
   for (const u of attempts) {
     try {
-      const r = await get(u, {}, ms);
+      // header hanya untuk attempt direct — proxy publik tidak meneruskan header custom
+      const r = await get(u, u === url && headers ? { headers } : {}, ms);
       if (r.ok) return await r.text();
       lastErr = 'HTTP ' + r.status;
     } catch (e) { lastErr = String(e.message || e); }
@@ -2159,6 +2160,22 @@ async function cctvBekasi(){
     e: '', la: null, lo: null, c: 'Kota Bekasi', src: 'pemda'
   }));
 }
+/* Pemkot Yogyakarta — 150+ cam publik (17 di sepanjang Malioboro), API JSON
+   cctv.jogjakota.go.id/home/getdata, stream HLS Wowza di cctvjss.jogjakota.go.id */
+async function cctvJogja(){
+  let d = null;
+  try { d = JSON.parse(await cctvFetch('https://cctv.jogjakota.go.id/home/getdata', 20000,
+    { referer: 'https://cctv.jogjakota.go.id/', 'x-requested-with': 'XMLHttpRequest' })); } catch (e) {}
+  if (!Array.isArray(d)) return [];
+  return d.filter(x => x && x.cctv_link && /\.m3u8(\?|$)/i.test(x.cctv_link)).map(x => ({
+    n: 'CCTV ' + String(x.cctv_title || 'Jogja').replace(/_/g, ' '),
+    s: x.cctv_link,
+    e: '',
+    la: parseFloat(x.cctv_latitude) || null,
+    lo: parseFloat(x.cctv_longitude) || null,
+    c: 'Kota Yogyakarta', src: 'jogja'
+  }));
+}
 /* probe 3 level: master playlist → variant/media playlist → segmen .ts pertama.
    cam hanya "hidup" kalau segmen beneran ke-load — playlist 200 doang tidak cukup. */
 const cctvProbe = { alive: new Set(), done: new Set(), running: false, last: 0 };
@@ -2196,6 +2213,8 @@ async function warmCctv(){
     let cams = await cctvBpjt().catch(() => []);
     if (!cams.length) { await new Promise(s => setTimeout(s, 30000)); cams = await cctvBpjt().catch(() => []); }   // fetch gagal → retry sekali
     if (!cams.length) { console.log('[cctv] bpjt fetch kosong, skip sweep'); cctvProbe.running = false; return; }
+    const jogja = await cctvJogja().catch(() => []);
+    cams = cams.concat(jogja);
     let i = 0;
     await Promise.all(Array.from({ length: 24 }, async () => { while (i < cams.length) { const c = cams[i++];
       const ok = await probeHls(c.s, 0);
@@ -2221,12 +2240,14 @@ function camReport(u, ok){
 const cctvReportedDead = s => { const r = cctvReports.get(s);
   return r && r.fails >= 2 && Date.now() - r.last < 1200000; };   // 2x gagal dlm 20 mnt → exclude
 const cctvCatalog = () => memo('cctvcat', 300000, async () => {
-  const rs = await Promise.allSettled([cctvBpjt(), cctvBekasi()]);
-  const bpjt = [], other = [];
-  for (const r of rs) if (r.status === 'fulfilled') for (const c of r.value) (c.src === 'bpjt' ? bpjt : other).push(c);
-  // BPJT: hanya yang probe-confirmed playable + tidak dilaporkan mati client. Sebelum probe selesai → kosong
-  const verified = (cctvProbe.done.size ? bpjt.filter(c => cctvProbe.alive.has(c.s)) : [])
-    .filter(c => !cctvReportedDead(c.s));
+  const rs = await Promise.allSettled([cctvBpjt(), cctvBekasi(), cctvJogja()]);
+  const bpjt = [], jogja = [], other = [];
+  for (const r of rs) if (r.status === 'fulfilled') for (const c of r.value)
+    (c.src === 'bpjt' ? bpjt : c.src === 'jogja' ? jogja : other).push(c);
+  // BPJT + Jogja: hanya yang probe-confirmed playable + tidak dilaporkan mati client.
+  // Sebelum probe selesai → kosong (konsisten dengan jalur BPJT).
+  const probeable = cctvProbe.done.size ? [...bpjt, ...jogja].filter(c => cctvProbe.alive.has(c.s)) : [];
+  const verified = probeable.filter(c => !cctvReportedDead(c.s));
   return { ok: true, cams: [...other.filter(c => !cctvReportedDead(c.s)), ...verified], bpjt_alive: cctvProbe.alive.size, bpjt_total: bpjt.length, probing: cctvProbe.running, at: Date.now() };
 });
 
@@ -2902,19 +2923,28 @@ function rdJinaMd(text, url) {
 }
 // video tanpa posisi (og:video/JSON-LD/Jina) → sebar merata di antara paragraf,
 // bukan numpuk di bawah hero image
+const rdDirKey = u => { const seg = String(u).split('?')[0].split('#')[0].split('/').filter(Boolean); return seg.length > 1 ? seg[seg.length - 2] : ''; };
 function rdAssembleBlocks(d) {
   if (!d) return d;
   const paras = d.paras || [];
   let blocks = (Array.isArray(d.blocks) && d.blocks.length) ? d.blocks.slice() : paras.map(t => ({ k: 'p', t }));
   const heroKey = d.img ? rdImgKey(d.img) : '';
+  const heroDir = d.img ? rdDirKey(d.img) : '';
+  const heroDirUniq = heroDir.length >= 6 && /\d/.test(heroDir);   // folder id artikel (mis. Metro /K5nC1Drn/)
   // media dengan posisi asli: k = jumlah paragraf sebelum media itu
   const media = [], seenM = new Set();
   const mkey = b => b.k === 'v' ? 'v|' + String(b.v.url).split('?')[0] : 'i|' + rdImgKey(b.img.url);
-  let pCount = 0;
+  let pCount = 0, firstImg = true;
   for (const b of blocks) {
     if (b.k === 'p') { pCount++; continue; }
     if (b.k === 'v' && (!b.v || b.v.kind === 'probe')) continue;
-    if (b.k === 'i' && (!b.img || rdImgKey(b.img.url) === heroKey)) continue;
+    if (b.k === 'i') {
+      const wasFirst = firstImg; firstImg = false;
+      if (!b.img || rdImgKey(b.img.url) === heroKey) continue;
+      // gambar pertama di body yang share folder-id dengan hero = foto lead yang sama
+      // (CMS seperti Metro simpan og:image dan gambar artikel di folder sama, nama file beda)
+      if (wasFirst && heroDirUniq && rdDirKey(b.img.url) === heroDir) continue;
+    }
     const key = mkey(b); if (seenM.has(key)) continue; seenM.add(key);
     media.push({ b, k: pCount });
   }

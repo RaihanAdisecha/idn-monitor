@@ -587,16 +587,16 @@ a{color:inherit;text-decoration:none;text-underline-offset:2px}
 .cl a.srcl .ic,.nd-n a .ic{width:10px;height:10px;margin-left:5px;vertical-align:-1px}
 
 /* ============================================================ NEWS */
-.catbar{display:flex;gap:2px;padding:9px 12px 0;border-bottom:1px solid var(--border);overflow-x:auto;scrollbar-width:none;
+.catbar{display:flex;gap:0;padding:4px 6px 0;border-bottom:1px solid var(--border);overflow-x:auto;scrollbar-width:none;
   -webkit-mask-image:linear-gradient(90deg,#000 calc(100% - 22px),transparent);mask-image:linear-gradient(90deg,#000 calc(100% - 22px),transparent)}
 .catbar::-webkit-scrollbar{display:none}
 .cchip{
-  position:relative;flex:none;height:30px;padding:0 11px;background:none;border:0;cursor:pointer;
-  font:600 9px/1 var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--text3);white-space:nowrap;
+  position:relative;flex:none;height:24px;padding:0 5px;background:none;border:0;cursor:pointer;
+  font:600 9px/1 var(--mono);letter-spacing:.05em;text-transform:uppercase;color:var(--text3);white-space:nowrap;
   transition:color .12s;
 }
 .cchip:hover{color:var(--text2)}
-.cchip::after{content:"";position:absolute;left:10px;right:10px;bottom:0;height:2px;background:transparent;transition:background .12s}
+.cchip::after{content:"";position:absolute;left:5px;right:5px;bottom:0;height:2px;background:transparent;transition:background .12s}
 .cchip[aria-pressed="true"]{color:var(--text)}
 .cchip[aria-pressed="true"]::after{background:var(--text)}
 .cchip[data-cat="demo"][aria-pressed="true"]{color:#f1c21b}.cchip[data-cat="demo"][aria-pressed="true"]::after{background:#f1c21b}
@@ -3870,6 +3870,7 @@ function startCell(cell){
     if (p.loaded) return;
     p.loaded = true; p.loading = false; p.nerr = p.merr = p.tries = p.step = p.rest = 0;
     const rc = camList[p.idx]; if (rc) { const cc = CAMS[rc._i]; if (cc) { cc.fails = 0; camReport(cc.s, true); hostBad.delete(hostOf(cc.s)); } }   // cam pulih → reset + lapor ok + bebaskan host
+    if (p.bad) { p.bad = false; orderCams(); }
     if (p.vis) badge(cell, 'live', 'Live'); else stopCell(cell);
     pump(); upd();
   };
@@ -3897,6 +3898,20 @@ function camReport(u, ok){
     body: JSON.stringify({ u, ok }) }).catch(() => {});
 }
 function hostCooling(cam){ const hb = cam && hostBad.get(hostOf(cam.s)); return hb && hb.until > Date.now() ? hb.until : 0; }
+/* cam bermasalah (gagal load / buffering kronis) di-sink ke urutan terakhir;
+   begitu loaded lagi → balik ke posisi sortir semula. Offline total tetap hilang
+   lewat fails>=4 → hideCell + aliveMap server. */
+function orderCams(){
+  const cells = [...camGrid.children];
+  cells.sort((a, b) => {
+    const pa = P.get(a), pb = P.get(b);
+    const ba = pa && pa.bad ? 1 : 0, bb = pb && pb.bad ? 1 : 0;
+    if (ba !== bb) return ba - bb;
+    return (pa ? pa.idx : 0) - (pb ? pb.idx : 0);
+  });
+  cells.forEach(c => camGrid.appendChild(c));
+  layout();
+}
 function kill(cell){
   const p = P.get(cell); if (!p) return;
   if (p.h && p.h !== 'native') { try { p.h.destroy(); } catch (e) {} }
@@ -3906,6 +3921,7 @@ function kill(cell){
   const rc = camList[p.idx];
   if (rc) { const cc = CAMS[rc._i]; cc.fails = (cc.fails || 0) + 1;
     if (cc.fails >= 4 && !cc._hide) { cc._hide = true; hideCell(cell); return; } }   // 4x gagal → hilang dari grid
+  p.bad = true; orderCams();
   const cam = camOfCell(cell);
   if (cam) {
     camReport(cam.s, false);
@@ -4022,23 +4038,38 @@ $('#cq').addEventListener('input', debounce(renderCams, 200));
 new ResizeObserver(debounce(layout, 120)).observe(camGrid);
 camGrid.addEventListener('click', e => {
   const cell = e.target.closest('.cam'); if (!cell) return;
-  const c = camList[+cell.dataset.i]; openLightbox(camStream(c), c.n, c.c, c.e, c.s);
+  const c = camList[+cell.dataset.i]; openLightbox(camStream(c), c.n, c.c, c.e, camSteps(c));
 });
 camGrid.addEventListener('keydown', e => {
   if (e.key !== 'Enter' && e.key !== ' ') return;
   const cell = e.target.closest('.cam'); if (!cell) return;
   e.preventDefault();
-  const c = camList[+cell.dataset.i]; openLightbox(camStream(c), c.n, c.c, c.e, c.s);
+  const c = camList[+cell.dataset.i]; openLightbox(camStream(c), c.n, c.c, c.e, camSteps(c));
 });
-let glbHls = null;
-function openLightbox(url, nama, kota, embed, raw){
-  const lb = $('#lightbox'), v = $('#glb-video');
-  lb.hidden = false; document.body.style.overflow = 'hidden';
-  $('#glb-cap').innerHTML = `${esc(nama)} · ${esc(kota)} · <a href="${esc(raw)}" target="_blank" rel="noopener">stream asli${ic('out')}</a>${embed ? ` · <a href="${esc(embed)}" target="_blank" rel="noopener">player JSC${ic('out')}</a>` : ''}`;
+let glbHls = null, glbSteps = [], glbStep = 0, glbErr = 0;
+function glbPlay(){
+  const v = $('#glb-video'), url = glbSteps[glbStep];
+  if (glbHls) { try { glbHls.destroy(); } catch (e) {} glbHls = null; }
+  try { v.pause(); v.removeAttribute('src'); v.load(); } catch (e) {}
   if (window.Hls && Hls.isSupported()) {
-    glbHls = new Hls(hlsJak({ liveSyncDurationCount:2 })); glbHls.loadSource(url); glbHls.attachMedia(v);
-    glbHls.on(Hls.Events.MANIFEST_PARSED, () => v.play().catch(() => {}));
+    glbHls = new Hls(hlsJak({ liveSyncDurationCount:2, capLevelToPlayerSize:true, maxBufferLength:8,
+      manifestLoadingMaxRetry:3, levelLoadingMaxRetry:2, fragLoadingMaxRetry:3 }));
+    glbHls.loadSource(url); glbHls.attachMedia(v);
+    glbHls.on(Hls.Events.MANIFEST_PARSED, () => { glbErr = 0; v.play().catch(() => {}); });
+    glbHls.on(Hls.Events.ERROR, (ev, d) => {
+      if (!d || !d.fatal) return;
+      if (d.type === Hls.ErrorTypes.NETWORK_ERROR && glbErr++ < 2) { try { glbHls.startLoad(); } catch (e) {} return; }
+      if (d.type === Hls.ErrorTypes.MEDIA_ERROR && glbErr++ < 2) { try { glbHls.recoverMediaError(); } catch (e) {} return; }
+      if (++glbStep < glbSteps.length) glbPlay();   // varian/proxy berikutnya
+    });
   } else { v.src = url; v.play().catch(() => {}); }
+}
+function openLightbox(url, nama, kota, embed, steps){
+  const lb = $('#lightbox');
+  lb.hidden = false; document.body.style.overflow = 'hidden';
+  $('#glb-cap').innerHTML = `${esc(nama)} · ${esc(kota)}${embed ? ` · <a href="${esc(embed)}" target="_blank" rel="noopener">player JSC${ic('out')}</a>` : ''}`;
+  glbSteps = (steps && steps.length ? steps : [url]); glbStep = 0; glbErr = 0;
+  glbPlay();
 }
 function closeLightbox(){
   $('#lightbox').hidden = true; document.body.style.overflow = '';
