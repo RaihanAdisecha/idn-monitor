@@ -2161,7 +2161,7 @@ function onLandPt(lo, la){
 }
 const JIT = new Map();
 function jitterGeo(name, la, lo, slot, prec){
-  if (slot === 0 || !landIndex()) return [la, lo];   // peta belum termuat → posisi asli, jangan di-cache
+  if (prec === 'desa' || prec === 'kelurahan' || slot === 0 || !landIndex()) return [la, lo];   // centroid desa/kelurahan harus tetap di titik sumber BIG
   const key = name + '|' + slot + '|' + la.toFixed(3) + ',' + lo.toFixed(3);
   const hit = JIT.get(key); if (hit) return hit;
   let h = 0; for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0;
@@ -2431,7 +2431,7 @@ function nearestGlobePoint(x, y, r = 9){
   }
   return best;
 }
-const precTxt = p => p.prec === 'prov' ? 'lokasi: perkiraan tingkat provinsi' : p.prec === 'region' ? 'lokasi: perkiraan wilayah' : p.prec === 'kab' ? 'lokasi: pusat kab/kota' : '';
+const precTxt = p => p.prec === 'desa' ? 'lokasi: centroid administrasi BIG (desa, perkiraan)' : p.prec === 'kelurahan' ? 'lokasi: centroid administrasi BIG (kelurahan, perkiraan)' : p.prec === 'kec' ? 'lokasi: kecamatan dikenali, titik memakai pusat kab/kota' : p.prec === 'prov' ? 'lokasi: perkiraan tingkat provinsi' : p.prec === 'region' ? 'lokasi: perkiraan wilayah' : p.prec === 'kab' ? 'lokasi: pusat kab/kota' : '';
 function showGlobeTip(e, d, touch){
   const tip = $('#sit-tip');
   const wrap = $('.sit-mapwrap').getBoundingClientRect();

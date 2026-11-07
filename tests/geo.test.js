@@ -24,7 +24,7 @@ for (const t of ['Banjir di Flores', 'Gempa di Lombok', 'Banjir di Sumba', 'Banj
 // 2. set emas: [judul, nama yang diharapkan | null, (opsional) daftar multi]
 const GOLD = [
   ['BPBD: Semua Kecamatan di Kota Malang Rawan Terdampak Bencana', 'Malang'],
-  ['Atap Aula Kelurahan Limusnunggal Sukabumi Ambruk', 'Sukabumi'],
+  ['Atap Aula Kelurahan Limusnunggal Sukabumi Ambruk', 'Kelurahan Limusnunggal, Kecamatan Cibeureum, Sukabumi, Jawa Barat'],
   ['Pemkab Barito Selatan Perpanjang Status Tanggap Darurat Karhutla', 'Barito Selatan'],
   ['Marapi Erupsi Sabtu pagi, sebaran abu vulkanik terpantau di Agam', 'Gunung Marapi'],
   ['Kebakaran Pasar di Kota Bandung Hanguskan 20 Kios', 'Bandung'],
@@ -47,5 +47,35 @@ for (const [t, exp, multi] of GOLD) {
   if (got !== exp) bad(`"${t}" -> ${got} (harusnya ${exp})`);
   if (multi) { const all = (r && r.all || []).map(x => x.name); if (JSON.stringify(all) !== JSON.stringify(multi)) bad(`multi "${t}" -> ${JSON.stringify(all)} (harusnya ${JSON.stringify(multi)})`); }
 }
-console.log(fail ? `\n${fail} kegagalan` : `OK: ${GEO.NODES.length} node, ${G.prov.length} provinsi, ${GOLD.length} judul emas`);
+// 3. BIG desa/kelurahan: centroids, parent disambiguation, POI precedence, and no arbitrary duplicate-name pick.
+const stats = GEO.stats();
+if (GEO.NODES.length !== 514) bad(`NODES memuat ${GEO.NODES.length} titik tetap, seharusnya hanya 514 kab/kota`);
+if (stats.villages !== 83529 || stats.desa !== 75034 || stats.kelurahan !== 8495) bad(`statistik BIG tidak sesuai: ${JSON.stringify(stats)}`);
+const BIG_GOLD = [
+  ['Kebakaran di Kelurahan Gambir, Jakarta Pusat', '31.71.01.1001', 'kelurahan', -6.176377, 106.826707],
+  ['Banjir di Desa Keude Bakongan, Kecamatan Bakongan, Kabupaten Aceh Selatan', '11.01.01.2001', 'desa', 2.93109, 97.48459],
+  ['Banjir di Desa Limusnunggal, Kecamatan Cileungsi, Kabupaten Bogor', '32.01.07.2011', 'desa', -6.375136, 106.96945],
+  ['Banjir di Desa Limusnunggal, Kecamatan Bantargadung, Kabupaten Sukabumi', '32.02.04.2004', 'desa', -6.956538, 106.640443],
+  ['Atap Aula Kelurahan Limusnunggal Sukabumi Ambruk', '32.72.07.1004', 'kelurahan', -6.947022, 106.941743],
+  ['Banjir di Desa Sukamaju, Kecamatan Bantan, Kabupaten Bengkalis', '14.03.02.2015', 'desa', 1.479932, 102.400612],
+];
+for (const [title, code, prec, la, lo] of BIG_GOLD) {
+  const r = GEO.locate(title);
+  if (!r) { bad(`BIG tidak menemukan: ${title}`); continue; }
+  if (r.code !== code || r.prec !== prec) bad(`BIG salah administrasi untuk "${title}": ${r.code}/${r.prec}, seharusnya ${code}/${prec}`);
+  if (Math.abs(r.la - la) > 1e-9 || Math.abs(r.lo - lo) > 1e-9) bad(`BIG salah koordinat untuk "${title}": ${r.la},${r.lo}`);
+  if (r.coordinateSource !== 'BIG administrative polygon centroid' || !r.boundaryStatus) bad(`metadata centroid BIG hilang untuk "${title}"`);
+}
+const ambiguousVillage = GEO.locate('Banjir di Desa Limusnunggal');
+if (ambiguousVillage) bad(`nama desa ambigu dipilih tanpa konteks: ${JSON.stringify(ambiguousVillage)}`);
+for (const title of ['Gempa di Jepang', 'Gempa di London']) {
+  if (GEO.locate(title)) bad(`nama negara/kota asing tersangkut ke nama desa lokal: ${title}`);
+}
+const stationVillageTitle = GEO.locate('Kebakaran di Stasiun Gambir, Kelurahan Gambir');
+if (!stationVillageTitle || stationVillageTitle.prec !== 'poi' || stationVillageTitle.la !== -6.1767 || stationVillageTitle.lo !== 106.8306) bad(`POI spesifik Stasiun Gambir kalah dari centroid kelurahan: ${JSON.stringify(stationVillageTitle)}`);
+const kecFallback = GEO.locate('Banjir di Kecamatan Huta Bayu Raja');
+if (!kecFallback || kecFallback.prec !== 'kec' || !kecFallback.name.includes('Huta Bayu Raja')) bad(`fallback kecamatan BIG hilang: ${JSON.stringify(kecFallback)}`);
+const okIlir = GEO.locate('Banjir di Ogan Komering Ilir');
+if (!okIlir || okIlir.prec !== 'kab' || !okIlir.name.includes('Ogan Komering Ilir')) bad(`alias kabupaten BIG hilang: ${JSON.stringify(okIlir)}`);
+console.log(fail ? `\n${fail} kegagalan` : `OK: ${GEO.NODES.length} node, ${G.prov.length} provinsi, ${GOLD.length} judul emas, ${BIG_GOLD.length} koordinat BIG`);
 process.exit(fail ? 1 : 0);

@@ -1,12 +1,15 @@
 "use strict";
 /* Geocoder judul berita → titik di Indonesia.
    Prinsip: akurasi > recall. Lebih baik tidak ada titik daripada titik salah.
-   - Sumber: geo/gazetteer.json (514 kab/kota + 38 provinsi + kecamatan unik, Kepmendagri 2025)
-   - Matching per-token (bukan substring), frasa terpanjang menang ("Banda Aceh" tidak jadi "Aceh")
-   - Nama yang juga kata umum (Malang, Batu, Serang, Metro...) hanya sah dengan penanda lokatif
-   - Presisi dilaporkan jujur: poi > kab (pusat pemerintahan) > prov (centroid, perkiraan) */
+   - Sumber: gazetteer Kepmendagri 2025 + centroid batas administrasi BIG 2026.
+   - Matching per-token, frasa terpanjang menang; nama desa ganda perlu konteks atau cue administrasi.
+   - Desa/kelurahan memakai centroid poligon BIG; kecamatan tanpa titik memakai pusat kab/kota.
+   - POI spesifik tetap menang dari centroid administrasi; semua centroid bersifat perkiraan. */
+const fs = require('fs');
 const path = require('path');
 const G = require(path.join(__dirname, 'geo', 'gazetteer.json'));
+const BIG_PATH = path.join(__dirname, 'geo', 'desa-kelurahan-big.json');
+let BIG = JSON.parse(fs.readFileSync(BIG_PATH, 'utf8'));
 // koreksi koordinat hasil scripts/geo-audit.js (titik pesisir yang jatuh di laut → daratan; centroid provinsi kepulauan → ibukota)
 let FIX = { kab: {}, prov: {} };
 try { FIX = require(path.join(__dirname, 'geo', 'coord-fixes.json')); } catch (e) {}
@@ -27,7 +30,7 @@ const PROV_CANON = {
   'bangka belitung': 'bangka belitung'
 };
 const provKey = p => { const k = norm(p); return PROV_CANON[k] || k; };
-const LEVEL = { poi: 7, kec: 6.5, kab: 6, region: 3.5, prov: 3 };
+const LEVEL = { poi: 7, village: 7.2, kec: 6.5, kab: 6, region: 3.5, prov: 3 };
 
 // nama kab/kota yang juga kata umum / nama institusi: wajib ada penanda lokatif tepat sebelumnya
 const AMBIG = new Set(['batang', 'batu', 'batu bara', 'puncak', 'metro', 'serang', 'malang', 'buru', 'pati', 'sula', 'banjar', 'bone', 'kaur', 'tanah laut', 'kota baru', 'seribu', 'jaya', 'raya', 'mamasa', 'lahat']);
@@ -54,6 +57,7 @@ const put = (key, e) => {
 };
 const LABEL_FIX = { 'Palangkaraya': 'Palangka Raya', 'Bau Bau': 'Baubau', 'Kep. Siau Tagulandang Biaro': 'Sitaro', 'Toli-Toli': 'Tolitoli' };
 const displayKab = k => (!k.kota && kotaNames.has(norm(k.name)) ? 'Kab. ' : '') + (LABEL_FIX[k.name] || k.name);
+const bigKabNameByCode = new Map(BIG.kabupatenKota.map(([code, name]) => [code, name]));
 for (const k of G.kab) {
   const e = { id: k.code, level: 'kab', kota: k.kota, name: displayKab(k), la: k.la, lo: k.lo, prov: provByCode[k.prov].name, prec: 'kab' };
   kabByCode[k.code] = e;
@@ -62,6 +66,17 @@ for (const k of G.kab) {
   if (n.includes(' ') && n.length >= 8) put(n.replace(/ /g, ''), e);
   const m = /^(kepulauan|pulau) (.+)$/.exec(n);
   if (m && m[2].length >= 5 && m[2] !== 'seribu') put(m[2], e);
+}
+// BIG June 2026 adds the complete official name for Ogan Komering Ilir (code 16.02),
+// while the 2025 gazetteer shortens it to Ogan Komering. Keep both forms for lookup.
+for (const [code, fullName] of BIG.kabupatenKota) {
+  const base = kabByCode[code];
+  if (!base) continue;
+  const name = fullName.replace(/^(Kabupaten|Kota Administrasi|Kota)\s+/i, '');
+  const key = norm(name);
+  if (!key || key === norm(G.kab.find(k => k.code === code)?.name || '')) continue;
+  const label = (!base.kota && kotaNames.has(key) ? 'Kab. ' : '') + (LABEL_FIX[name] || name);
+  put(key, { ...base, name: label, alias: true });
 }
 // ibukota kabupaten sebagai alias (Ruteng, Labuan Bajo, Sigli...): hanya yang unik secara nasional,
 // bukan kata generik, dan tidak bentrok dengan nama kab/kota lain
@@ -269,25 +284,85 @@ for (const c of CITY) POI.push(c);
 /* Kecamatan unik: hanya sah dengan penanda "kecamatan/kec" (nama kecamatan sering kata umum) */
 const KEC_LOOSE = new Set(['di', 'ke', 'warga', 'wilayah', 'desa']);
 const KEC_STOP = new Set(['kampung baru', 'pasar baru', 'tanjung raya', 'sungai raya', 'bukit raya', 'kota baru', 'pulau besar', 'air besar', 'indonesia raya', 'jalan raya', 'cipta karya', 'karya jaya', 'sumber jaya', 'harapan jaya', 'makmur jaya', 'mandiri jaya']);
+const VILLAGE_TYPE_CUE = { desa: 'desa', kelurahan: 'kelurahan', kel: 'kelurahan', kalurahan: 'kelurahan' };
+const VILLAGE_GENERIC_CUE = new Set(['gampong', 'nagari', 'kampung', 'negeri', 'pekon', 'tiyuh', 'lembang']);
+const VILLAGE_LOC_CUE = new Set(['di', 'ke', 'wilayah', 'sekitar', 'area', 'lokasi']);
+const VILLAGE_DEST_CUE = new Set(['untuk', 'kepada']);
+// BIG also contains a desa named Jepang and one named London; bare foreign-place mentions
+// must not silently become local villages in the event-scope classifier.
+const VILLAGE_FOREIGN_COLLISIONS = new Set(['jepang', 'london']);
 const kecIdx = new Map(Object.entries(G.kec));
+const BIG_COUNTS = { ...BIG.counts };
+const bigKecByCode = new Map();
+const bigKecByName = new Map();
+let bigKecMaxWords = 1;
+for (const [code, name, kabCode] of BIG.kecamatan) {
+  const row = { code, name, kabCode, provCode: code.slice(0, 2) };
+  bigKecByCode.set(code, row);
+  const key = norm(name);
+  bigKecMaxWords = Math.max(bigKecMaxWords, key.split(' ').length);
+  if (!bigKecByName.has(key)) bigKecByName.set(key, []);
+  bigKecByName.get(key).push(row);
+}
+const bigProvNameByCode = new Map(BIG.provinces.map(([code, name]) => [code, name]));
+const villageIdx = new Map();
+let villageMaxWords = 1, ambiguousVillageNames = 0;
+for (const [code, rawName, sourceType, la, lo, status] of BIG.places) {
+  const parts = code.split('.');
+  const provCode = parts[0], kabCode = parts.slice(0, 2).join('.'), kecCode = parts.slice(0, 3).join('.');
+  const kec = bigKecByCode.get(kecCode), baseKab = kabByCode[kabCode], prov = provByCode[provCode];
+  if (!kec || !baseKab || !prov || !bigProvNameByCode.has(provCode)) throw new Error('BIG village hierarchy missing for PUM ' + code);
+  const fullKabName = bigKabNameByCode.get(kabCode) || baseKab.name;
+  const shortKabName = fullKabName.replace(/^(Kabupaten|Kota Administrasi|Kota)\s+/i, '');
+  const kabName = (!baseKab.kota && kotaNames.has(norm(shortKabName)) ? 'Kab. ' : '') + (LABEL_FIX[shortKabName] || shortKabName);
+  const type = sourceType === 'Desa' ? 'desa' : 'kelurahan';
+  const row = { id: 'B' + code, code, level: 'village', type, rawName, name: rawName, la, lo,
+    prov: prov.name, provCode, kabCode, kecCode, kecName: kec.name, kabName,
+    prec: type, coordinateSource: 'BIG administrative polygon centroid', boundaryStatus: status };
+  const key = norm(rawName);
+  if (!key) throw new Error('BIG village has empty normalized name: ' + code);
+  villageMaxWords = Math.max(villageMaxWords, key.split(' ').length);
+  if (!villageIdx.has(key)) villageIdx.set(key, []);
+  villageIdx.get(key).push(row);
+}
+// Repeated local names never resolve to the first row by accident. Their labels carry
+// enough PUM parent hierarchy for Globe/event merging to keep distinct villages apart.
+const villageLabels = new Set();
+for (const [key, rows] of villageIdx) {
+  if (rows.length > 1) ambiguousVillageNames++;
+  for (const row of rows) {
+    let label = `${row.type === 'desa' ? 'Desa' : 'Kelurahan'} ${row.rawName}`;
+    if (rows.length > 1) label += `, Kecamatan ${row.kecName}, ${row.kabName}, ${row.prov}`;
+    if (villageLabels.has(norm(label))) label += `, PUM ${row.code}`;
+    villageLabels.add(norm(label));
+    row.name = label;
+  }
+}
+BIG = null; // release the parsed source tables after building compact runtime indexes
 
 function locate(title) {
   const text = norm(title);
   if (!text || NOT_PLACE.test(text)) return null;
   const tk = text.split(' ');
   const cands = [];
+  const padded = ' ' + text;
   for (const { re, e } of POI) {
-    const m = re.exec(' ' + text); if (!m) continue;
+    const m = re.exec(padded); if (!m) continue;
     // bonus cue dari token sebelum match — setara dengan loop idx di bawah,
     // supaya POI tidak kalah tipis dari kab+cue (mis. 'kembangan' = ibukota alias Jakarta Barat)
     let pc = 0;
-    const before = (' ' + text).slice(0, m.index).trim().split(' ').pop() || '';
+    const before = padded.slice(0, m.index).trim().split(' ').pop() || '';
     if (CUE_IN.has(before) || before === 'di') pc += 1.5;
     if (PREFIX_KAB.has(before) || PREFIX_KOTA.has(before) || PREFIX_PROV.has(before)) pc += 0.5;
-    cands.push({ e, pos: m.index, cue: pc + (e.id[0] === 'V' ? 1 : 0), score: LEVEL.poi });   // gunung api disebut = lokasi kejadian, mengalahkan kab tempat abu terpantau
+    const first = m.index + Math.max(0, m[0].search(/\S/));
+    const startToken = padded.slice(0, first).trim().split(/\s+/).filter(Boolean).length;
+    const endToken = padded.slice(0, m.index + m[0].length).trim().split(/\s+/).filter(Boolean).length;
+    const matchKey = norm(padded.slice(first, m.index + m[0].length));
+    cands.push({ e, pos: m.index, startToken, endToken, matchKey, specific: matchKey.includes(' '), cue: pc + (e.id[0] === 'V' ? 1 : 0), score: LEVEL.poi });   // gunung api disebut = lokasi kejadian, mengalahkan kab tempat abu terpantau
   }
 
   const matched = [];  // untuk kec → butuh tahu kab/prov lain di judul
+  const matchedOccurrences = []; // kode lokasi dan rentang token, untuk konteks hierarki desa
   const used = new Array(tk.length).fill(false);
   for (let i = 0; i < tk.length; i++) {
     if (used[i]) continue;
@@ -319,6 +394,7 @@ function locate(title) {
       if (DEST_VERB.has(prev) && !PREFIX_KAB.has(prev)) { for (let j = 0; j < n; j++) used[i + j] = true; break; }
       cands.push({ e, pos: i, n, cue, score: LEVEL[e.level], key });
       matched.push(e);
+      matchedOccurrences.push({ e, pos: i, n });
       for (let j = 0; j < n; j++) used[i + j] = true;
       break;
     }
@@ -331,12 +407,80 @@ function locate(title) {
     if (!explicit && !loose) continue;
     for (let n = Math.min(3, tk.length - i); n >= 1; n--) {
       const key = tk.slice(i, i + n).join(' ');
-      const parents = kecIdx.get(key);
-      if (!parents) continue;
+      const bigRows = bigKecByName.get(key) || [];
+      const parents = kecIdx.get(key) || [...new Set(bigRows.map(r => r.kabCode))];
+      if (!parents.length) continue;
       if (loose && (parents.length !== 1 || (n === 1 && key.length < 9) || KEC_STOP.has(key) || used.slice(i, i + n).some(Boolean))) break;
       const pc = parents.length === 1 ? parents[0] : parents.find(c => matched.some(m => m.id === c || (m.level === 'prov' && m.prov === (kabByCode[c] || {}).prov)));
       if (!pc || !kabByCode[pc]) break;
-      cands.push({ e: { ...kabByCode[pc], prec: 'kec' }, pos: i, cue: 1.5, score: LEVEL.kec, key });
+      const district = bigRows.filter(r => r.kabCode === pc);
+      const districtName = district.length === 1 ? district[0].name : (key || 'kecamatan');
+      const parent = kabByCode[pc];
+      const e = { ...parent, id: district.length === 1 ? 'K' + district[0].code : parent.id, level: 'kec',
+        name: `Kecamatan ${districtName}, ${parent.name}`, prec: 'kec', coordinateSource: 'parent kab/kota center' };
+      cands.push({ e, pos: i, cue: 1.5, score: LEVEL.kec, key });
+      break;
+    }
+  }
+  const overlaps = (aPos, aN, bPos, bN) => aPos < bPos + bN && bPos < aPos + aN;
+  const nearSeparate = (m, pos, n) => Math.abs(m.pos - pos) <= 12 && !overlaps(m.pos, m.n, pos, n);
+  const districtMentions = [];
+  for (let i = 1; i < tk.length; i++) {
+    if (!PREFIX_KEC.has(tk[i - 1])) continue;
+    for (let n = Math.min(bigKecMaxWords, tk.length - i); n >= 1; n--) {
+      const key = tk.slice(i, i + n).join(' '), rows = bigKecByName.get(key);
+      if (!rows) continue;
+      const parents = matchedOccurrences.filter(m => nearSeparate(m, i, n));
+      const kabs = new Set(parents.filter(m => m.e.level === 'kab').map(m => m.e.id));
+      const provs = new Set(parents.filter(m => m.e.level === 'prov').map(m => m.e.id.slice(1)));
+      const fit = rows.filter(r => (!kabs.size || kabs.has(r.kabCode)) && (!provs.size || provs.has(r.provCode)));
+      if (fit.length) districtMentions.push({ pos: i, n, codes: new Set(fit.map(r => r.code)) });
+      break;
+    }
+  }
+  // BIG village candidates are indexed by exact normalized name, never scanned linearly.
+  // A repeated name needs a matching parent or an explicit village-type cue; otherwise
+  // keep the existing coarser result rather than silently selecting the first PUM row.
+  for (let i = 0; i < tk.length; i++) {
+    for (let n = Math.min(villageMaxWords, tk.length - i); n >= 1; n--) {
+      const key = tk.slice(i, i + n).join(' '), allRows = villageIdx.get(key);
+      if (!allRows) continue;
+      const prev = tk[i - 1] || '', prev2 = tk[i - 2] || '', prev3 = tk[i - 3] || '';
+      const typeCue = VILLAGE_TYPE_CUE[prev] || '';
+      const genericCue = VILLAGE_GENERIC_CUE.has(prev);
+      const explicitCue = !!typeCue || genericCue;
+      const destination = ((prev === 'ke' || prev === 'kepada') && DEST_VERB.has(prev2)) ||
+        (DEST_VERB.has(prev) && !PREFIX_KAB.has(prev)) ||
+        (explicitCue && (VILLAGE_DEST_CUE.has(prev2) || ((prev2 === 'ke' || prev2 === 'kepada') && DEST_VERB.has(prev3))));
+      if (destination) break;
+      const parents = matchedOccurrences.filter(m => nearSeparate(m, i, n));
+      const kabs = new Set(parents.filter(m => m.e.level === 'kab').map(m => m.e.id));
+      const provs = new Set(parents.filter(m => m.e.level === 'prov').map(m => m.e.id.slice(1)));
+      const kecs = districtMentions.filter(m => nearSeparate(m, i, n));
+      let rows = allRows;
+      if (typeCue) rows = rows.filter(r => r.type === typeCue);
+      if (kecs.length) rows = rows.filter(r => kecs.some(m => m.codes.has(r.kecCode)));
+      if (kabs.size) rows = rows.filter(r => kabs.has(r.kabCode));
+      if (provs.size) rows = rows.filter(r => provs.has(r.provCode));
+      if (rows.length !== 1) continue;
+      const e = rows[0];
+      const kecContext = kecs.some(m => m.codes.has(e.kecCode));
+      const parentContext = kabs.has(e.kabCode) || provs.has(e.provCode);
+      const locCue = VILLAGE_LOC_CUE.has(prev);
+      if (VILLAGE_FOREIGN_COLLISIONS.has(key) && !explicitCue && !kecContext && !parentContext) continue;
+      if (genericCue && !typeCue && !kecContext && !parentContext && !(allRows.length === 1 && key.length >= 6)) continue;
+      if (!explicitCue && !kecContext && !parentContext && !(allRows.length === 1 && locCue && key.length >= 6)) continue;
+      const exactNamedPoi = cands.some(c => c.e.level === 'poi' && c.specific &&
+        (c.matchKey === key || c.matchKey.endsWith(' ' + key)) && (!c.e.prov || provKey(c.e.prov) === provKey(e.prov)));
+      if (exactNamedPoi) continue; // Stasiun/Bandara/dll yang disebut eksplisit lebih spesifik dari centroid wilayah
+      const poiOverlap = cands.filter(c => c.e.level === 'poi' && c.startToken < i + n && c.endToken > i);
+      if (poiOverlap.length && !explicitCue && !kecContext) {
+        const sameProvincePoi = poiOverlap.some(c => !c.e.prov || provKey(c.e.prov) === provKey(e.prov));
+        if (sameProvincePoi || !parentContext) continue;
+      }
+      let cue = explicitCue ? 3 : kecContext ? 2.2 : parentContext ? 1.6 : 0.8;
+      if (CUE_FROM.has(prev2) && !explicitCue) cue -= 1.5;
+      cands.push({ e, pos: i, n, cue, score: LEVEL.village, key, startToken: i, endToken: i + n });
       break;
     }
   }
@@ -353,7 +497,7 @@ function locate(title) {
     // (mis. "di Cilegon" dapat cue) tidak boleh dikalahkan kandidat prov lain.
     if (!top || top.e.level !== 'poi' || top.e.id[0] === 'V' || !top.e.prov) break;
     const alt = cands.find(c => c !== top &&
-      (c.e.level === 'kab' || c.e.level === 'prov') &&
+      (c.e.level === 'kab' || c.e.level === 'prov' || c.e.level === 'village') &&
       c.e.prov && provKey(c.e.prov) !== provKey(top.e.prov));
     if (!alt) break;
     cands.splice(cands.indexOf(top), 1);
@@ -362,22 +506,28 @@ function locate(title) {
   const e = best.e;
   // beberapa tempat sederajat yang disebut berurutan ("Aceh, Jawa Tengah dan Jawa Timur") → semuanya titik sah, bukan cuma yang pertama
   let all = [];
-  if (best.n && (e.level === 'kab' || e.level === 'prov' || e.level === 'region')) {
+  if (best.n && (e.level === 'kab' || e.level === 'prov' || e.level === 'region' || e.level === 'village')) {
     const same = cands.filter(c => c.n && c.e.level === e.level && c.cue >= 0).sort((a, b) => a.pos - b.pos);
     const seen = new Set(); const uniq = same.filter(c => !seen.has(c.e.id) && seen.add(c.e.id));
     if (uniq.length > 1 && uniq.some(c => c.e.id === e.id)) {
       const chain = [uniq[0]];
       for (let q = 1; q < uniq.length; q++) {
         const prevC = chain[chain.length - 1], gap = tk.slice(prevC.pos + prevC.n, uniq[q].pos);
-        if (gap.length <= 2 && gap.every(w => SEP_OK.has(w))) chain.push(uniq[q]); else break;
+        const joined = e.level === 'village'
+          ? gap.length <= 4 && gap.every(w => SEP_OK.has(w) || Object.prototype.hasOwnProperty.call(VILLAGE_TYPE_CUE, w) || VILLAGE_GENERIC_CUE.has(w))
+          : gap.length <= 2 && gap.every(w => SEP_OK.has(w));
+        if (joined) chain.push(uniq[q]); else break;
       }
-      if (chain.length > 1 && chain.some(c => c.e.id === e.id)) all = chain.slice(0, 4).map(c => ({ name: c.e.name, la: c.e.la, lo: c.e.lo, prec: c.e.prec, prov: c.e.prov }));
+      if (chain.length > 1 && chain.some(c => c.e.id === e.id)) all = chain.slice(0, 4).map(c => ({ name: c.e.name, la: c.e.la, lo: c.e.lo, prec: c.e.prec, prov: c.e.prov, ...(c.e.code ? { code: c.e.code } : {}) }));
     }
   }
-  return { name: e.name, la: e.la, lo: e.lo, prec: e.prec, prov: e.prov, via: best.key || e.id, all };
+  return { name: e.name, la: e.la, lo: e.lo, prec: e.prec, prov: e.prov, via: best.key || e.id, all,
+    ...(e.code ? { code: e.code, coordinateSource: e.coordinateSource, boundaryStatus: e.boundaryStatus } : {}) };
 }
 
 /* daftar node pemantauan tetap: semua kab/kota (pusat pemerintahan) */
 const NODES = G.kab.map(k => kabByCode[k.code]).map(e => ({ name: e.name, la: e.la, lo: e.lo, prov: e.prov }));
 
-module.exports = { locate, NODES, norm, stats: () => ({ keys: idx.size, kab: G.kab.length, prov: G.prov.length, kec: kecIdx.size, poi: POI.length }) };
+module.exports = { locate, NODES, norm, stats: () => ({ keys: idx.size, kab: G.kab.length, prov: G.prov.length, kec: kecIdx.size, poi: POI.length,
+  villages: BIG_COUNTS.places, desa: BIG_COUNTS.Desa, kelurahan: BIG_COUNTS.Kelurahan,
+  villageNames: villageIdx.size, ambiguousVillageNames }) };
