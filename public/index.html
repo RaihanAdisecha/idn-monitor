@@ -1823,7 +1823,7 @@ const focusQueue = [];        // item fresh yang belum sempat diumumkan — tida
 let lastAutoFocus = 0, rotIdx = 0, focusedHome = true;
 const FOCUS_COOLDOWN = 90000; // anti-yank: globe tidak boleh dansa tiap cycle
 const ROTATE_AFTER = 60000;   // antrean kosong → rotasi item terbaru tiap ~60 dtk setelah fokus terakhir
-const HOME_VIEW = { lat: -2.5, lon: 118, zoom: 1 };
+const HOME_VIEW = { lat: -2.5, lon: 118, zoom: 2.3 };   // cukup dekat untuk baca dot, tidak mini
 const MAG_MIN_FOCUS = 4.5;    // gempa kecil tetap jadi titik, tapi tidak merebut fokus
 const magOf = p => {
   if (typeof p.mag === 'number') return p.mag;
@@ -1896,7 +1896,7 @@ function goHome(){
   if (focusedHome || !globeReady) return;
   if (performance.now() - lastGestEnd < 60000) return;   // pulang ke home butuh idle lebih lama — paling mengganggu
   focusedHome = true;
-  flyTo(HOME_VIEW.lat, HOME_VIEW.lon, HOME_VIEW.zoom);
+  flyTo(HOME_VIEW.lat, HOME_VIEW.lon, clampN(view.zoom - 2, HOME_VIEW.zoom, 4));   // pull-back proporsional, tidak jatuh bebas ke zoom 1
 }
 setInterval(() => {   // heartbeat: antrian diuras + rotasi jalan walau tidak ada fetch baru
   if (document.hidden || !globeReady) return;
