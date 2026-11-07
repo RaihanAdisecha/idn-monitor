@@ -1802,6 +1802,7 @@ async function warmCctv(){
       if (ok) next.alive.add(c.s);
     } }));
     cctvProbe.alive = next.alive; cctvProbe.done = next.done;
+    cache.delete('cctvcat');   // paksa katalog refresh — cam playable langsung muncul
     console.log('[cctv] probe selesai:', next.alive.size, '/', cams.length, 'cam playable');
   } catch (e) {} finally { cctvProbe.running = false; }
 }
