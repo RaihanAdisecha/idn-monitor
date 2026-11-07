@@ -2081,6 +2081,20 @@ async function rdYtTitle(id) {
   rdYtTitleCache.set(id, t); if (rdYtTitleCache.size > 300) rdYtTitleCache.delete(rdYtTitleCache.keys().next().value);
   return t;
 }
+// playability: false HANYA bila oembed menolak (video dihapus/private) — embed-disabled
+// tidak terdeteksi andal tanpa PO token, jadi netral (facade frontend yang menanggung UX-nya)
+const rdYtPlayCache = new Map();
+async function rdYtPlayable(id) {
+  if (rdYtPlayCache.has(id)) return rdYtPlayCache.get(id);
+  let v = null;
+  try {
+    const r = await get('https://www.youtube.com/oembed?format=json&url=' + encodeURIComponent('https://www.youtube.com/watch?v=' + id), {}, 6000);
+    if (r.status === 400 || r.status === 401 || r.status === 404) v = false;
+    else if (r.ok) v = true;
+  } catch (e) {}
+  rdYtPlayCache.set(id, v); if (rdYtPlayCache.size > 300) rdYtPlayCache.delete(rdYtPlayCache.keys().next().value);
+  return v;
+}
 // video harus bersangkutan: file langsung menang atas iframe player situs yang sama; YouTube dicek judulnya vs isi artikel
 async function rdVideoGate(d) {
   const tokOf = x => [...new Set(String(x || '').toLowerCase().replace(/[^a-z0-9\u00c0-\u024f ]+/g, ' ').split(/\s+/).filter(w => w.length >= 4 && !RD_STOP.has(w)))];
@@ -2089,12 +2103,18 @@ async function rdVideoGate(d) {
   const hasFile = (blocks) => vids.concat((blocks || []).filter(b => b.k === 'v' && b.v).map(b => b.v)).some(v => v && v.kind === 'video');
   const verdict = new Map();
   const all = vids.concat((d.blocks || []).filter(b => b.k === 'v' && b.v).map(b => b.v));
+  // video yang posisinya ada di body = bukti kuat milik artikel — judul tidak perlu dicek ulang
+  const positioned = new Set((d.blocks || []).filter(b => b.k === 'v' && b.v).map(b => String(b.v.url).split('?')[0]));
   await Promise.all(all.map(async v => {
     if (!v || verdict.has(v.url)) return;
     const yid = rdYT(v.url) && (v.url.match(/embed\/([\w-]{6,15})/) || [])[1];
     if (yid) {
-      const t = await rdYtTitle(yid);
-      if (t) { const yt = tokOf(t); if (yt.length >= 2 && !yt.some(w => ctx.includes(' ' + w))) { verdict.set(v.url, false); return; } }
+      const play = await rdYtPlayable(yid);
+      if (play === false) { verdict.set(v.url, false); return; }              // embed dimatikan/private → iframe pasti error
+      if (!positioned.has(String(v.url).split('?')[0])) {
+        const t = await rdYtTitle(yid);
+        if (t) { const yt = tokOf(t); if (yt.length >= 2 && !yt.some(w => ctx.includes(' ' + w))) { verdict.set(v.url, false); return; } }
+      }
     }
     if (v.kind === 'iframe' && !yid && hasFile(d.blocks)) { verdict.set(v.url, false); return; }   // embed player situs + file langsung = video sama dua kali
     verdict.set(v.url, true);
@@ -2626,9 +2646,11 @@ async function rdReadYouTube(id, raw) {
   try { const r = await get('https://www.youtube.com/oembed?format=json&url=' + encodeURIComponent(watch), {}, 8000); if (r.ok) { const j = await r.json(); title = j.title || ''; author = j.author_name || ''; } } catch (e) {}
   try { const { r } = await rdSafeGet(watch, 9000); if (r.ok) { const meta = rdMeta(await r.text()); desc = rdInline(meta['og:description'] || meta.description || ''); time = meta['datepublished'] || meta['uploaddate'] || ''; if (!title) title = rdClean(meta['og:title'] || ''); } } catch (e) {}
   const paras = desc && desc.length >= 30 ? [desc] : [];
-  const v = { url: 'https://www.youtube.com/embed/' + id, kind: 'iframe', poster: '' };
+  const playable = await rdYtPlayable(id);
+  const v = playable === false ? null : { url: 'https://www.youtube.com/embed/' + id, kind: 'iframe', poster: '' };
+  const vblocks = v ? [{ k: 'v', v }] : [];
   return { ok: true, url: raw, final: watch, title: title || 'Video YouTube', site: 'YouTube', byline: author, time: time ? String(time) : '',
-    img: '', desc, paras, thin: false, videos: [v], blocks: [{ k: 'v', v }, ...paras.map(t => ({ k: 'p', t }))], via: 'youtube' };
+    img: '', desc, paras, thin: false, videos: v ? [v] : [], blocks: [...vblocks, ...paras.map(t => ({ k: 'p', t }))], via: 'youtube' };
 }
 async function rdRead(raw) {
   const x = publicURL(raw);
