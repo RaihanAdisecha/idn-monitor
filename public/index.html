@@ -2736,7 +2736,8 @@ function assessmentLabel(p){
   const a = p.assessment;
   if (!a || a.version !== SitrepSignals.VERSION) return 'Klasifikasi lama';
   const kind = { reported:'Laporan belum terverifikasi', warning:'Peringatan belum terverifikasi', denied:'Penyangkalan', educational:'Edukasi', response:'Respons/pemulihan', historical:'Historis', commentary:'Komentar', unverified_question:'Pertanyaan/rumor', irrelevant:'Tidak relevan' };
-  return (kind[a.reportType] || 'Kandidat topik') + ' · ' + (a.scope === 'Indonesia' ? 'Indonesia' : a.scope === 'foreign' ? 'Luar Indonesia' : 'Scope belum pasti');
+  const scopeTxt = a.scope === 'Indonesia' ? ' · Indonesia' : a.scope === 'foreign' ? ' · Luar Indonesia' : '';
+  return (kind[a.reportType] || 'Kandidat topik') + scopeTxt;
 }
 function socialPool(){
   const posts = [];
