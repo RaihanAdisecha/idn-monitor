@@ -7,4 +7,6 @@ fxhist.json
 credentials.txt
 .env
 .DS_Store
+tests/
+scripts/audit-output.json
 About this file. This is Muse's persona.

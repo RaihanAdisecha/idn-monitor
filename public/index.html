@@ -1671,7 +1671,7 @@ button.mp-src{background:none;border-top:0;border-left:0;border-right:0;cursor:p
   </span>
 </div>
 
-<aside class="mapwrap" id="mapwrap" aria-label="Peta insiden Indonesia" aria-hidden="true">
+<aside class="mapwrap" id="mapwrap" aria-label="Peta insiden Indonesia" aria-hidden="true" inert>
   <div class="map-h">
     <svg class="ic" aria-hidden="true"><use href="#i-pin"></use></svg>
     <span class="map-t">Peta Insiden · Indonesia</span>
@@ -1825,6 +1825,22 @@ button.mp-src{background:none;border-top:0;border-left:0;border-right:0;cursor:p
    SITREP console — data masuk lewat server.js (/api/news, /api/x,
    /api/cams, /hls). Tanpa server, halaman jatuh ke mode browser.
    ============================================================ */
+/* Resolusi token gerbang: param URL > localStorage > meta sitrep-token. */
+const SITREP_TOKEN = (() => {
+  let t = null;
+  try {
+    const qp = new URLSearchParams(location.search).get('token');
+    if (qp) {
+      t = qp;
+      try { localStorage.setItem('sitrep-token', qp); } catch (e) {}
+    } else {
+      try { t = localStorage.getItem('sitrep-token'); } catch (e) {}
+    }
+  } catch (e) {}
+  if (!t) t = document.querySelector('meta[name="sitrep-token"]')?.content || null;
+  return t;
+})();
+if (!SITREP_TOKEN) console.warn('[SITREP] No API token available; gated /api/* and media proxies will return 403.');
 const CAMS = JSON.parse(document.getElementById('cam-data').textContent);
 const $  = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
@@ -1835,16 +1851,31 @@ const EMOJI_RE = /[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\u{2B00}-\u{2BFF}\u{FE0F}
 const deEmoji = s => String(s == null ? '' : s).replace(EMOJI_RE, '').replace(/[ \t]{2,}/g, ' ').trim();
 const ic = (n, cls) => `<svg class="ic${cls ? ' ' + cls : ''}" aria-hidden="true"><use href="#i-${n}"></use></svg>`;
 const debounce = (fn, ms) => { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; };
-// guard in-flight: poller interval + trigger manual nggak boleh menumpuk fetch yang sama
-const once = fn => { let busy = false; return (...a) => {
-  if (busy) return Promise.resolve();
-  busy = true;
-  return Promise.resolve().then(() => fn(...a)).finally(() => { busy = false; });
-}; };
+// guard in-flight: poller interval + trigger manual nggak boleh menumpuk fetch yang sama.
+// Latest-wins: panggilan saat busy tidak dibuang — argumen terakhir disimpan dan
+// dijalankan SEKALI setelah task aktif selesai ("refresh sekarang" tidak hilang).
+const once = fn => {
+  let busy = false, tail = null;
+  const go = (...a) => {
+    busy = true;
+    const p = Promise.resolve().then(() => fn(...a));
+    const fin = () => {
+      if (tail) { const t = tail; tail = null; go(...t); }
+      else busy = false;
+    };
+    p.then(fin, fin);   // rejection tetap sampai ke caller lewat p; cabang ini cuma scheduler
+    return p;
+  };
+  return (...a) => {
+    if (busy) { tail = a; return Promise.resolve(); }
+    return go(...a);
+  };
+};
 // Puller berat dipakai interval + trigger manual. Function declaration hoist, jadi
 // dibungkus di sini — sebelum setInterval pertama sempat menangkap referensi mentah.
 for (const n of ['pullSituation','pullStocks','pullIncidents','pullFlights','pullShips','pullTransit',
-  'pullDisaster','pullWeather','pullWind','pullAlerts','pullTomTomIncidents','pullAlive','pullCctv','pullBreaking'])
+  'pullDisaster','pullWeather','pullWind','pullAlerts','pullTomTomIncidents','pullAlive','pullCctv','pullBreaking',
+  'pullRadar','pullRadarBmkg','pullFires','pullAir'])
   window[n] = once(window[n]);
 const num = n => { n = +n || 0;
   return n >= 1e6 ? (n/1e6).toFixed(1).replace('.0','') + 'M'
@@ -1875,7 +1906,7 @@ setInterval(tickClock, 1000); tickClock();
 function paintCountdown(){
   $('#countdown').textContent = 'Sync ' + String(Math.floor(remain/60)).padStart(2,'0') + ':' + String(remain%60).padStart(2,'0');
 }
-setInterval(() => { remain = Math.max(0, remain - 1); paintCountdown(); if (remain === 0) refreshAll(false); }, 1000);
+setInterval(() => { if (document.hidden) return; remain = Math.max(0, remain - 1); paintCountdown(); if (remain === 0) refreshAll(false); }, 1000);
 paintCountdown();
 
 /* ============================================================
@@ -1907,6 +1938,8 @@ const cleanTitle = t => {
   let s0 = String(t || '').trim();
   const pp = s0.indexOf(' | ');
   if (pp > 15) s0 = s0.slice(0, pp).trim();   // "Judul | NamaSitus" — pipe selalu suffix publisher
+  const pcm = s0.match(/\s*::\s*\S/);
+  if (pcm && pcm.index > 15) s0 = s0.slice(0, pcm.index).trim();   // "Judul :: NamaSitus" — pola feed lokal (mis. Berita Cilegon)
   const s = s0.replace(/\s[-–—]\s*(?:https?|www)\b[^\s]*(?:\)[^\s]*)?$/i, '').trim();
   const m = s.match(/^(.{8,}?)\s[-–—]\s([A-Za-z0-9][A-Za-z0-9.&'®™ ()]{1,60})$/);
   if (!m) return s;
@@ -2004,14 +2037,21 @@ function zoomAt(cx, cy, factor){
 }
 function flyTo(lat, lon, zoom){
   globeVel = null;
+  // Delta lon dibungkus ke [-180,180]: view.lon bisa unbounded (drag/inertia
+  // tidak pernah dinormalisasi) — interpolasi linear mentah bisa memutar globe
+  // ~360° penuh sebelum sampai tujuan.
+  let dLon = lon - view.lon;
+  while (dLon > 180) dLon -= 360;
+  while (dLon < -180) dLon += 360;
   flyAnim = { from: { lon: view.lon, lat: view.lat, zoom: view.zoom },
-    to: { lon, lat, zoom: zoom || view.zoom }, start: performance.now(), dur: 1150 };
+    to: { lon: view.lon + dLon, lat, zoom: zoom || view.zoom }, start: performance.now(), dur: 1150 };
 }
 function tickFly(now){
   if (!flyAnim) return;
   const t = clampN((now - flyAnim.start) / flyAnim.dur, 0, 1);
   const e = easeInOutCubic(t);
   view.lon = flyAnim.from.lon + (flyAnim.to.lon - flyAnim.from.lon) * e;
+  view.lon = ((view.lon + 540) % 360) - 180;   // hasil animasi selalu [-180,180]
   view.lat = flyAnim.from.lat + (flyAnim.to.lat - flyAnim.from.lat) * e;
   view.zoom = flyAnim.from.zoom + (flyAnim.to.zoom - flyAnim.from.zoom) * e;
   if (t >= 1) flyAnim = null;
@@ -2156,8 +2196,10 @@ function showSitAlert(p){
     setTimeout(() => {
       el.hidden = true; el.classList.remove('hide','show'); setLinkItem(null);
       // zoom-out hanya kalau tidak ada antrian menunggu & user tidak baru berinteraksi — jangan tarik view yang baru difokuskan
-      if (globeReady && !focusQueue.length && performance.now() - lastGestEnd > 10000)
-        flyTo(view.lat, view.lon, clampN(view.zoom - 2.2, 3, ZOOM_MAX));   // jangan clamp atas ke 6 — zoom dalam user harus survive
+      // zoom-out hanya kalau view benar-benar dalam — clamp bawah 0.9, jangan
+      // paksa zoom 3 yang malah MENDekatkan overview (dulu lower bound 3)
+      if (globeReady && !focusQueue.length && performance.now() - lastGestEnd > 10000 && view.zoom > 5)
+        flyTo(view.lat, view.lon, clampN(view.zoom - 2.2, 0.9, ZOOM_MAX));   // zoom dalam user tetap survive
     }, 320);
   }, 10000);
 }
@@ -2484,6 +2526,7 @@ function globeLoop(now){
     if (globeVel && !gesture && !flyAnim) {
       const dt = Math.min(50, Math.max(4, now - (globeLast || now - 16)));
       view.lon += globeVel.vx * dt;
+      view.lon = ((view.lon + 540) % 360) - 180;
       view.lat = clampN(view.lat + globeVel.vy * dt, -64, 64);
       const dec = Math.exp(-dt / 260);
       globeVel.vx *= dec; globeVel.vy *= dec;
@@ -2614,6 +2657,7 @@ function bindGlobeEvents(){
       const dx = e.clientX - gesture.x, dy = e.clientY - gesture.y;
       gesture.moved += Math.abs(dx) + Math.abs(dy);
       view.lon = gesture.startLon - dx * 0.32;
+      view.lon = ((view.lon + 540) % 360) - 180;   // keep [-180,180] — proyeksi periodik, tidak ada lompatan visual di antimeridian
       view.lat = clampN(gesture.startLat + dy * 0.30, -64, 64);
       // velocity px/ms (EMA) → bahan inertia saat jari lepas
       const nowM = performance.now(), dtm = nowM - (gesture.pt || nowM);
@@ -2691,9 +2735,12 @@ function bindGlobeEvents(){
 function renderMapLegend(st){
   const on = Object.keys(legendOn).filter(k => legendOn[k]).length;
   const total = Object.keys(legendOn).length;
+  // innerHTML rebuild menutup dropdown yang sedang open — simpan & pulihkan state-nya
+  const menuEl = smlgBox.querySelector('.smlg-menu');
+  const wasOpen = !!(menuEl && menuEl.classList.contains('open'));
   $('#sit-map-legend').innerHTML =
-    `<button class="smlg-btn" type="button" aria-expanded="false">Filter <span class="cm">${on}/${total}</span><i class="cr"></i></button>` +
-    `<div class="smlg-menu">` + CAT_ORDER.filter(c => CAT_GEO[c]).map(c =>
+    `<button class="smlg-btn" type="button" aria-expanded="${wasOpen ? 'true' : 'false'}">Filter <span class="cm">${on}/${total}</span><i class="cr"></i></button>` +
+    `<div class="smlg-menu${wasOpen ? ' open' : ''}">` + CAT_ORDER.filter(c => CAT_GEO[c]).map(c =>
       `<button class="smlg-it" type="button" data-cat="${c}" aria-pressed="${legendOn[c] ? 'true' : 'false'}"><i style="background:${CAT_COLOR[c]}"></i>${CAT_LABEL[c]}<b>${st[c] || 0}</b></button>`).join('') +
     `</div>`;
 }
@@ -2864,7 +2911,7 @@ async function pullSituation(){
     }
   }
 }
-setInterval(pullSituation, 60000);
+setInterval(() => { if (!document.hidden) pullSituation(); }, 60000);   // once()-wrapped; skip fetch saat tab hidden, catch up via visibilitychange
 
 /* ---------- MARKET tape: IHSG + blue chip ---------- */
 const fmtIDR = (n, d = 0) => isFinite(n) ? n.toLocaleString('id-ID', { minimumFractionDigits: d, maximumFractionDigits: d }) : '—';
@@ -2934,7 +2981,13 @@ function renderChips(){
   const all = (STK.items || []).slice().sort((a, b) => (b.vol || 0) - (a.vol || 0));
   const list = all.slice(0, 12);
   drawChips(document.getElementById('stk-chips'), list, STK_VIEW);
-  $('#stk-meta').textContent = (IHSG ? 'IHSG ' + fmtIDR(IHSG.price) + ' · ' : '') + all.length + ' emiten · ' + (MKT_AT ? wibTime(MKT_AT) : '') + ' WIB';
+  // umur feed: MKT_AT = timestamp data dari server — tampilkan selisih supaya
+  // staleness terlihat (dulu cuma jam data, user harus hitung sendiri)
+  const mktAgeS = MKT_AT ? Math.max(0, Math.floor((Date.now() - MKT_AT) / 1000)) : -1;
+  const mktAgeTxt = mktAgeS < 0 ? '' : mktAgeS < 90 ? 'baru saja' :
+    mktAgeS < 3600 ? Math.floor(mktAgeS / 60) + ' mnt lalu' : Math.floor(mktAgeS / 3600) + ' jam lalu';
+  $('#stk-meta').textContent = (IHSG ? 'IHSG ' + fmtIDR(IHSG.price) + ' · ' : '') + all.length + ' emiten · ' +
+    (MKT_AT ? wibTime(MKT_AT) + ' WIB' : '') + (mktAgeTxt ? ' · ' + mktAgeTxt : '');
 }
 function renderFx(){
   if (!FX) return;
@@ -2998,9 +3051,23 @@ async function pullStocks(){
     if (d && (d.stocks || d.items)) renderStocks(d.stocks ? d : { stocks: d });
   } catch (e) { $('#stk-meta').textContent = 'market feed error'; }
 }
-setInterval(pullStocks, 60000);
+// 20 dtk — cache server diturunkan ke ~15 dtk; skip saat tab hidden (catch up via visibilitychange)
+setInterval(() => { if (!document.hidden) pullStocks(); }, 20000);
+// Memo buildGroups: socialPool() selalu membuat array baru (spread per post), jadi
+// kunci identitas = referensi xPosts/tPosts + flag snapshot + versi classifier +
+// bucket 60 dtk (window sinyal 90 mnt tetap expire walau input tidak berubah).
+let sigCache = null;
 function updateDistress(){
-  SIG_GROUPS = SitrepSignals.buildGroups(socialPool(), Date.now()).slice(0, 8);
+  const bucket = Math.floor(Date.now() / 60000);
+  const v = SitrepSignals.VERSION;
+  if (sigCache && sigCache.xp === xPosts && sigCache.tp === tPosts &&
+      sigCache.xc === xSignalCurrent && sigCache.tc === tSignalCurrent &&
+      sigCache.v === v && sigCache.bucket === bucket) {
+    SIG_GROUPS = sigCache.groups;
+  } else {
+    SIG_GROUPS = SitrepSignals.buildGroups(socialPool(), Date.now()).slice(0, 8);
+    sigCache = { xp: xPosts, tp: tPosts, xc: xSignalCurrent, tc: tSignalCurrent, v, bucket, groups: SIG_GROUPS };
+  }
   renderAlerts();
 }
 
@@ -3088,7 +3155,19 @@ function correlateCards(socGroups, newsGroups){
   }
   return { pairs, socLeft: socGroups.filter(g => !usedS.has(g)), newsLeft: newsGroups.filter(c => !usedN.has(c)) };
 }
+// Memo alertCards: dipanggil tiap renderAlerts (termasuk tiap ketikan filter X/Threads).
+// Kunci = input nyata (snapshot sosial + SIT + SIG_GROUPS + versi + bucket 60 dtk
+// untuk window 90 mnt) — BUKAN array hasil socialPool() yang selalu baru.
+let alertCache = null;
 function alertCards(){
+  const bucket = Math.floor(Date.now() / 60000);
+  const v = SitrepSignals.VERSION;
+  if (alertCache && alertCache.xp === xPosts && alertCache.tp === tPosts &&
+      alertCache.xc === xSignalCurrent && alertCache.tc === tSignalCurrent &&
+      alertCache.v === v && alertCache.bucket === bucket &&
+      alertCache.sit === SIT && alertCache.sg === SIG_GROUPS) {
+    return alertCache.cards;
+  }
   const cards = [];
   const socGroups = SIG_GROUPS;
   const newsGroups = SIT ? buildClusters().filter(g => g.latest && g.latest <= Date.now() && Date.now() - g.latest <= 90 * 60e3).slice(0, 6) : [];
@@ -3135,7 +3214,9 @@ function alertCards(){
     }
   }
   cards.sort((a, b) => (SEV_RANK[a.sev] - SEV_RANK[b.sev]) || (b.score - a.score) || (b.latest - a.latest));
-  return cards.slice(0, 8);
+  const out = cards.slice(0, 8);
+  alertCache = { xp: xPosts, tp: tPosts, xc: xSignalCurrent, tc: tSignalCurrent, v, bucket, sit: SIT, sg: SIG_GROUPS, cards: out };
+  return out;
 }
 function alertHtml(c){
   const open = openAlert === c.id;
@@ -3333,7 +3414,7 @@ $('#xq').addEventListener('input', debounce(() => { xShown = 30; renderX(); }, 1
    02b · THREADS (toolzerhub/threads-scraper lewat server)
    ============================================================ */
 let tPosts = [], tAt = 0, tBusy = false, socTab = 'x';
-let tQuery = '', tQueries = [], tTrending = [], tErrs = [];
+let tQuery = '', tQueries = [], tTrending = [], tErrs = [], tNewestTs = 0;
 const tAll = new Map(); let tShown = 30;
 
 function linkifyThreads(t){
@@ -3351,8 +3432,8 @@ function threadCard(p){
   const user = deEmoji(p.username || '');
   const name = deEmoji(p.full_name || p.username || '');
   const ini = esc(name.slice(0,1).toUpperCase() || '?');
-  const av = p.avatar ? (API != null ? API + '/img?u=' + encodeURIComponent(p.avatar) : p.avatar)
-    : (user ? (API != null ? API + '/img?u=' + encodeURIComponent(`https://unavatar.io/threads/${user}`) : `https://unavatar.io/threads/${encodeURIComponent(user)}`) : '');
+  const av = p.avatar ? (API != null ? API + '/img?u=' + encodeURIComponent(p.avatar) + '&token=' + encodeURIComponent(SITREP_TOKEN) : p.avatar)
+    : (user ? (API != null ? API + '/img?u=' + encodeURIComponent(`https://unavatar.io/threads/${user}`) + '&token=' + encodeURIComponent(SITREP_TOKEN) : `https://unavatar.io/threads/${encodeURIComponent(user)}`) : '');
   const img = av
     ? `<img src="${esc(av)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">` : '';
   const ts = p.created_at ? Date.parse(p.created_at) : 0;
@@ -3392,7 +3473,12 @@ function renderThreads(){
     (!tQuery || tMatchQ(p, tQuery)) &&
     (!q || ((p.text || '') + ' ' + (p.username || '') + ' ' + (p.full_name || '')).toLowerCase().includes(q)));
   $('#tcount').textContent = tPosts.length;
-  $('#tmeta').textContent = list.length + ' post' + (tAt ? ' · ' + wibTime(tAt) : '') + (tErrs.length ? ' · ' + tErrs.length + ' query gagal' : '');
+  // umur post terbaru: utamakan newestTs dari server, fallback hitung dari posts
+  const tNew = tNewestTs > 0 ? tNewestTs
+    : Math.max(0, ...tPosts.map(p => p.ts || Date.parse(p.created_at || '') || 0));
+  const tAgeM = tNew ? (Date.now() - tNew) / 60000 : Infinity;
+  const tStale = tAgeM > 45 ? ' · terbaru ' + (tAgeM < 60 ? Math.floor(tAgeM) + 'm' : Math.floor(tAgeM / 60) + 'j') + ' lalu' : '';
+  $('#tmeta').textContent = list.length + ' post' + (tAt ? ' · ' + wibTime(tAt) : '') + (tErrs.length ? ' · ' + tErrs.length + ' query gagal' : '') + tStale;
   $('#f-th').textContent = tPosts.length;
   const page = list.slice(0, tShown);
   $('#tlist').innerHTML = (page.length ? page.map(threadCard).join('')
@@ -3435,6 +3521,7 @@ async function pullThreads(){
     const d = await getJson(API + '/api/threads', 160000);
     socApply(d);
     tErrs = Array.isArray(d.errs) ? d.errs : [];
+    tNewestTs = d && Number.isFinite(d.newestTs) ? d.newestTs : 0;
     if (d && d.queries) {
       tQueries = d.queries; tTrending = d.trending || []; renderQChipsTh(); renderQchips();
       if (tQuery && !tQueries.includes(tQuery)) { tQuery = ''; renderThreads(); }
@@ -3491,7 +3578,15 @@ const PROXIES = [
 let SRC_IDS = null, onlyTopic = true, catFilter = 'semua', seenNews = new Set(), freshNews = new Set(), firstPull = true, mediaLoaded = false;
 const lastGood = new Map();   // id -> { items, via, at }
 const srcState = new Map();   // id -> { ok, via }
-const topicOK = h => h.assessment ? !!h.cat : !!catOfTitle(h.title);
+// Satu sumber kebenaran kategori berita: hormati SitrepSignals.VERSION —
+// assessment versi lama dianggap tidak ada → fallback heuristik judul.
+// Dipakai topicOK, renderNews, leadHtml, newsHtml, renderTk, pullBreaking.
+const newsCatOf = h => {
+  const cur = h && h.assessment && h.assessment.version === SitrepSignals.VERSION;
+  return (cur ? (h.cat || h.feedTopic) : (h.cat || catOfTitle(h.title))) || '';
+};
+const newsCat = h => newsCatOf(h) || 'insiden';
+const topicOK = h => !!newsCatOf(h);
 function renderCatbar(){
   const ids = ['semua', ...CAT_ORDER];
   $('#catbar').innerHTML = ids.map(c =>
@@ -3521,7 +3616,7 @@ function parseRss(xmlText, srcId){
 async function fetchText(url, ms){
   const ctl = new AbortController(), t = setTimeout(() => ctl.abort(), ms || 12000);
   try {
-    const r = await fetch(url, { cache:'no-store', signal:ctl.signal });
+    const r = await fetch(url, { cache:'no-store', signal:ctl.signal, headers: apiHeaders(url) });
     if (!r.ok) throw new Error('HTTP ' + r.status);
     return await r.text();
   } finally { clearTimeout(t); }
@@ -3559,7 +3654,7 @@ function fallbackImgOK(u){
   return !(m && parseInt(m[1], 10) < 600);
 }
 function leadHtml(h, imageUrl = '', isLatest = true){
-  const cat = (h.assessment?.version === SitrepSignals.VERSION ? (h.cat || h.feedTopic) : (h.cat || catOfTitle(h.title))) || 'insiden';
+  const cat = newsCat(h);
   return `<a class="lead" data-cat="${cat}" href="${esc(h.url)}" target="_blank" rel="noopener">
     ${imageUrl ? `<div class="lead-img"><img src="${esc(imageUrl)}" alt="" loading="eager" decoding="async" referrerpolicy="no-referrer" onerror="this.parentNode.remove()"></div>` : ''}
     <div class="lead-t"><span class="lead-cat">${CAT_LABEL[cat]}</span><span class="lead-live">${isLatest ? 'Terbaru' : 'Sorotan'}</span><span class="lead-meta-r"><span class="lead-by">${esc(h.pub || h.src)}</span><time>${esc(h.ts ? wibTime(h.ts) : '')} WIB</time></span></div>
@@ -3645,7 +3740,7 @@ async function renderLead(h, isLatest = true){
 }
 function newsHtml(h, full){
   const isNew = freshNews.has(h.title);
-  const cat = (h.assessment?.version === SitrepSignals.VERSION ? (h.cat || h.feedTopic) : (h.cat || catOfTitle(h.title))) || 'insiden';
+  const cat = newsCat(h);
   return `<a class="nw${full ? ' nw-full' : ''}" data-cat="${cat}" href="${esc(h.url)}" target="_blank" rel="noopener">
     <div class="nw-top"><span class="nw-cat">${CAT_LABEL[cat]}</span><time>${esc(h.ts ? wibTime(h.ts) : '')}</time></div>
     <div class="nw-src">${esc(tkPub(h.pub) || h.src)}${isNew ? '<span class="new">Baru</span>' : ''}${h.n > 1 ? `<span class="dup-n" title="${esc([...h.srcs].filter(Boolean).join(', '))}">×${h.n} artikel</span>` : ''}</div>
@@ -3732,7 +3827,9 @@ function dedupWire(mapped){
 function renderNews(){
   const mapped = mergedMedia().map(h => {
     const title = stripPubTail(cleanTitle(h.title), tkPub(h.pub));
-    return { ...h, title, cat: h.assessment ? h.cat : catOfTitle(title) };
+    const m = { ...h, title };
+    m.cat = newsCatOf(m);   // versi assessment dicek di helper — judul sudah clean untuk fallback
+    return m;
   });
   const items = dedupWire(mapped);
   const q = ($('#fq').value || '').toLowerCase();
@@ -3842,14 +3939,14 @@ function paintBreak(){
 const TK_SIG = { demo:'#i-tk-demo', fire:'#i-tk-fire', flood:'#i-tk-flood', disaster:'#i-tk-disaster',
   insiden:'#i-tk-insiden', siber:'#i-tk-siber', kriminal:'#i-tk-kriminal',
   kesehatan:'#i-tk-kesehatan', ekonomi:'#i-tk-ekonomi', politik:'#i-tk-politik' };
-let breakPrev = new Set();
+let breakPrev = new Set(), breakSeeded = false;   // poll pertama: seed diam-diam — backlog bukan "breaking baru"
 const tkPub = v => {
   v = String(v || '').trim();
   if (/^(https?:)?\/\//i.test(v) || /^www\./i.test(v)) { try { return new URL(/^www\./i.test(v) ? 'https://' + v : v).hostname.replace(/^www\./i, ''); } catch (e) { return ''; } }
   return v;
 };
 const renderTk = (h, isNew) => {
-  const cat = (h.assessment?.version === SitrepSignals.VERSION ? (h.cat || h.feedTopic) : (h.cat || catOfTitle(h.title))) || 'insiden';
+  const cat = newsCat(h);
   return `<a class="tk${isNew ? ' tk-new' : ''}" data-cat="${cat}" href="${esc(h.url)}" target="_blank" rel="noopener" title="${esc(h.label || CAT_LABEL[cat])}">` +
     `<svg class="ic tk-sig" aria-hidden="true"><use href="${TK_SIG[cat] || '#i-pin'}"></use></svg>` +
     `<span class="tk-time">${esc(h.ts ? wibTime(h.ts) : '')}</span>` +
@@ -3869,8 +3966,13 @@ function buildTicker(force){
   if (!force && sig === breakSig) return;
   breakSig = sig;
 
-  const fresh = new Set(breakItems.filter(h => !breakPrev.has(h.url || h.title)).map(h => h.url || h.title));
+  // build pertama menandai SEMUA item 'new' — seed breakPrev tanpa badge biar
+  // marquee tidak penuh label "Baru" untuk backlog yang memang sudah lama ada
+  const fresh = breakSeeded
+    ? new Set(breakItems.filter(h => !breakPrev.has(h.url || h.title)).map(h => h.url || h.title))
+    : new Set();
   breakPrev = new Set(breakItems.map(h => h.url || h.title));
+  breakSeeded = true;
   // Dua copy identik → translateX(-50%) loop pixel-perfect. Kalau satu periode
   // lebih pendek dari viewport, item di dalam set diulang (kedua set tetap sama).
   const one = '<span class="tk-live"><i></i>LIVE</span>' + breakItems.map(h => renderTk(h, fresh.has(h.url || h.title))).join('');
@@ -3929,8 +4031,9 @@ async function pullBreaking(){
     }
     if (!items) items = mergedMedia().map(h => {
       const title = cleanTitle(h.title);
-      const cat = h.assessment?.version === SitrepSignals.VERSION ? h.cat : catOfTitle(title);
-      return cat ? { ...h, title, cat, label: CAT_LABEL[cat] } : null;
+      const m = { ...h, title };
+      const cat = newsCatOf(m);
+      return cat ? { ...m, cat, label: CAT_LABEL[cat] } : null;
     }).filter(Boolean).slice(0, 12);
     if (!items.length && breakItems.length) items = breakItems;   // jangan kosongkan marquee saat upstream transien
     const prev = new Set(breakItems.map(x => x.url));
@@ -3962,6 +4065,7 @@ async function pullBreaking(){
   }
 }
 setInterval(() => {
+  if (document.hidden) return;   // countdown pause saat hidden — catch up via visibilitychange → refreshAll
   breakRemain = Math.max(0, breakRemain - 1);
   paintBreak();
   if (breakRemain === 0) pullBreaking();
@@ -3980,7 +4084,7 @@ const camUrls = c => {
   } catch (e) { return [c.s]; }
 };
 const camSteps = c => {
-  const d = camUrls(c), px = API != null ? d.map(u => API + '/hls?u=' + encodeURIComponent(u)) : [];
+  const d = camUrls(c), px = API != null ? d.map(u => API + '/hls?u=' + encodeURIComponent(u) + '&token=' + encodeURIComponent(SITREP_TOKEN)) : [];
   return d.concat(px);   // direct semua varian → baru proxy semua varian
 };
 // jakcctv butuh ?proto=hls di SEMUA request (playlist & segmen) — loader nambahin otomatis
@@ -4062,7 +4166,7 @@ function camReport(u, ok){
   const now = Date.now(), last = repLast.get(u) || 0;
   if (now - last < (ok ? 600000 : 60000)) return;
   repLast.set(u, now);
-  fetch(API + '/api/cctv/report', { method: 'POST', headers: { 'content-type': 'application/json' },
+  fetch(API + '/api/cctv/report', { method: 'POST', headers: { 'content-type': 'application/json', 'x-sitrep-token': SIT_TOKEN },
     body: JSON.stringify({ u, ok }) }).catch(() => {});
 }
 function hostCooling(cam){ const hb = cam && hostBad.get(hostOf(cam.s)); return hb && hb.until > Date.now() ? hb.until : 0; }
@@ -4431,7 +4535,7 @@ function paintMapSrc(){
   el.textContent = wireSrcText;
 }
 async function initSatelliteLayers(){
-  if (!map) return;
+  if (!mapOpen || !map) return;
   // modelrun dicek maksimal tiap 5 mnt — fram Himawari ganti 10 mnt, fetch tiap
   // pullInsiden (60s) cuma boros request ke BMKG
   if (Date.now() - satModelRunAt < 300000) return;
@@ -4530,7 +4634,7 @@ function fireInit(){
 }
 function fireRefresh(){ if (fireCvLayer) fireCvLayer.needRedraw(); }
 async function pullFires(){
-  if (!map || API == null) return;
+  if (!mapOpen || !map || API == null) return;
   try {
     fireData = [];
     const sip = await getJson(API + '/api/sipongi', 45000).catch(() => null);
@@ -4582,7 +4686,7 @@ const AIR_COLOR = cat => {
   return '#3ddc97';   // BAIK / SEHAT / lainnya
 };
 async function pullAir(){
-  if (!map || API == null) return;
+  if (!mapOpen || !map || API == null) return;
   try {
     const d = await getJson(API + '/api/sipongi', 45000);
     if (!d || !Array.isArray(d.air)) return;
@@ -4876,7 +4980,7 @@ async function pullIncidents(){
     $('#geo-count').textContent = CAMS.length + ' kamera';
     $('#map-meta').textContent = 'butuh server';
     $('#map-src').textContent = 'tanpa API';
-    ensureMap(); paintMap();
+    if (mapOpen) { ensureMap(); paintMap(); }   // Leaflet lazy — jangan instantiate saat panel tertutup
     return;
   }
   mapBusy = true;
@@ -4899,8 +5003,8 @@ async function pullIncidents(){
       wireSrcText = 'wire ' + (d.total || nReal) + (d.raw && d.raw > d.total ? ' · ' + d.raw + ' artikel' : '') + ' · kamera ' + CAMS.length;
       paintMapSrc();
       drawGlobe(performance.now());
-      ensureMap(); paintMap();
-      if (layerOn.peringatan) pullAlerts();
+      if (mapOpen) { ensureMap(); paintMap(); }   // data globe tetap update; DOM Leaflet hanya saat panel kebuka
+      if (layerOn.peringatan && mapOpen) pullAlerts();
       initSatelliteLayers();
     }
   } catch (e) {
@@ -4918,10 +5022,12 @@ function sizeMap(){
   }
 }
 function openMap(){
-  ensureMap();
+  ensureMap();   // lazy-init: Leaflet baru dibuat saat panel pertama dibuka
   sizeMap();
-  $('#mapwrap').classList.add('on');
-  $('#mapwrap').setAttribute('aria-hidden', 'false');
+  const wrap = $('#mapwrap');
+  wrap.classList.add('on');
+  wrap.inert = false;   // panel kembali interaktif/focusable
+  wrap.setAttribute('aria-hidden', 'false');
   $('#btn-map').setAttribute('aria-expanded', 'true');
   mapOpen = true;
   setTimeout(() => { if (map) map.invalidateSize(); }, 380);
@@ -4930,15 +5036,33 @@ function openMap(){
   clearInterval(ttIncInterval);
   ttIncInterval = setInterval(pullTomTomIncidents, 60000);
   checkTomTom();
+  // Leaflet lazy-init: layer yang sedang nyala tidak punya data selama panel
+  // tertutup (semua pull* early-return saat !mapOpen) — segarkan sekarang.
+  if (layerOn.peringatan) pullAlerts();
+  initSatelliteLayers();
+  if (layerOn.cuaca) pullWeather();
+  if (layerOn.wind) { pullWind(); if (windData && !windVelocityLayer) startWindAnim(); }   // data lama langsung tampil sambil fetch baru jalan
+  if (layerOn.radar) pullRadar();
+  if (layerOn.radarbmkg) pullRadarBmkg();
+  if (layerOn.fires) pullFires();
+  if (layerOn.air) pullAir();
+  if (layerOn.flight) pullFlights();
+  if (layerOn.ship) pullShips();
+  if (layerOn.transit) pullTransit();
+  pullDisaster();   // marker gempa/gunung di layer peta butuh data terbaru
   setTimeout(() => $('#map-close').focus(), 60);
 }
 addEventListener('resize', () => { if (mapOpen) { sizeMap(); if (map) map.invalidateSize(); } });
 function closeMap(){
-  $('#mapwrap').classList.remove('on');
-  $('#mapwrap').setAttribute('aria-hidden', 'true');
+  const wrap = $('#mapwrap');
+  wrap.classList.remove('on');
+  wrap.inert = true;   // panel offscreen: kontrol tidak boleh difocus via keyboard
+  wrap.setAttribute('aria-hidden', 'true');
   $('#btn-map').setAttribute('aria-expanded', 'false');
   mapOpen = false;
   clearInterval(ttIncInterval);
+  stopRadarInterval();   // jeda playback frame radar — tile tidak terus di-fetch saat tertutup
+  stopWindAnim();        // partikel angin pause; windData tetap, startWindAnim dipanggil ulang saat open
   $('#btn-map').focus();
 }
 $('#btn-map').addEventListener('click', () => { if (mapOpen) closeMap(); else openMap(); });
@@ -5029,6 +5153,7 @@ const dirIc = (kind, hdg, color) => { const sz = kind === 'bus' ? busSize() : mk
 /* tracking engine: lerp posisi antar poll supaya marker keliatan gerak */
 const movers = new Map();
 function moverTick(){
+  if (!mapOpen || document.hidden) return;   // marker gerak hanya relevan saat panel terlihat
   const now = Date.now();
   for (const v of movers.values()) {
     if (!v.m) continue;
@@ -5058,7 +5183,7 @@ const shPop = s => `<div class="mp-k" style="color:#4dd0e1">Kapal · AIS</div>
   <div class="mp-t">${esc(s.name || s.mmsi)}</div>
   <div class="mp-m">${esc(s.dest || 'tujuan ?')} · ${s.sog != null ? s.sog + ' kn' : '—'}${s.type ? ' · ' + esc(s.type) : ''}</div>`;
 async function pullFlights(){
-  if (!map || API == null) return;
+  if (!mapOpen || !map || API == null) return;
   try {
     const d = await getJson(API + '/api/flights', 25000);
     if (!d.ok) return;
@@ -5084,7 +5209,7 @@ async function pullFlights(){
   } catch (e) {}
 }
 async function pullShips(){
-  if (!map || API == null) return;
+  if (!mapOpen || !map || API == null) return;
   try {
     const d = await getJson(API + '/api/ships', 25000);
     if (!d.ok || !d.items) return;
@@ -5110,7 +5235,7 @@ async function pullShips(){
   } catch (e) {}
 }
 async function pullTransit(){
-  if (!map || API == null) return;
+  if (!mapOpen || !map || API == null) return;
   try {
     const d = await getJson(API + '/api/transit', 30000);
     if (!d.ok || !d.items) return;
@@ -5180,28 +5305,32 @@ async function pullDisaster(){
       const key = g.lat.toFixed(2) + ',' + g.lon.toFixed(2) + '|' + g.mag;
       const gcol = '#ff3b30';
       const gs = 1 + Math.min(1.6, (g.mag || 3) * 0.28);   // ukuran ripple ikut magnitude, seperti di globe
-      const m = L.marker([g.lat, g.lon], { keyboard: false, icon: L.divIcon({ className: 'mk-gempa-ic',
-        iconSize: [64, 64], iconAnchor: [32, 32],
-        html: `<div class="mk-gempa" style="--mc:${gcol};--gs:${gs.toFixed(2)}"><i class="mk-rip"></i><i class="mk-rip r2"></i><i class="mk-rip r3"></i><b class="mk-gempa-dot"></b></div>` }) });
-      m.bindPopup(`<div class="mp-k" style="color:#ff6b5e">GEMPA · BMKG</div>
-        <div class="mp-t">M${g.mag} — ${esc(g.wilayah || '')}</div>
-        <div class="mp-m">${esc(g.depth)} · dirasakan: ${esc(g.mmi || '—')}${g.potensi ? '<br>' + esc(g.potensi) : ''}<br>${esc(g.time || '')}</div>`);
-      m.bindTooltip(`M${g.mag}`, { direction: 'top', offset: [0, -18], opacity: .9 });
-      gempaMarkers.push(m);
+      if (mapOpen) {   // marker Leaflet hanya saat panel kebuka — dp (globe) tetap diisi
+        const m = L.marker([g.lat, g.lon], { keyboard: false, icon: L.divIcon({ className: 'mk-gempa-ic',
+          iconSize: [64, 64], iconAnchor: [32, 32],
+          html: `<div class="mk-gempa" style="--mc:${gcol};--gs:${gs.toFixed(2)}"><i class="mk-rip"></i><i class="mk-rip r2"></i><i class="mk-rip r3"></i><b class="mk-gempa-dot"></b></div>` }) });
+        m.bindPopup(`<div class="mp-k" style="color:#ff6b5e">GEMPA · BMKG</div>
+          <div class="mp-t">M${g.mag} — ${esc(g.wilayah || '')}</div>
+          <div class="mp-m">${esc(g.depth)} · dirasakan: ${esc(g.mmi || '—')}${g.potensi ? '<br>' + esc(g.potensi) : ''}<br>${esc(g.time || '')}</div>`);
+        m.bindTooltip(`M${g.mag}`, { direction: 'top', offset: [0, -18], opacity: .9 });
+        gempaMarkers.push(m);
+      }
       dp.push({ kind: 'gempa', sub: 'gempa', la: g.lat, lo: g.lon, ts: gts,
         title: `M${g.mag} · ${g.wilayah || ''}`, name: g.wilayah || 'Gempa', label: 'GEMPA BMKG',
         src: 'BMKG', url: 'bmkg://gempa/' + key, weight: Math.min(1, (g.mag || 3) / 6), mag: g.mag || 3 });
     }
     for (const p of (PULSE || [])) {   // gempa versi berita (wire) — BMKG belum terbit tetap tampil di layer Gempa
       if (p.sub !== 'gempa' || p.fixed || typeof p.la !== 'number' || typeof p.lo !== 'number') continue;
-      const m = L.marker([p.la, p.lo], { keyboard: false, icon: L.divIcon({ className: 'mk-gempa-ic',
-        iconSize: [56, 56], iconAnchor: [28, 28],
-        html: `<div class="mk-gempa" style="--mc:#ff3b30;--gs:1.4"><i class="mk-rip"></i><i class="mk-rip r2"></i><i class="mk-rip r3"></i><b class="mk-gempa-dot"></b></div>` }) });
-      m.bindPopup(`<div class="mp-k" style="color:#ff6b5e">GEMPA · WIRE</div>
-        <div class="mp-t">${esc(deEmoji(p.title || p.name || 'Gempa'))}</div>
-        <div class="mp-m">${esc(p.src || '')} · ${esc(p.ts ? wibTime(p.ts) : '')}</div>`);
-      m.bindTooltip('Gempa (berita)', { direction: 'top', offset: [0, -16], opacity: .9 });
-      gempaMarkers.push(m);
+      if (mapOpen) {
+        const m = L.marker([p.la, p.lo], { keyboard: false, icon: L.divIcon({ className: 'mk-gempa-ic',
+          iconSize: [56, 56], iconAnchor: [28, 28],
+          html: `<div class="mk-gempa" style="--mc:#ff3b30;--gs:1.4"><i class="mk-rip"></i><i class="mk-rip r2"></i><i class="mk-rip r3"></i><b class="mk-gempa-dot"></b></div>` }) });
+        m.bindPopup(`<div class="mp-k" style="color:#ff6b5e">GEMPA · WIRE</div>
+          <div class="mp-t">${esc(deEmoji(p.title || p.name || 'Gempa'))}</div>
+          <div class="mp-m">${esc(p.src || '')} · ${esc(p.ts ? wibTime(p.ts) : '')}</div>`);
+        m.bindTooltip('Gempa (berita)', { direction: 'top', offset: [0, -16], opacity: .9 });
+        gempaMarkers.push(m);
+      }
     }
     for (const v of (d.gunung || [])) {
       if (v.lat == null) continue;
@@ -5212,14 +5341,16 @@ async function pullDisaster(){
       const escalate = worse || prev == null;
       seenGunung.set(v.name, v.level);
       const sz = v.level === 'LEVEL IV' ? 26 : v.level === 'LEVEL III' ? 23 : 20;
-      const m = L.marker([v.lat, v.lon], { keyboard: false, icon: L.divIcon({ className: 'mk-gunung-ic',
-        iconSize: [sz, sz], iconAnchor: [sz / 2, sz / 2],
-        html: `<div class="mk-gunung" style="--gc:${col};--gs:${(sz / 22).toFixed(2)}"><svg viewBox="0 0 16 16"><path d="M8 1.4 14.6 13.2H1.4Z" fill="var(--gc)" stroke="#101010" stroke-width="1.5" stroke-linejoin="round"/></svg></div>` }) });
-      m.bindPopup(`<div class="mp-k" style="color:${col}">GUNUNG API · MAGMA/PVMBG</div>
-        <div class="mp-t">${esc(v.name)} — ${esc(v.loc || '')}</div>
-        <div class="mp-m">${esc(v.level)} (${esc(v.status)})</div>`);
-      m.bindTooltip(`${esc(v.name)} · ${v.level}`, { direction: 'top', offset: [0, -sz / 2 - 3], opacity: .85 });
-      gunungMarkers.push(m);
+      if (mapOpen) {
+        const m = L.marker([v.lat, v.lon], { keyboard: false, icon: L.divIcon({ className: 'mk-gunung-ic',
+          iconSize: [sz, sz], iconAnchor: [sz / 2, sz / 2],
+          html: `<div class="mk-gunung" style="--gc:${col};--gs:${(sz / 22).toFixed(2)}"><svg viewBox="0 0 16 16"><path d="M8 1.4 14.6 13.2H1.4Z" fill="var(--gc)" stroke="#101010" stroke-width="1.5" stroke-linejoin="round"/></svg></div>` }) });
+        m.bindPopup(`<div class="mp-k" style="color:${col}">GUNUNG API · MAGMA/PVMBG</div>
+          <div class="mp-t">${esc(v.name)} — ${esc(v.loc || '')}</div>
+          <div class="mp-m">${esc(v.level)} (${esc(v.status)})</div>`);
+        m.bindTooltip(`${esc(v.name)} · ${v.level}`, { direction: 'top', offset: [0, -sz / 2 - 3], opacity: .85 });
+        gunungMarkers.push(m);
+      }
       dp.push({ kind: 'gunung', sub: 'volcano', lvl: v.level, la: v.lat, lo: v.lon,
         ts: escalate ? Date.now() : today,
         title: `${v.name} — ${v.level} (${v.status})`, name: v.name, label: 'GUNUNG API ' + v.level,
@@ -5232,8 +5363,9 @@ async function pullDisaster(){
       gunung: dp.filter(p => p.sub === 'volcano').length });
     try { drawGlobe(performance.now()); } catch (e) {}
     maybeFocusFresh();   // gempa/gunung dievaluasi langsung — tidak menunggu cycle incidents
-    // Layer peta independen — render marker hanya kalau toggle nyala & peta kebuka
-    if (map) {
+    // Layer peta independen — render marker hanya kalau toggle nyala & panel kebuka
+    // (saat tertutup marker tetap di-skip; openMap memanggil pullDisaster untuk refresh)
+    if (map && mapOpen) {
       if (layerOn.gempa) {
         if (!gempaLayer) gempaLayer = L.layerGroup().addTo(map);
         gempaLayer.clearLayers();
@@ -5249,7 +5381,7 @@ async function pullDisaster(){
   } catch (e) {}
 }
 async function pullWeather(){
-  if (!map || API == null) return;
+  if (!mapOpen || !map || API == null) return;
   try {
     const d = await getJson(API + '/api/weather', 30000);
     if (!d.ok) return;
@@ -5298,7 +5430,7 @@ L.TileLayer.WMS = L.TileLayer.extend({
   }
 });
 async function pullRadar(){
-  if (!map || API == null) return;
+  if (!mapOpen || !map || API == null) return;
   stopRadarInterval();
   const ctrl = $('#radar-ctrl');
   try {
@@ -5458,7 +5590,7 @@ function bindVelocityInteractionEvents(){
   });
 }
 async function pullWind(){
-  if (!map || API == null) return;
+  if (!mapOpen || !map || API == null) return;
   try {
     const d = await getJson(API + '/api/wind', 30000);
     if (!d.ok || !d.data) return;
@@ -5505,7 +5637,7 @@ function stopWindAnim(){
 
 /* ---------- RADAR BMKG (WMS) ---------- */
 async function pullRadarBmkg(){
-  if (!map) return;
+  if (!mapOpen || !map) return;
   try {
     if (radarBmkgLayer) { if (map.hasLayer(radarBmkgLayer)) map.removeLayer(radarBmkgLayer); radarBmkgLayer = null; }
     radarBmkgLayer = new L.TileLayer.WMS('https://gis.bmkg.go.id/arcgis/services/Peta_Curah_Hujan_dan_Hari_Hujan_/MapServer/WMSServer', {
@@ -5519,7 +5651,7 @@ async function pullRadarBmkg(){
 
 /* ---------- PERINGATAN DINI (BMKG CAP) ---------- */
 async function pullAlerts(){
-  if (!map || API == null) return;
+  if (!mapOpen || !map || API == null) return;
   try {
     const d = await getJson(API + '/api/alerts', 30000);
     if (!d.ok) return;
@@ -5594,16 +5726,16 @@ $('#map-refresh').addEventListener('click', async () => {
   satModelRunAt = 0; initSatelliteLayers();
 });
 $('#rp-go').addEventListener('click', calcRoute);
-setInterval(() => { if (mapOpen && SAT_IDS.some(id => layerOn[id])) paintMapSrc(); }, 1000);   // countdown frame satelit
-setInterval(() => { if (mapOpen) pullIncidents(); }, 60000);
-setInterval(() => { if (mapOpen && layerOn.flight) pullFlights(); }, 30000);
-setInterval(() => { if (mapOpen && layerOn.ship) pullShips(); }, 30000);
-setInterval(() => { if (mapOpen && layerOn.transit) pullTransit(); }, 45000);
+setInterval(() => { if (mapOpen && !document.hidden && SAT_IDS.some(id => layerOn[id])) paintMapSrc(); }, 1000);   // countdown frame satelit
+setInterval(() => { if (mapOpen && !document.hidden) pullIncidents(); }, 60000);
+setInterval(() => { if (mapOpen && !document.hidden && layerOn.flight) pullFlights(); }, 30000);
+setInterval(() => { if (mapOpen && !document.hidden && layerOn.ship) pullShips(); }, 30000);
+setInterval(() => { if (mapOpen && !document.hidden && layerOn.transit) pullTransit(); }, 45000);
 setTimeout(() => pullDisaster(), 2000);   // retry cepat setelah API terdeteksi
-setInterval(() => { pullDisaster(); }, 120000);   // independen dari layer peta — selalu feed globe
-setInterval(() => { if (layerOn.wind) pullWind(); }, 900000);
-setInterval(() => { if (layerOn.peringatan) pullAlerts(); }, 300000);
-setInterval(() => { if (mapOpen && layerOn.cuaca) pullWeather(); }, 600000);
+setInterval(() => { if (!document.hidden) pullDisaster(); }, 120000);   // independen dari layer peta — selalu feed globe
+setInterval(() => { if (mapOpen && !document.hidden && layerOn.wind) pullWind(); }, 900000);
+setInterval(() => { if (mapOpen && !document.hidden && layerOn.peringatan) pullAlerts(); }, 300000);
+setInterval(() => { if (mapOpen && !document.hidden && layerOn.cuaca) pullWeather(); }, 600000);
 
 /* ============================================================
    LIVE TV — panel mengambang, drag lintas tepi, snap, ganti kanal
@@ -5702,7 +5834,7 @@ function tvStop(){
 }
 function tvPlay(){
   const c = TV_CH[tvIx], v = $('#tv-video'), body = $('#tv-body');
-  const src = (tvPx && API != null) ? API + '/hls?u=' + encodeURIComponent(c.s) : c.s;   // direct dulu — semua host ACAO:*; proxy hanya fallback
+  const src = (tvPx && API != null) ? API + '/hls?u=' + encodeURIComponent(c.s) + '&token=' + encodeURIComponent(SITREP_TOKEN) : c.s;   // direct dulu — semua host ACAO:*; proxy hanya fallback
   tvPaint();
   tvWake();
   tvStop();
@@ -5945,11 +6077,27 @@ addEventListener('resize', () => {
    BACKEND / SIKLUS
    ============================================================ */
 let API = null;
+// Token gate server (/api/* wajib x-sitrep-token): token efektif di-inject
+// server sebagai <meta name="sitrep-token">. Header hanya ditempel ke request
+// ke API sendiri — fetch eksternal (RSS, BMKG) tidak boleh bawa custom header
+// karena CORS preflight-nya gagal.
+const SIT_TOKEN = SITREP_TOKEN;   // alias: sumber tunggal = SITREP_TOKEN (URL > localStorage > meta)
+const apiHeaders = url => {
+  if (!SIT_TOKEN) return {};
+  try {
+    const u = new URL(url, location.href);
+    const ours = u.origin === location.origin || (API != null && API !== '' && url.startsWith(API + '/'));
+    return (ours && u.pathname.startsWith('/api/')) ? { 'x-sitrep-token': SIT_TOKEN } : {};
+  } catch (e) { return {}; }
+};
+// Token untuk URL media (/img /hls /vhs) — tag <img>/<video> tidak bisa set
+// header, jadi token ikut sebagai query param. Server sudah menerimanya.
+const tokQ = u => SIT_TOKEN ? u + (u.includes('?') ? '&' : '?') + 'token=' + encodeURIComponent(SIT_TOKEN) : u;
 async function getJson(url, ms, retries = 1){
   for (let i = 0; i <= retries; i++) {
     const c = new AbortController(), t = setTimeout(() => c.abort(), ms || 12000);
     try {
-      const r = await fetch(url, { cache:'no-store', signal:c.signal });
+      const r = await fetch(url, { cache:'no-store', signal:c.signal, headers: apiHeaders(url) });
       if (!r.ok) throw new Error('HTTP ' + r.status);
       return await r.json();
     } catch (e) {
@@ -6021,12 +6169,17 @@ function markFresh(){
   if (freshNews.size) syncGlobeSoon();
 }
 
+// in-flight guard: /api/x bisa makan 110s + retry — tanpa ini cycle 120s
+// menumpuk request yang sama (dulu overlap diam-diam)
+let xBusy = false;
 async function pullX(){
+  if (xBusy) return;
   if (API == null) {
     $('#xlist').innerHTML = '<div class="empty">Butuh server untuk feed X.</div>';
     $('#xmeta').textContent = 'offline';
     return;
   }
+  xBusy = true;
   try {
     const d = await getJson(API + '/api/x', 110000);
     xLastErr = d.err || '';
@@ -6036,11 +6189,15 @@ async function pullX(){
       if (xQuery && !xQueries.includes(xQuery)) { xQuery = ''; renderX(); }
     }
     if (d.ok) {
-      acceptSocialSnapshot('x', d);
-      if (xShown > xPosts.length) xShown = Math.max(30, xPosts.length);
-      renderX();
-      renderQchips();   // chip "Semua" menghitung xPosts/tPosts — render ulang setelah snapshot diterima
-      $('#xmeta').textContent = d.posts.length + ' post' + (d.err ? ' · sebagian gagal' : '');
+      // Hanya timpa state/UI kalau snapshot benar-benar diterima — payload stale
+      // (snapshotAt lama / versi asing) tidak boleh mengubah xmeta & render.
+      const acc = acceptSocialSnapshot('x', d);
+      if (acc) {
+        if (xShown > xPosts.length) xShown = Math.max(30, xPosts.length);
+        renderX();
+        renderQchips();   // chip "Semua" menghitung xPosts/tPosts — render ulang setelah snapshot diterima
+        $('#xmeta').textContent = xPosts.length + ' post' + (d.err ? ' · sebagian gagal' : '');
+      }
     } else if (xPosts.length) {
       xSignalCurrent = false; updateDistress();
       $('#xmeta').textContent = xPosts.length + ' post · data terakhir';
@@ -6051,7 +6208,7 @@ async function pullX(){
   } catch (e) {
     xSignalCurrent = false; updateDistress();
     if (!xPosts.length) $('#xlist').innerHTML = '<div class="empty">Server tidak merespons. Jalankan node server.js.</div>';
-  }
+  } finally { xBusy = false; }
 }
 
 let busy = false, bgPending = 0, lastSyncAt = 0;
@@ -6174,7 +6331,7 @@ function rdArticle(d, url) {
   const rdVidHtml = v => {
     if (v.kind === 'video') {
       // CDN berita tolak Referer localhost → proxy lewat /vhs (server fetch tanpa referer)
-      const src = API != null ? API + '/vhs?u=' + encodeURIComponent(v.url) : v.url;
+      const src = API != null ? API + '/vhs?u=' + encodeURIComponent(v.url) + '&token=' + encodeURIComponent(SITREP_TOKEN) : v.url;
       const hlsFlag = /\.m3u8(\?|#|$)/i.test(v.url) ? ' data-hls="1"' : '';
       return `<video class="rd-vid" controls playsinline preload="metadata" src="${esc(src)}"${hlsFlag}${v.poster ? ` poster="${esc(v.poster)}"` : ''}></video>`;
     }
@@ -6245,7 +6402,7 @@ function rdReplyNode(r, kind, depth) {
   const handle = isX ? (r.handle || '') : (r.username ? '@' + r.username : '');
   const ts = isX ? (r.ts || 0) : (r.created_at ? Date.parse(r.created_at) : 0);
   const avSrc = isX ? (r.avatar || '')
-    : (r.avatar ? (API != null ? API + '/img?u=' + encodeURIComponent(r.avatar) : r.avatar) : '');
+    : (r.avatar ? (API != null ? API + '/img?u=' + encodeURIComponent(r.avatar) + '&token=' + encodeURIComponent(SITREP_TOKEN) : r.avatar) : '');
   const vf = isX ? (r.verified ? `<span class="vf">${ic('verified')}</span>` : '')
     : (r.is_verified ? `<span class="vf">${ic('thcheck')}</span>` : '');
   const kids = r.kids || r.replies || [];
@@ -6452,7 +6609,7 @@ function rdPost(kind, p, trigger, push = true) {
   const handle = isX ? (p.handle || '') : '@' + (p.username || '');
   const ts = isX ? (p.ts || 0) : (p.created_at ? Date.parse(p.created_at) : 0);
   const avSrc = isX ? (p.avatar || '')
-    : (p.avatar ? (API != null ? API + '/img?u=' + encodeURIComponent(p.avatar) : p.avatar) : '');
+    : (p.avatar ? (API != null ? API + '/img?u=' + encodeURIComponent(p.avatar) + '&token=' + encodeURIComponent(SITREP_TOKEN) : p.avatar) : '');
   const ini = esc(name.slice(0, 1).toUpperCase() || '?');
   const av = `<span class="rd-pa" style="--h:${hue(handle || name)}">${ini}${avSrc ? `<img src="${esc(avSrc)}" alt="" referrerpolicy="no-referrer" onerror="this.remove()">` : ''}</span>`;
   const vf = isX ? (p.verified ? `<span class="vf">${ic('verified')}</span>` : '')
@@ -6465,7 +6622,7 @@ function rdPost(kind, p, trigger, push = true) {
   if (!isX && Array.isArray(p.media) && p.media.length) {
     media = '<div class="rd-media">' + p.media.slice(0, 3).map(m => {
       if (m.type === 'video') return `<video controls playsinline preload="metadata" src="${esc(m.url)}"></video>`;
-      const src = API != null ? API + '/img?u=' + encodeURIComponent(m.url) : m.url;
+      const src = API != null ? API + '/img?u=' + encodeURIComponent(m.url) + '&token=' + encodeURIComponent(SITREP_TOKEN) : m.url;
       return `<img src="${esc(src)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">`;
     }).join('') + '</div>';
   }

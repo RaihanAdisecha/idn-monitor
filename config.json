@@ -31,6 +31,5 @@
   ],
   "threads": {},
   "tomtom": {},
-  "insecure_tls": false,
   "_note": "Topik sosial (X + Threads) ada di social.js (SOC_TOPICS). Satu registry, bukan daftar query per platform."
 }

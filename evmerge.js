@@ -94,23 +94,35 @@ function mergeEvents(out, prevPins, opts) {
     const cut = key.indexOf('|');
     const cat = key.slice(0, cut), pk = key.slice(cut + 1);
     const hz = members0.map(m => hazardOf(m.p.title));
-    const parent = members0.map((_, i) => i);
-    const find = i => parent[i] === i ? i : (parent[i] = find(parent[i]));
-    for (let i = 0; i < members0.length; i++) for (let j = i + 1; j < members0.length; j++) {
-      let shared = 0;
-      for (const t of members0[i].rs) if (members0[j].rs.has(t)) { shared++; break; }
-      // gempa/erupsi/banjir di tempat sama dalam jendela singkat = satu rangkaian peristiwa,
-      // walau judul BMKG tidak berbagi entitas (Sigi: "sesar palolo" vs "gempa susulan")
-      const sameHaz = (cat === 'disaster' || cat === 'flood') && hz[i] && hz[i] === hz[j] &&
-        Math.abs((members0[i].p.ts || 0) - (members0[j].p.ts || 0)) <= (hz[i] === 'flood' ? 6 : 12) * 3600e3;
-      if (shared || sameHaz) { const a = find(i), b = find(j); if (a !== b) parent[a] = b; }
-    }
 
-    const cls = new Map();
-    members0.forEach((m, i) => { const r = find(i); if (!cls.has(r)) cls.set(r, []); cls.get(r).push(m); });
+    // Document-frequency guard: token yang muncul di >30% judul grup adalah kata
+    // umum lokal (bukan entitas peristiwa) — tidak boleh dihitung "rare".
+    // Batas bawah 2 supaya grup kecil (2-3 artikel) tetap bisa merge.
+    const n = members0.length;
+    const df = new Map();
+    for (const m of members0) for (const t of m.rs) df.set(t, (df.get(t) || 0) + 1);
+    const dfMax = Math.max(2, Math.floor(n * 0.3));
+    const eff = members0.map(m => new Set([...m.rs].filter(t => (df.get(t) || 0) <= dfMax)));
+
+    const sharedCount = (i, j) => { let c = 0; for (const t of eff[i]) if (eff[j].has(t)) c++; return c; };
+    // gempa/erupsi/banjir di tempat sama dalam jendela singkat = satu rangkaian peristiwa,
+    // walau judul BMKG tidak berbagi entitas (Sigi: "sesar palolo" vs "gempa susulan")
+    const sameHaz = (i, j) => (cat === 'disaster' || cat === 'flood') && hz[i] && hz[i] === hz[j] &&
+      Math.abs((members0[i].p.ts || 0) - (members0[j].p.ts || 0)) <= (hz[i] === 'flood' ? 6 : 12) * 3600e3;
+
+    // Satu token langka saja TIDAK cukup — dua insiden berbeda di kota yang sama
+    // sering kebetulan berbagi satu nama. Butuh >=2 token langka, atau kekerabatan
+    // bencana (sameHaz). Klaster dibangun terhadap REPRESENTATIVE (anggota pertama),
+    // bukan union-find: rantai A-B-C tidak lagi menelan A dan C jadi satu pin.
+    const cls = [];
+    members0.forEach((m, i) => {
+      const cl = cls.find(c => sharedCount(c.rep, i) >= 2 || sameHaz(c.rep, i));
+      if (cl) cl.members.push(i); else cls.push({ rep: i, members: [i] });
+    });
 
     const used = new Set();   // prev eid hanya boleh diklaim satu cluster
-    for (const members of cls.values()) {
+    for (const { members: idxs } of cls) {
+      const members = idxs.map(i => members0[i]);
       members.sort((a, b) => repScore(b.p) - repScore(a.p) || (b.p.ts || 0) - (a.p.ts || 0));
       const rep = members[0].p;
       const rareU = new Set();

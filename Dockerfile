@@ -17,4 +17,4 @@ RUN python3 -m venv .venv \
  && .venv/bin/pip install --quiet curl_cffi
 
 EXPOSE 8787
-CMD ["node", "server.js"]
+CMD ["bash", "start.sh"]

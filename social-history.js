@@ -1,7 +1,20 @@
 'use strict';
 const SOC = require('./social');
+// AGE (24 jam) adalah batas KESEGARAN TAG saat retag. Window ingest di server.js
+// (48h/72h) sengaja LEBIH PANJANG: post yang lebih tua dari AGE tetap disimpan
+// tapi tidak ikut feed sampai ada konteks baru — jangan "perbaiki" jadi sama.
 const AGE = 24 * 3600e3;
-const keyOf = p => p.url || p.code || p.text || '';
+const keyOf = p => {
+  if (p.url || p.code) return p.url || p.code;
+  const text = p.text || '';
+  if (!text) return '';
+  // Teks tanpa url/code: dua post berbeda bisa berisi kalimat identik — hash
+  // created_at+author supaya tidak saling menimpa di map.
+  const h = String(p.created_at || '') + '|' + String(p.author || p.username || p.user || '');
+  let x = 5381;
+  for (let i = 0; i < h.length; i++) x = ((x << 5) + x + h.charCodeAt(i)) >>> 0;
+  return text + '#' + x.toString(36);
+};
 const tsOf = p => Number(p.ts) || Date.parse(p.created_at || '') || 0;
 // Huruf efektif setelah bersih-bersih: nolak post isi-minim seperti "#banjir".
 const bodyLen = s => String(s).replace(/https?:\/\/\S+/g, ' ').replace(/[#@]\S+/g, ' ').replace(/[^\p{L}\p{N}]+/gu, '').length;

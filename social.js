@@ -50,7 +50,9 @@ function socVi(t) {
 // ＃ fullwidth ikut dihitung; cashtag ($XXX) dihitung terpisah — >=3 + istilah
 // komersial/kripto = junk walau tanpa hashtag biasa.
 function socHashJunk(t) {
-  const s = String(t || '');
+  // URL distrip dulu (pola socNonLatin/socVi): fragmen t.co/tautan bisa ikut
+  // terbaca sebagai hashtag dan menggelembungkan rasio tag post yang legit.
+  const s = String(t || '').replace(/https?:\/\/\S+/g, ' ');
   const tags = s.match(/#[\p{L}\p{N}_]+/gu) || [];
   const n = tags.length + (s.match(/＃/g) || []).length;
   const cashtags = (s.match(/\$[\p{L}\p{N}]{2,}/gu) || []).length;
@@ -324,7 +326,9 @@ function socKeepX(p) {
   return true;
 }
 function socKeepTh(p) {
-  if (p.is_reply && (p.like_count || 0) < 5) return false;
+  // reply tanpa engagement dibuang — kecuali ia match topik (tag() sudah jalan
+  // lebih dulu dan mengisi p.topics), karena Threads itu reply-heavy
+  if (p.is_reply && (p.like_count || 0) < 5 && !(p.topics || []).length) return false;
   return true;
 }
 

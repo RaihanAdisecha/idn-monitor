@@ -2,7 +2,7 @@
 const SOC = require('./social');
 const HISTORY = require('./social-history');
 const ASSESS = require('./assessment');
-const http = require('http'), fs = require('fs'), path = require('path'), dns = require('dns').promises;
+const http = require('http'), fs = require('fs'), path = require('path'), dns = require('dns').promises, crypto = require('crypto');
 // muat .env sederhana (satu baris KEY=VALUE) agar TOMTOM_API_KEY bisa dari env
 try {
   const envPath = path.join(__dirname, '.env');
@@ -14,7 +14,16 @@ try {
   }
 } catch (e) {}
 let CFG = {}; try { CFG = JSON.parse(fs.readFileSync(path.join(__dirname, 'config.json'), 'utf8')); } catch (e) {}
-if (CFG.insecure_tls) process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
+// NODE_TLS_REJECT_UNAUTHORIZED=0 mematikan verifikasi sertifikat untuk SEMUA
+// koneksi proses (MITM trivial). Dulu diaktifkan oleh flag config.json — terlalu
+// mudah ter-trigger. Sekarang wajib env SITREP_INSECURE_TLS=1 secara eksplisit.
+if (process.env.SITREP_INSECURE_TLS === '1') process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
+// Gate /api/* (kecuali /api/ping): header x-sitrep-token harus cocok dengan token
+// efektif. SITREP_TOKEN dari env/.env menang; kalau kosong, token acak per-boot
+// dipakai dan di-inject ke index.html sebagai <meta name="sitrep-token"> supaya
+// frontend bisa membacanya. Tanpa env, proteksinya hanya token yang ikut
+// ter-serve — tetap menyaring crawler/abuse kasual, bukan pengaman penuh.
+const API_TOKEN = process.env.SITREP_TOKEN || crypto.randomBytes(16).toString('hex');
 const PORT = process.env.PORT || process.env.SERVER_PORT || CFG.port || 8787;
 const TOMTOM_KEY = process.env.TOMTOM_API_KEY || process.env.TOMTOM_KEY || (CFG.tomtom && (CFG.tomtom.api_key || CFG.tomtom.key)) || '';
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36';
@@ -134,11 +143,19 @@ function histLoad(file, map) {
     for (const p of j.posts || []) { const k = histKey(p); if (k) map.set(k, p); }
   } catch (e) {}
 }
+// Dockerfile menjalankan `node server.js` langsung (lewati start.sh `mkdir -p data`),
+// jadi folder data bisa belum ada. Buat dulu sebelum histLoad supaya baca/tulis
+// history runtime nggak gagal; recursive:true aman & idempoten kalau sudah ada.
+fs.mkdirSync(HIST_DIR, { recursive: true });
 histLoad(path.join(HIST_DIR, 'x-history.json'), xHist);
 histLoad(path.join(HIST_DIR, 'threads-history.json'), tHist);
 histRetag(xHist, SOC.socKeepX); histRetag(tHist, SOC.socKeepTh);
 histAstroturf(xHist); histAstroturf(tHist);
 const memoRetry = new Map();   // k -> jumlah retry gagal beruntun
+// cache & memoRetry diisi key dari input user (read:, xq:, thq:, tt:*, yt:*, dst)
+// — tanpa batas bisa membengkak. Map menjaga insertion order → evict tertua.
+const MEMO_CAP = 600;
+const lruCap = (m, cap) => { while (m.size > cap) m.delete(m.keys().next().value); };
 // good(v): predikat "payload ini layak jadi data". Hasil fetch yang resolve tapi
 // gagal (mis. {ok:false}) TIDAK boleh menghapus last-good — diperlakukan seperti throw.
 const memo = (k, ttl, fn, good) => {
@@ -150,15 +167,15 @@ const memo = (k, ttl, fn, good) => {
   };
   const fail = () => {
     const cur = cache.get(k), now = Date.now();
-    cache.set(k, { at: now - ttl + 15000, v: cur && cur.v });
+    cache.set(k, { at: now - ttl + 15000, v: cur && cur.v }); lruCap(cache, MEMO_CAP);
     const n = (memoRetry.get(k) || 0) + 1;
-    memoRetry.set(k, n);
+    memoRetry.set(k, n); lruCap(memoRetry, MEMO_CAP);
     if (n <= 5) setTimeout(kick, Math.min(90000, 15000 * n)).unref();
   };
   const accept = v => {
     const cur = cache.get(k);
     if (cur && cur.v !== undefined && isGood(cur.v) && !isGood(v)) return fail();
-    cache.set(k, { at: Date.now(), v }); memoRetry.delete(k); return v;
+    cache.set(k, { at: Date.now(), v }); lruCap(cache, MEMO_CAP); memoRetry.delete(k); return v;
   };
   const c = cache.get(k);
   if (c && c.v !== undefined) {
@@ -169,7 +186,7 @@ const memo = (k, ttl, fn, good) => {
   if (c && c.p) return c.p;
   const p = fn().then(v => accept(v),
     e => { cache.delete(k); memoRetry.delete(k); throw e; });
-  cache.set(k, { at: 0, v: undefined, p }); return p;
+  cache.set(k, { at: 0, v: undefined, p }); lruCap(cache, MEMO_CAP); return p;
 };
 // semaphore kecil: batasi konkurensi ke upstream yang sama (X GraphQL, worker Threads).
 // Lazy fetch antre di slot yang sama dengan sweep utama — lebih baik menunggu daripada kena 429.
@@ -193,11 +210,74 @@ function cacheFail(cache, ttl, data) {
   }
   cache.at = Date.now(); cache.data = data; return data;
 }
+/* Situs .go.id/.ac.id sering kirim leaf cert tanpa intermediate — browser/curl
+   menambal via AIA, undici fetch gagal 'unable to verify the first certificate'.
+   Fallback https.request TANPA verifikasi HANYA untuk error rantai sertifikat
+   (bukan untuk sembarang fetch) — domain tetap sama, risiko MITM setara curl -k. */
+const CERT_ERR = /UNABLE_TO_VERIFY_LEAF_SIGNATURE|UNABLE_TO_GET_ISSUER_CERT_LOCALLY|SELF_SIGNED_CERT_IN_CHAIN|DEPTH_ZERO_SELF_SIGNED_CERT|CERT_HAS_EXPIRED/i;
+const isCertErr = e => { const c = e && (e.cause || e); return CERT_ERR.test(String((c && c.code) || (c && c.message) || e && e.message || '')); };
+// Bangun objek Response-shim yang sama persis dengan keluaran lama (dipakai
+// mediaBody/mediaText/probeImage lewat headers.get / arrayBuffer / body ReadableStream).
+function shimResponse(code, buf, hdrs) {
+  return {
+    ok: code >= 200 && code < 300, status: code,
+    headers: { get: k => { const v = hdrs[String(k).toLowerCase()]; return v == null ? null : String(v); } },
+    text: async () => buf.toString('utf8'),
+    json: async () => JSON.parse(buf.toString('utf8')),
+    arrayBuffer: async () => buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength),
+    // probeImage/rdProbeFull streaming via r.body.getReader() — shim ReadableStream
+    body: typeof ReadableStream !== 'undefined' ? new ReadableStream({ start(c) { c.enqueue(buf); c.close(); } }) : null
+  };
+}
+function getNoVerify(url, opt = {}, ms = 10000, hops = 0) {
+  return new Promise((resolve, reject) => {
+    let u; try { u = new URL(url); } catch (e) { return reject(e); }
+    const lib = u.protocol === 'http:' ? require('http') : require('https');
+    const req = lib.request({
+      hostname: u.hostname, port: u.port || (u.protocol === 'https:' ? 443 : 80),
+      path: u.pathname + u.search, method: opt.method || 'GET', rejectUnauthorized: false, timeout: ms,
+      headers: { 'user-agent': UA, 'accept': '*/*', 'accept-language': 'id-ID,id;q=0.9,en;q=0.8', ...(opt.headers || {}) }
+    }, res => {
+      const code = res.statusCode || 0;
+      res.on('error', reject);
+      const hdrs = {};
+      for (const [k, v] of Object.entries(res.headers)) hdrs[k.toLowerCase()] = Array.isArray(v) ? v[0] : v;
+      // mediaGet/rdSafeGet pakai redirect:'manual' dan re-assert rdAssertPublic
+      // tiap hop. JANGAN ikuti 3xx di sini — kembalikan response redirect (status
+      // + header location) supaya loop merekalah yang memvalidasi hop berikutnya.
+      // Tanpa ini fallback sertifikat bisa diam-diam loncat ke http://127.0.0.1/
+      // dan membypass pengecekan SSRF.
+      if (opt.redirect === 'manual' && code >= 300 && code < 400) {
+        res.resume();
+        return resolve(shimResponse(code, Buffer.alloc(0), hdrs));
+      }
+      if (code >= 300 && code < 400 && res.headers.location && hops < 3) {
+        res.resume();
+        const nextUrl = new URL(res.headers.location, url).href;
+        // Tiap hop internal yang benar-benar diikuti tetap wajib lolos
+        // rdAssertPublic (DNS + rdPrivateIP): rejectUnauthorized:false bukan
+        // jalan pintas SSRF. rdAssertPublic async → dirantai lewat .then();
+        // kalau ia menolak, Promise luar ikut reject (blokir redirect).
+        return resolve(rdAssertPublic(nextUrl).then(() => getNoVerify(nextUrl, opt, ms, hops + 1)));
+      }
+      const chunks = []; let size = 0;
+      res.on('data', c => { size += c.length; if (size > 4e6) { req.destroy(new Error('body terlalu besar')); return; } chunks.push(c); });
+      res.on('end', () => resolve(shimResponse(code, Buffer.concat(chunks), hdrs)));
+    });
+    req.on('timeout', () => req.destroy(new Error('timeout')));
+    req.on('error', reject);
+    if (opt.body) req.write(typeof opt.body === 'string' ? opt.body : Buffer.from(opt.body));
+    req.end();
+  });
+}
 async function get(url, opt = {}, ms = 10000) {
   const ctl = new AbortController(), t = setTimeout(() => ctl.abort(), ms);
   try {
     return await fetch(url, { ...opt, signal: ctl.signal, redirect: opt.redirect || 'follow',
       headers: { 'user-agent': UA, 'accept': '*/*', 'accept-language': 'id-ID,id;q=0.9,en;q=0.8', ...(opt.headers || {}) } });
+  } catch (e) {
+    if (isCertErr(e)) return await getNoVerify(url, opt, ms);
+    throw e;
   } finally { clearTimeout(t); }
 }
 const dec = s => s.replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
@@ -275,6 +355,8 @@ function cleanTitle(t) {
   let s0 = String(t || '').trim();
   const pp = s0.indexOf(' | ');
   if (pp > 15) s0 = s0.slice(0, pp).trim();   // "Judul | NamaSitus" — pipe selalu suffix publisher
+  const pcm = s0.match(/\s*::\s*\S/);
+  if (pcm && pcm.index > 15) s0 = s0.slice(0, pcm.index).trim();   // "Judul :: NamaSitus" — pola feed lokal (mis. Berita Cilegon)
   let s = s0.replace(/\s[-–—]\s*(?:https?|www)\b[^\s]*(?:\)[^\s]*)?$/i, '').trim();
   for (let i = 0; i < 3; i++) {   // GN kadang dobel suffix: "judul - domain.id - PENERBIT"
     const m = s.match(/^(.{8,}?)\s[-–—]\s([A-Za-z0-9][A-Za-z0-9.&'®™ ()]{1,60})$/);
@@ -347,8 +429,19 @@ const CATS = [
 const SKIP_RE = /(pascabencana|pascagempa|pascabanjir|mitigasi|kesiapsiagaan|potensi bencana|rawan bencana|risiko bencana|kajian risiko|simulasi|edukasi|sosialisasi|pelatihan|antisipasi|siaga bencana|hadapi bencana|menghadapi bencana|peringatan dini|early warning|asuransi|operasi patuh|imbau|himbau|ingatkan|waspada|waspadai|ranperda|perda|godok|korupsi|dana bencana|tas bencana|go[- ]?bag|pusdalops|kebutuhan darurat|peralatan bencana|salurkan bantuan|menyalurkan|penyaluran|modus|ruu|boikot dirinya|joget|liga|top skor|voli|sepak bola|piala|kualifikasi|gaun|mahalini|fashion|film|sinema|bioskop|trailer|teaser|poster|nonton|netflix|zombie|mayat hidup|hantu|sekuel|layar lebar|sinetron|sinetrik|penghargaan|jasa raharja|warisan|turun-temurun|sepanjang 20\d\d|berdampak ke ekonomi|brasil|brazil|amerika serikat|filipina|thailand|malaysia|korea|jepang|tiongkok|china|inggris|prancis|perancis|paris|jerman|australia|india|pakistan|iran|israel|palestina|ukraina|rusia|gaza|poland|polandia|polonia|krakow|warsaw|warszawa|lublin|czechia|ceko|prague|austria|wina|vienna|finland|finlandia|singapura|singapore|suriah|syria|irak|iraq|mesir|egypt|libya|libia|maroko|morocco|aljazair|algeria|tunisia|sudan|ethiopia|kenya|ghana|myanmar|kamboja|cambodia|laos|srilanka|sri lanka|bangladesh|lebanon|yordania|jordan|yaman|yemen|oman|qatar|uea|hungaria|hungary|rumania|romania|bulgaria|serbia|kroasia|croatia|slowakia|slovakia|slovenia|belgia|belgium|irlandia|ireland|estonia|latvia|lithuania|belarus|mongolia|maladewa|maldives|timor leste|selandia baru|new zealand|kuba|cuba|jamaika|jamaica|haiti|nikaragua|kosta rika|costa rica|kolombia|colombia|venezuela|bolivia|ekuador|ecuador|peru|paraguay|uruguay|congo|rwanda|uganda|tanzania|zambia|zimbabwe|mozambique|angola|namibia|botswana|lesotho|madagascar|mauritius|somalia|eritrea|djibouti|afghanistan|bhutan|brunei|albania|armenia|azerbaijan|cyprus|iceland|kosovo|luxembourg|malta|moldova|montenegro|san marino|vatikan|vatican|monako|monaco|georgia|jordan|panama|senegal|cameroon|gambia|guinea|sierra leone|liberia|mauritania|burkina faso|tokyo|seoul|beijing|shanghai|hong kong|taipei|bangkok|hanoi|manila|kualalumpur|kathmandu|moskwa|moscow|berlin|rome|roma|madrid|amsterdam|brussels|zurich|stockholm|oslo|copenhagen|helsinki|dublin|budapest|bucharest|sofia|belgrade|zagreb|vilnius|riga|tallinn|minsk|kiev|kyiv|istanbul|ankara|tehran|baghdad|beirut|riyadh|cairo|tunis|algiers|rabat|tripoli|khartoum|nairobi|kampala|kigali|lusaka|harare|pretoria|mogadishu|bamako|dakar|abuja|lagos|accra|kinshasa|bangui|yaounde|conakry|lome|cotonou|abidjan|nouakchott|maseru|mbabane|gaborone|windhoek|maputo|antananarivo|moroni|port louis|sao paulo|rio de janeiro|brasilia|buenos aires|bogota|caracas|la paz|asuncion|montevideo|kingston|havana|santo domingo|port-au-prince|nassau|bridgetown|castries|paramaribo|managua|tegucigalpa|san salvador|san jose|guatemala city|mexico city|sucre|guayaquil)/i;
 const catMeta = id => CATS.find(c => c.id === id) || { id:'', label:'Insiden', sev:0.5, geo:true };
 const assessNews = t => SOC.socAssess(t);
-const catOf = t => {
-  const a = assessNews(t);
+// assessNews (socAssess) mahal dan dipanggil 2-3x per judul yang sama (kategori,
+// cek scope, field assessment). assessCycle() = memo lokal per satu siklus fetch:
+// judul sama → hasil sama, Map dibuang setelah fungsi caller selesai.
+const assessCycle = () => {
+  const m = new Map();
+  return t => {
+    let a = m.get(t);
+    if (!a) { a = assessNews(t); if (m.size > 8000) m.delete(m.keys().next().value); m.set(t, a); }
+    return a;
+  };
+};
+const catOf = (t, a) => {
+  a = a || assessNews(t);
   // Feed categorization = topic relevance, BUKAN signal eligibility.
   // events[] hanya untuk alarm/klaster; headline berita jarang punya EVENT_ACTION
   // jadi events kosong untuk sebagian besar judul legit.
@@ -370,12 +463,13 @@ const feedCatOf = id => FEED_CAT[String(id || '').toLowerCase().split('·').pop(
 const breakNorm = t => String(t).toLowerCase().replace(/\s+-\s+[^-]{2,45}$/, '').replace(/[^a-z0-9 ]/g, '').replace(/\s+/g, ' ').trim();
 const breaking = () => memo('breaking', 25000, async () => {
   const srcs = await news(), seen = new Set(), items = [];
-  const now = Date.now();
+  const now = Date.now(), aOf = assessCycle();
   let matched = 0;
   for (const s of srcs) {
     if (!s.ok) continue;
     for (const it of s.items) {
-      const cat = catOf(it.title);
+      const a = aOf(it.title);
+      const cat = catOf(it.title, a);
       if (!cat || catMeta(cat).geo === false) continue;
       const k = breakNorm(it.title).slice(0, 48);
       if (!k || seen.has(k)) continue;
@@ -385,7 +479,7 @@ const breaking = () => memo('breaking', 25000, async () => {
       if (!Number.isFinite(it.ts) || it.ts <= 0 || it.ts > now || age > 24 * 3600e3) continue;
       const recency = Math.max(0.12, Math.exp(-age / (16 * 3600e3)));
       const meta = catMeta(cat);
-      items.push({ ...it, assessment: assessNews(it.title), src: s.id, cat, label: meta.label, score: +(meta.sev * recency).toFixed(3) });
+      items.push({ ...it, assessment: a, src: s.id, cat, label: meta.label, score: +(meta.sev * recency).toFixed(3) });
     }
   }
   // Kandidat diambil stabil: per kategori terbaru, dedupe tajuk (content-key, bukan URL mentah).
@@ -695,18 +789,19 @@ const runThRaw = (spec, timeout) => new Promise((resolve, reject) => {
 const runTh = (spec, timeout) => thSem(() => runThRaw(spec, timeout));
 function thCollect(rs, extra) {
   const now = Date.now(), batch = [], errs = [];
+  let nOld = 0, nTag = 0;
   for (const r of rs) {
     if (r.status === 'rejected') { errs.push({ q: '*', err: String(r.reason && r.reason.message || r.reason) }); continue; }
     for (const e of r.value.errs || []) errs.push(e);
     for (const p of r.value.posts || []) {
       if (!p || !p.code || !p.text) continue;
-      if (p.created_at && now - Date.parse(p.created_at) > 72 * 3600e3) continue;
-      if (!tagTh(p, extra)) continue;
+      if (p.created_at && now - Date.parse(p.created_at) > 72 * 3600e3) { nOld++; continue; }
+      if (!tagTh(p, extra)) { nTag++; continue; }
       p.qs = p.topics.slice();
       batch.push(p);
     }
   }
-  return { batch, errs };
+  return { batch, errs, dropped: { old: nOld, tag: nTag } };
 }
 // Watchlist profil Threads: akun dari config (threads.watch) + penulis yang
 // post-nya sudah lolos klasifier di history — dinamis, bukan tebakan handle.
@@ -738,7 +833,7 @@ const threads = () => memo('threads', 300000, async () => {
   const forced = new Set(ADHOC.map(a => a.id).concat(hotTop));
   const chosen = new Set();
   // throttle sejak siklus pertama: burst ~30 request langsung memicu 429 Threads
-  const N = 13, pri = t => ((now - (thSeen.get(t) || 0)) / 60000) * (1 + Math.min(heat(t), 60) / 15);
+  const N = 18, pri = t => ((now - (thSeen.get(t) || 0)) / 60000) * (1 + Math.min(heat(t), 60) / 15);
   const rest = [...byTopic.keys()].filter(t => !forced.has(t)).sort((a, b) => pri(b) - pri(a));
   let used = 0;
   for (const t of forced) { chosen.add(t); used += byTopic.get(t).length; }
@@ -747,7 +842,7 @@ const threads = () => memo('threads', 300000, async () => {
   const searches = [...new Set([...chosen].flatMap(t => byTopic.get(t)))];
   const watch = [...new Set(TH_WATCH.concat(dynWatch(now)))];
   // profil watchlist: semua kalau ≤6, rotasi sisanya per siklus
-  const wN = Math.min(8, watch.length), wOff = watch.length ? (thTick - 1) % watch.length : 0;
+  const wN = Math.min(10, watch.length), wOff = watch.length ? (thTick - 1) % watch.length : 0;
   const profiles = watch.length <= wN ? watch.slice() :
     Array.from({ length: wN }, (_, i) => watch[(wOff + i) % watch.length]);
   const chunks = [{ s: [], p: [] }, { s: [], p: [] }, { s: [], p: [] }];
@@ -756,10 +851,11 @@ const threads = () => memo('threads', 300000, async () => {
   const rs = await Promise.allSettled(chunks.filter(c => c.s.length || c.p.length)
     .map(c => runTh({ searches: c.s, profiles: c.p }, 150000)));
   if (rs.every(r => r.status === 'rejected')) throw rs[0].reason;
-  const { batch, errs } = thCollect(rs);
+  const { batch, errs, dropped } = thCollect(rs);
   histMerge(tHist, batch, HIST_MAX.th, path.join(HIST_DIR, 'threads-history.json'));
   const posts = [...tHist.values()].sort((a, b) => histTs(b) - histTs(a));
-  return { ok: rs.some(r => r.status === 'fulfilled' && (r.value.posts?.length > 0 || !r.value.errs?.length)), posts, errs, ...socMeta(), at: Date.now(), partial: errs.length > 0 };
+  const newestTs = posts.length ? histTs(posts[0]) : 0;
+  return { ok: rs.some(r => r.status === 'fulfilled' && (r.value.posts?.length > 0 || !r.value.errs?.length)), posts, errs, ingested: batch.length, newestTs, dropped, ...socMeta(), at: Date.now(), partial: errs.length > 0 };
 }, v => (v.posts || []).length > 0);
 /* ---------- Threads lazy: topik on-demand (sebelumnya nggak ada, makanya chip kosong) ---------- */
 const thqLazy = q => memo('thq:' + String(q).toLowerCase(), 600000, async () => {
@@ -886,16 +982,17 @@ const HEALTH_EVENT_RE = new RegExp('(?:' + HEALTH_DZ + '|' + HEALTH_EVT + ')', '
 const plotOk = (title, cat) => !NOT_EVENT_RE.test(title) && (cat !== 'kesehatan' || HEALTH_EVENT_RE.test(title));
 const GEO_WINDOW = 24 * 3600e3;
 const incidents = () => memo('incidents', 55000, async () => {
-  const srcs = await news(), now = Date.now(), out = [], seen = new Set();
+  const srcs = await news(), now = Date.now(), out = [], seen = new Set(), aOf = assessCycle();
   for (const s of srcs) {
     if (!s.ok) continue;
     for (const it of s.items) {
-      const cat = catOf(it.title);
+      const a = aOf(it.title);
+      const cat = catOf(it.title, a);
       if (!cat || catMeta(cat).geo === false) continue;
       // pin hanya untuk kejadian berscope Indonesia — catOf sudah membuang
       // finding 'foreign', tapi 'unknown' + tempat lemah (desa/poi) masih bisa
       // lolos (mis. "penembakan di Alun-alun Krakow Polandia" → desa Alun-Alun).
-      const sc = assessNews(it.title);
+      const sc = a;
       if (sc.findings.length && sc.findings.every(f => f.scope !== 'Indonesia')) continue;
       const age = it.ts ? Math.max(0, now - it.ts) : 12 * 3600e3;
       if (!Number.isFinite(it.ts) || it.ts <= 0 || it.ts > now || age > GEO_WINDOW) continue;                       // jendela sama dengan /api/situation → angka sinkron
@@ -913,7 +1010,7 @@ const incidents = () => memo('incidents', 55000, async () => {
         out.push({ name: pl.name, la: pl.la, lo: pl.lo, prec: pl.prec, prov: pl.prov, kind: cat,
           label: catMeta(cat).label, title: it.title, multi: places.length > 1 || undefined,
           desc: String(it.desc || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 400) || undefined,
-          assessment: assessNews(it.title), src: s.id, url: it.url, ts: it.ts, weight: +(heat / Math.sqrt(places.length)).toFixed(3) });
+          assessment: a, src: s.id, url: it.url, ts: it.ts, weight: +(heat / Math.sqrt(places.length)).toFixed(3) });
     }
   }
   out.sort((a, b) => b.ts - a.ts);
@@ -933,13 +1030,14 @@ const incidents = () => memo('incidents', 55000, async () => {
 
 /* ---------- Situasi: agregat kategori + wilayah buat panel dossier ---------- */
 const situation = () => memo('situation', 45000, async () => {
-  const srcs = await news(), now = Date.now(), items = [], seen = new Set();
+  const srcs = await news(), now = Date.now(), items = [], seen = new Set(), aOf = assessCycle();
   const stats = {}; for (const c of CATS) stats[c.id] = 0;
   const regions = new Map();
   for (const s of srcs) {
     if (!s.ok) continue;
     for (const it of s.items) {
-      const cat = catOf(it.title);
+      const a = aOf(it.title);
+      const cat = catOf(it.title, a);
       if (!cat) continue;
       const age = it.ts ? now - it.ts : 12 * 3600e3;
       if (!Number.isFinite(it.ts) || it.ts <= 0 || it.ts > now || age > GEO_WINDOW) continue;
@@ -949,7 +1047,7 @@ const situation = () => memo('situation', 45000, async () => {
       const place = placeOf(it.title);
       const recency = Math.max(0.12, Math.exp(-age / (24 * 3600e3)));
       const meta = catMeta(cat);
-      items.push({ title: it.title, url: it.url, src: s.id, ts: it.ts, assessment: assessNews(it.title),
+      items.push({ title: it.title, url: it.url, src: s.id, ts: it.ts, assessment: a,
         cat, label: meta.label, place: place ? place.name : '',
         weight: +(meta.sev * recency).toFixed(3) });
       stats[cat]++;
@@ -1084,6 +1182,8 @@ const worldIndex = () => memo('worldidx', 60000, async () => {
   }
   return out;
 });
+// 45 dtk, jangan diturunkan ke 15 lagi: TTL 15 dtk melipatgandakan request ke
+// upstream TradingView/Yahoo (rawan rate-limit/429 tanpa manfaat data segar).
 const market = () => memo('market', 45000, async () => {
   const cmdTick = m => COMMODITIES.filter(c => c[2] === m).map(c => c[0]);
   const [idx, fx, cmdF, cmdC, ihsgR, idrQ, world] = await Promise.all([
@@ -1207,7 +1307,7 @@ const VOLCANO_COORDS = {
   'Dukono':[1.69,127.88],'Sangeang Api':[-8.20,119.07],'Bromo':[-7.94,112.95],'Agung':[-8.34,115.51],
   'Sinabung':[3.17,98.39],'Kerinci':[-1.70,101.26],'Dempo':[-4.02,103.13],'Papandayan':[-7.32,107.73],
   'Guntur':[-7.25,107.85],'Batu Tara':[-7.79,123.58],'Karangetang':[2.78,125.41],'Lokon':[1.37,124.83],
-  'Dempo':[-4.02,103.13],'Kelimutu':[-8.77,122.80],'Egon':[-8.68,122.45],'Lewotobi':[-8.54,122.77],
+  'Kelimutu':[-8.77,122.80],'Egon':[-8.68,122.45],'Lewotobi':[-8.54,122.77],
   'Lewotolo':[-8.27,123.50],'Paluweh':[-8.32,121.78],'Ili Lewotolok':[-8.27,123.50],'Sirung':[-8.49,124.13],
   'Namlegung':[-8.07,123.40],'Iya':[-8.89,121.63],'Batur':[-8.24,115.38],'Gamalama':[-8.08,127.32],
   'Dieng':[-7.20,109.90],'Slamet':[-7.24,109.21],'Lawu':[-7.63,111.19],'Merbabu':[-7.45,110.44],
@@ -1281,7 +1381,7 @@ async function radar(){
       host: String(d.host || 'https://tilecache.rainviewer.com'),
       frames: past.map(f => ({ time: Number(f.time), path: String(f.path || '') })), at: Date.now() };
     return radarCache.data;
-  } catch(e) { return { ok: false, err: String(e.message||e).slice(0,150), frames: [] }; }
+  } catch(e) { return cacheFail(radarCache, 300000, { ok: false, err: String(e.message||e).slice(0,150), frames: [] }); }
 }
 
 /* ---------- NASA FIRMS hotspot, queried through firms2 ---------- */
@@ -1393,10 +1493,8 @@ async function bmkgModelRun(){
   try {
     const r = await get('https://satellite.bmkg.go.id/api22/modelrun', {}, 15000);
     const d = await r.json();
-    modelRunCache.at = Date.now();
-    modelRunCache.data = { ok: true, himawari9: d.himawari9 || [], at: Date.now() };
-    return modelRunCache.data;
-  } catch(e) { return { ok: false, err: String(e.message || e).slice(0,150), himawari9: [] }; }
+    return cacheFail(modelRunCache, 300000, { ok: true, himawari9: d.himawari9 || [], at: Date.now() });
+  } catch(e) { return cacheFail(modelRunCache, 300000, { ok: false, err: String(e.message || e).slice(0,150), himawari9: [] }); }
 }
 
 /* ---------- Satellite product metadata (HEAD only, no content copied) ---------- */
@@ -1420,9 +1518,9 @@ async function satelliteProducts(){
       return { ...p, lastModified: null, contentLength: null, status: 0, error: String(e.message || e).slice(0,150) };
     }
   }));
-  satelliteCache.at = Date.now();
-  satelliteCache.data = { ok: products.some(p => p.status === 200), products, attribution: 'BMKG · Himawari-9', at: Date.now() };
-  return satelliteCache.data;
+  // cacheFail: semua probe gagal (ok:false) tidak menimpa data bagus terakhir —
+  // mencegah fetch storm ke BMKG saat upstream down.
+  return cacheFail(satelliteCache, 600000, { ok: products.some(p => p.status === 200), products, attribution: 'BMKG · Himawari-9', at: Date.now() });
 }
 
 /* ---------- WIND GRID: Open-Meteo untuk leaflet-velocity (format grib2json) ---------- */
@@ -1514,8 +1612,9 @@ async function alerts(){
       const res = await Promise.all(batch.map(async d => {
         if (!d.link) return null;
         try {
-          const rr = await get(d.link, {}, 15000);
-          const cx = await rr.text();
+          // link CAP dari feed BMKG — pihak ketiga, assert publik per hop redirect.
+          const { r: rr } = await mediaGet(d.link, 15000);
+          const cx = await mediaText(rr, 1 << 20);   // CAP XML — cap 1MB
           const event = parseCapField(cx, 'event') || parseCapField(cx, 'headline') || d.title;
           const headline = parseCapField(cx, 'headline') || d.title;
           const description = parseCapField(cx, 'description') || d.desc;
@@ -1654,7 +1753,13 @@ transit();
 const thumbCache = new Map();
 const gnCache = new Map();
 
-const PRIVATE_HOST = /^(localhost|0\.0\.0\.0|127\.|10\.|192\.168\.|169\.254\.|172\.(1[6-9]|2\d|3[01])\.|\[?::1\]?)(?::|$)/i;
+// Host privat/reserved yang ditolak TANPA perlu DNS (TOCTOU-proof untuk literal IP).
+// Dulu pola `127.` + (?::|$) tak pernah cocok dengan quad penuh spt 127.0.0.1
+// (blokirnya mengandalkan rdPrivateIP lewat DNS). Kini cocokkan quad PENUH, plus
+// CGNAT 100.64/10, benchmarking 198.18/15, 192.0.0.0/24 & 192.0.2.0/24,
+// 0.0.0.0/8, dan IPv6 loopback/unspecified/ULA fc00::/7/link-local/multicast.
+// Host publik (8.8.8.8, 2001:db8::1, domain biasa) tetap lolos.
+const PRIVATE_HOST = /^(?:localhost|0\.(?:\d{1,3}\.){2}\d{1,3}|10\.(?:\d{1,3}\.){2}\d{1,3}|127\.(?:\d{1,3}\.){2}\d{1,3}|100\.(?:6[4-9]|7\d|1[01]\d|12[0-7])\.(?:\d{1,3}\.)\d{1,3}|169\.254\.(?:\d{1,3}\.)\d{1,3}|172\.(?:1[6-9]|2\d|3[01])\.(?:\d{1,3}\.)\d{1,3}|192\.0\.0\.\d{1,3}|192\.0\.2\.\d{1,3}|192\.168\.(?:\d{1,3}\.)\d{1,3}|198\.(?:18|19)\.(?:\d{1,3}\.)\d{1,3}|\[?(?:::1|::|::ffff:(?:127|10|0|169\.254|192\.168|172\.(?:1[6-9]|2\d|3[01])|100\.(?:6[4-9]|7\d|1[01]\d|12[0-7])|198\.(?:18|19))\.|f[cd][0-9a-f]{2}:|fe[89ab][0-9a-f]:|ff[0-9a-f]{2}:)[0-9a-f:.]*\]?)(?::|$)/i;
 function publicURL(u) {
   try {
     const x = new URL(u);
@@ -1810,7 +1915,9 @@ function imageSize(buf) {
 }
 
 async function probeImage(u, referer) {
-  const r = await get(u, { headers: { accept: 'image/avif,image/webp,image/apng,image/*,*/*;q=0.8', ...(referer ? { referer } : {}) } }, 9000);
+  // URL gambar berasal dari HTML artikel pihak ketiga — wajib assert publik per
+  // hop redirect (mediaGet), bukan get() yang follow buta (blind SSRF).
+  const { r } = await mediaGet(u, 9000, { accept: 'image/avif,image/webp,image/apng,image/*,*/*;q=0.8', ...(referer ? { referer } : {}) });
   if (!r.ok) return null;
   const ct = r.headers.get('content-type') || '';
   // CDN berita sering kirim application/octet-stream — imageSize() tetap jadi hakim
@@ -1916,13 +2023,22 @@ function ogReuse(host, imgUrl, article) {
    supaya reader tidak fetch artikel dua kali */
 async function thumbFromHtml(rawHtml, article) {
   const html = String(rawHtml || '').slice(0, 1800000);
-  // body scan dibatasi ke container artikel (rdArticleCandidates[0] = paling presisi)
-  // dan dipotong sebelum seksi "berita terkait" — menghilangkan thumbnail related/news lain
-  let bodySrc = rdArticleCandidates(html)[0] || html;
-  bodySrc = rdStripCardLinks(rdStripJunkContainers(bodySrc), article);   // buang author box/related/widget sebelum scan gambar body
-  const relAt = bodySrc.search(/baca juga|berita terkait|artikel terkait|lihat juga|bacaan|recommended|baca selengkapnya/i);
-  if (relAt > 1500) bodySrc = bodySrc.slice(0, relAt);
-  const { meta, body } = sourceImages(html, article, bodySrc);
+  // body scan per kandidat container (presisi → html penuh): container pertama bisa
+  // berupa wrapper teks tanpa figure (mis. detail-content vs detail-image sibling),
+  // jadi gambar hero harus diambil dari kandidat mana pun yang memuatnya
+  const imgSeen = new Set();
+  const bodyAll = [];
+  for (const cand of rdArticleCandidates(html)) {
+    let seg = rdStripCardLinks(rdStripJunkContainers(cand), article);   // buang author box/related/widget sebelum scan gambar body
+    const relAt = seg.search(/baca juga|berita terkait|artikel terkait|lihat juga|bacaan|recommended|baca selengkapnya/i);
+    if (relAt > 1500) seg = seg.slice(0, relAt);
+    for (const c of sourceImages(html, article, seg).body) {
+      if (imgSeen.has(c.url)) continue;
+      imgSeen.add(c.url); bodyAll.push(c);
+    }
+  }
+  const { meta } = sourceImages(html, article, '');
+  const body = bodyAll;
   const host = new URL(article).hostname;
   const probe = async (c) => {
     const img = upgradeImage(c.url);
@@ -1973,11 +2089,18 @@ async function thumb(u) {
     article = await decodeGNews(u);
     if (article === u) throw new Error('gagal resolve google news');
   }
-  let r = null, lastErr = null;
+  // article bisa arbitrary (hasil decode GN) — pastikan publik SEKALI di sini
+  // supaya fallback CORS-proxy di bawah tidak jadi oracle ke host privat.
+  await rdAssertPublic(article);
+  let r = null, lastErr = null, baseUrl = article;
   for (let i = 0; i < 2; i++) {
     try {
-      r = await get(article, { headers: article !== u ? { referer: 'https://news.google.com/' } : {} }, 12000);
-      if (r.ok) break;
+      // mediaGet: article bisa hasil decode Google News (arbitrary) — assert
+      // DNS+IP publik di tiap hop redirect; proxy fallback juga lewat mediaGet
+      // supaya redirect proxy tidak jadi oracle ke host privat.
+      const g = await mediaGet(article, 12000, article !== u ? { referer: 'https://news.google.com/' } : {});
+      r = g.r;
+      if (r.ok) { baseUrl = g.url; break; }
       lastErr = new Error('HTTP ' + r.status);
     } catch (e) { lastErr = e; }
     if (i === 0) await new Promise(res => setTimeout(res, 700));
@@ -1986,26 +2109,28 @@ async function thumb(u) {
     // 403/timeout langsung → coba proxy publik (sama seperti feed berita)
     for (const px of RD_PROXIES.slice(0, 2)) {
       try {
-        const pr = await get(px(article), {}, 12000);
-        if (pr.ok) { r = pr; break; }
+        const g = await mediaGet(px(article), 12000);
+        if (g.r.ok) { r = g.r; break; }
       } catch (e) {}
     }
   }
   if (!r || !r.ok) throw lastErr || new Error('fetch gagal');
-  let html = await r.text();
+  let html;
+  try { html = await mediaText(r, 3 << 20); }   // halaman artikel — cap 3MB
+  catch (e) { throw new Error('halaman terlalu besar'); }
   // HTTP 200 tapi isinya halaman challenge/JS-shell (mediaindonesia dll):
   // tidak ada meta og sama sekali → coba proxy publik untuk HTML asli
   if (html.length < 15000 && !/<meta[^>]+(?:property|name)=["']og:/i.test(html)) {
     for (const px of RD_PROXIES.slice(0, 2)) {
       try {
-        const pr = await get(px(article), {}, 12000);
-        if (!pr.ok) continue;
-        const t = await pr.text();
+        const g = await mediaGet(px(article), 12000);
+        if (!g.r.ok) continue;
+        const t = await mediaText(g.r, 3 << 20);
         if (t.length > html.length) { html = t; break; }
       } catch (e) {}
     }
   }
-  const v = await thumbFromHtml(html, article);
+  const v = await thumbFromHtml(html, baseUrl);
   thumbCache.set(u, { v, at: Date.now() });
   if (thumbCache.size > 200) thumbCache.delete(thumbCache.keys().next().value);
   return v;
@@ -2016,12 +2141,17 @@ const IMG_HOSTS = ['fbcdn.net', 'cdninstagram.com', 'unavatar.io', 'googleuserco
 const imgOK = u => { try { const h = new URL(u); return h.protocol === 'https:' && IMG_HOSTS.some(d => h.hostname === d || h.hostname.endsWith('.' + d)); } catch (e) { return false; } };
 async function img(u, res) {
   if (!u || !imgOK(u)) { res.writeHead(403); return res.end('host tidak diizinkan'); }
-  const r = await get(u, {}, 12000);
+  // mediaGet: redirect manual + rdAssertPublic/imgOK divalidasi ulang tiap hop —
+  // redirect ke IP privat tidak bisa lagi bypass allowlist hostname.
+  let r;
+  try { ({ r } = await mediaGet(u, 12000, {}, imgOK)); }
+  catch (e) { res.writeHead(502); return res.end(); }
   if (!r.ok) { res.writeHead(r.status); return res.end(); }
   const ct = r.headers.get('content-type') || '';
   if (!/^image\//i.test(ct)) { res.writeHead(415); return res.end('bukan gambar'); }
-  const buf = Buffer.from(await r.arrayBuffer());
-  if (buf.length > (2 << 20)) { res.writeHead(413); return res.end('terlalu besar'); }
+  let buf;
+  try { buf = await mediaBody(r, 2 << 20); }
+  catch (e) { res.writeHead(/terlalu besar/.test(e.message) ? 413 : 502); return res.end('terlalu besar'); }
   res.writeHead(200, { 'content-type': ct, 'cache-control': 'public, max-age=3600', 'access-control-allow-origin': '*' });
   res.end(buf);
 }
@@ -2029,44 +2159,67 @@ async function img(u, res) {
 /* ---------- CCTV: proxy HLS (CORS/hotlink/mixed-content aman) + cek hidup ---------- */
 const hostOK = u => { try { const h = new URL(u).hostname; return (CFG.cctv_hosts || ['balitower.co.id', 'jakarta.go.id']).concat(CFG.tv_hosts || []).some(d => h === d || h.endsWith('.' + d)); } catch (e) { return false; } };
 const isTvHost = u => { try { const h = new URL(u).hostname; return (CFG.tv_hosts || []).some(d => h === d || h.endsWith('.' + d)); } catch (e) { return false; } };
-const px = u => '/hls?u=' + encodeURIComponent(u);
+// token disisipkan ke URL rewrite supaya segmen/URI turunan tetap lolos gate
+// (/hls /vhs digate — request sudah terauth saat playlist dibuat, aman disebar).
+const px = u => '/hls?u=' + encodeURIComponent(u) + '&token=' + encodeURIComponent(API_TOKEN);
 async function hls(u, res) {
   if (!hostOK(u)) { res.writeHead(403); return res.end('host tidak diizinkan'); }
   // TV: tanpa referer. Detik/CNN menolak referer localhost (403) tapi menerima permintaan kosong.
   const hdrs = isTvHost(u) ? {} : { referer: 'https://smartcity.jakarta.go.id/', origin: 'https://smartcity.jakarta.go.id' };
-  const r = await get(u, { headers: hdrs }, 12000);
-  const ct = r.headers.get('content-type') || '';
   const base = { 'access-control-allow-origin': '*', 'cache-control': 'no-store' };
+  // mediaGet: IP publik + hostOK dicek ulang di tiap hop redirect (anti-SSRF).
+  let g;
+  try { g = await mediaGet(u, 12000, hdrs, hostOK); }
+  catch (e) { res.writeHead(502, base); return res.end(); }
+  const r = g.r, furl = g.url;
+  const ct = r.headers.get('content-type') || '';
   if (!r.ok) { res.writeHead(r.status, base); return res.end(); }
-  if (/mpegurl/i.test(ct) || /\.m3u8(\?|$)/.test(u)) {
-    const txt = (await r.text()).split('\n').map(l => {
+  if (/mpegurl/i.test(ct) || /\.m3u8(\?|$)/.test(furl)) {
+    let txt;
+    try { txt = await mediaText(r, 2 << 20); }   // playlist m3u8 — cap 2MB
+    catch (e) { res.writeHead(502, base); return res.end(); }
+    txt = txt.split('\n').map(l => {
       const t = l.trim(); if (!t) return l;
-      if (t[0] === '#') return t.replace(/URI="([^"]+)"/g, (m, p) => 'URI="' + px(new URL(p, u).href) + '"');
-      return px(new URL(t, u).href);
+      if (t[0] === '#') return t.replace(/URI="([^"]+)"/g, (m, p) => 'URI="' + px(new URL(p, furl).href) + '"');
+      return px(new URL(t, furl).href);
     }).join('\n');
     res.writeHead(200, { ...base, 'content-type': 'application/vnd.apple.mpegurl' }); return res.end(txt);
   }
-  res.writeHead(200, { ...base, 'content-type': ct || 'video/mp2t' }); res.end(Buffer.from(await r.arrayBuffer()));
+  let buf;
+  try { buf = await mediaBody(r, 10 << 20); }   // segmen .ts — cap 10MB
+  catch (e) { res.writeHead(/terlalu besar/.test(e.message) ? 413 : 502, base); return res.end(); }
+  res.writeHead(200, { ...base, 'content-type': ct || 'video/mp2t' }); res.end(buf);
 }
 // proxy video untuk instant reader: CDN berita (vod.detik dll) menolak Referer localhost → 403.
 // Server fetch tanpa referer; playlist m3u8 ditulis ulang rekursif lewat endpoint yang sama.
-const vhsPx = u => '/vhs?u=' + encodeURIComponent(u);
+const vhsPx = u => '/vhs?u=' + encodeURIComponent(u) + '&token=' + encodeURIComponent(API_TOKEN);
 async function vhs(u, res) {
   let href;
   try { href = new URL(u).href; if (!/^https?:$/.test(new URL(href).protocol)) throw 0; } catch (e) { res.writeHead(400); return res.end('url tidak valid'); }
-  const r = await get(href, { headers: {} }, 15000);
-  const ct = r.headers.get('content-type') || '';
   const base = { 'access-control-allow-origin': '*', 'cache-control': 'no-store' };
+  // Dulu ini full SSRF: sembarang http(s) + redirect diikuti buta. Sekarang
+  // rdAssertPublic per hop (DNS → tolak IP privat/loopback) + cap ukuran body.
+  let g;
+  try { g = await mediaGet(href, 15000, {}); }
+  catch (e) { res.writeHead(502, base); return res.end(); }
+  const r = g.r, furl = g.url;
+  const ct = r.headers.get('content-type') || '';
   if (!r.ok) { res.writeHead(r.status, base); return res.end(); }
-  if (/mpegurl/i.test(ct) || /\.m3u8(\?|#|$)/.test(href)) {
-    const txt = (await r.text()).split('\n').map(l => {
+  if (/mpegurl/i.test(ct) || /\.m3u8(\?|#|$)/.test(furl)) {
+    let txt;
+    try { txt = await mediaText(r, 2 << 20); }   // playlist — cap 2MB
+    catch (e) { res.writeHead(502, base); return res.end(); }
+    txt = txt.split('\n').map(l => {
       const t = l.trim(); if (!t) return l;
-      if (t[0] === '#') return t.replace(/URI="([^"]+)"/g, (m, p) => 'URI="' + vhsPx(new URL(p, href).href) + '"');
-      return vhsPx(new URL(t, href).href);
+      if (t[0] === '#') return t.replace(/URI="([^"]+)"/g, (m, p) => 'URI="' + vhsPx(new URL(p, furl).href) + '"');
+      return vhsPx(new URL(t, furl).href);
     }).join('\n');
     res.writeHead(200, { ...base, 'content-type': 'application/vnd.apple.mpegurl' }); return res.end(txt);
   }
-  res.writeHead(200, { ...base, 'content-type': ct || 'video/mp4' }); res.end(Buffer.from(await r.arrayBuffer()));
+  let buf;
+  try { buf = await mediaBody(r, 20 << 20); }   // mp4/segmen — cap 20MB
+  catch (e) { res.writeHead(/terlalu besar/.test(e.message) ? 413 : 502, base); return res.end(); }
+  res.writeHead(200, { ...base, 'content-type': ct || 'video/mp4' }); res.end(buf);
 }
 const camList = () => { try { return JSON.parse(fs.readFileSync(HTML, 'utf8').match(/id="cam-data">([\s\S]*?)<\/script>/)[1]); } catch (e) { return []; } };
 const alive = () => memo('alive', 150000, async () => {
@@ -2105,7 +2258,7 @@ const ID_CITIES = [
   ['Kendari',-3.98,122.51],['Palangga',-5.98,122.75],['Mamuju',-2.68,118.9],['Ternate',0.79,127.38],
   ['Ambon',-3.7,128.18],['Jayapura',-2.53,140.72],['Merauke',-8.57,140.4],['Sorong',-0.88,131.25],
   ['Lhokseumawe',5.17,97.15],['Sibolga',1.75,98.79],['Tegal',-6.87,109.14],['Purwokerto',-7.42,109.24],
-  ['Cilacap',-7.73,109.05],['Pekalongan',-6.89,109.68],['Tegal',-6.87,109.14],['Salatiga',-7.31,110.5],
+  ['Cilacap',-7.73,109.05],['Pekalongan',-6.89,109.68],['Salatiga',-7.31,110.5],
   ['Pati',-6.75,111.04],['Rembang',-6.7,111.34],['Pacitan',-8.2,111.18],['Ngawi',-7.6,111.47],
   ['Lumajang',-8.14,113.23],['Probolinggo',-7.75,113.21],['Pasuruan',-7.65,112.91],['Sidoarjo',-7.45,112.72],
   ['Gresik',-7.16,112.65],['Mojokerto',-7.47,112.43],['Blitar',-8.1,112.17],['Tulungagung',-8.07,111.9],
@@ -2142,6 +2295,9 @@ function idRegion(la, lo){
 /* IP datacenter (Railway) diblokir situs pemda/pemerintah — fallback lewat public proxy
    seperti news(). Proxy dipakai hanya kalau direct gagal. */
 async function cctvFetch(url, ms, headers){
+  // url berasal dari sumber eksternal (halaman pemda) — cek publik dulu; kalau
+  // DNS sedang gagal, attempt direct tetap throw sendiri dan proxy masih dicoba.
+  try { await rdAssertPublic(url); } catch (e) {}
   const attempts = [url,
     'https://api.codetabs.com/v1/proxy?quest=' + encodeURIComponent(url),
     'https://api.allorigins.win/raw?url=' + encodeURIComponent(url),
@@ -2150,8 +2306,8 @@ async function cctvFetch(url, ms, headers){
   for (const u of attempts) {
     try {
       // header hanya untuk attempt direct — proxy publik tidak meneruskan header custom
-      const r = await get(u, u === url && headers ? { headers } : {}, ms);
-      if (r.ok) return await r.text();
+      const { r } = await mediaGet(u, ms, u === url && headers ? headers : {});
+      if (r.ok) return await mediaText(r, 3 << 20);   // halaman CCTV ~1MB — cap 3MB
       lastErr = 'HTTP ' + r.status;
     } catch (e) { lastErr = String(e.message || e); }
   }
@@ -2230,9 +2386,10 @@ function hlsLines(t){ return t.split('\n').map(s => s.trim()).filter(s => s && !
 async function probeHls(url, depth){
   if (depth > 3) return false;
   try {
-    const r = await get(url, { headers: HLS_UA }, 7000);
+    // URL cam berasal dari data halaman pihak ketiga — assert publik per hop.
+    const { r, url: furl } = await mediaGet(url, 7000, HLS_UA);
     if (!r.ok) return false;
-    const t = await r.text();
+    const t = await mediaText(r, 1 << 20);   // playlist — cap 1MB
     if (!t.includes('#EXTM3U')) return false;
     const lines = hlsLines(t);
     if (!lines.length) return false;
@@ -2240,15 +2397,15 @@ async function probeHls(url, depth){
     if (/\.ts(\?|$)/i.test(first) || first.startsWith('http') && /\.(ts|m4s)(\?|$)/i.test(first)) {
       // ini media playlist — cek segmen pertama bisa di-fetch (Range 4KB, bukan full segmen)
       try {
-        const seg = new URL(first, url).href;
-        const sr = await get(seg, { headers: { ...HLS_UA, range: 'bytes=0-4096' } }, 8000);
+        const seg = new URL(first, furl).href;
+        const { r: sr } = await mediaGet(seg, 8000, { ...HLS_UA, range: 'bytes=0-4096' });
         if (!sr.ok && sr.status !== 206) return false;
-        const buf = await sr.arrayBuffer();
+        const buf = await mediaBody(sr, 1 << 20);   // range 4KB — cap 1MB jaga-jaga
         return buf.byteLength > 500;
       } catch (e) { return false; }
     }
     // master playlist → recurse ke variant pertama
-    return await probeHls(new URL(first, url).href, depth + 1);
+    return await probeHls(new URL(first, furl).href, depth + 1);
   } catch (e) { return false; }
 }
 async function warmCctv(){
@@ -2318,23 +2475,66 @@ const rdClean = s => rdUnent(String(s == null ? '' : s)
 const rdInline = s => rdClean(s).replace(/\s+/g, ' ');
 const rdHost = u => { try { return new URL(u).hostname.replace(/^www\./, ''); } catch (e) { return ''; } };
 
+// Parser IPv4 ala inet_aton: 1–4 bagian, tiap bagian desimal / oktal (diawali 0)
+// / heks (0x…). Jadi "2130706433", "0177.0.0.1", "0x7f000001" dinormalisasi ke
+// 4 oktet DULU sebelum dicek rentang privatnya — kalau tidak, 0177(=127 oktal)
+// terbaca 177 (publik) dan lolos jadi celah SSRF.
+function rdIPv4Bytes(s) {
+  const parts = s.split('.');
+  if (parts.length < 1 || parts.length > 4) return null;
+  const vals = [];
+  for (const part of parts) {
+    let n;
+    if (/^0x[0-9a-f]+$/i.test(part)) n = parseInt(part, 16);
+    else if (/^0[0-7]*$/.test(part)) n = parseInt(part, 8) || 0;
+    else if (/^\d+$/.test(part)) n = parseInt(part, 10);
+    else return null;
+    if (!Number.isFinite(n)) return null;
+    vals.push(n);
+  }
+  let num;
+  if (parts.length === 1) num = vals[0];
+  else if (parts.length === 2) { if (vals[0] > 255 || vals[1] > 0xffffff) return null; num = vals[0] * 0x1000000 + vals[1]; }
+  else if (parts.length === 3) { if (vals[0] > 255 || vals[1] > 255 || vals[2] > 0xffff) return null; num = vals[0] * 0x1000000 + vals[1] * 0x10000 + vals[2]; }
+  else { if (vals.some(v => v > 255)) return null; num = vals[0] * 0x1000000 + vals[1] * 0x10000 + vals[2] * 0x100 + vals[3]; }
+  if (!Number.isInteger(num) || num < 0 || num > 0xffffffff) return null;
+  return [Math.floor(num / 0x1000000) % 256, Math.floor(num / 0x10000) % 256, Math.floor(num / 0x100) % 256, num % 256];
+}
+function rdPrivateBytes(b) {
+  const a = b[0], b1 = b[1];
+  return a === 0 || a === 10 || a === 127 ||
+    (a === 100 && b1 >= 64 && b1 <= 127) ||
+    (a === 169 && b1 === 254) ||
+    (a === 172 && b1 >= 16 && b1 <= 31) ||
+    (a === 192 && b1 === 168) ||
+    (a === 198 && (b1 === 18 || b1 === 19)) ||
+    a >= 224;
+}
 function rdPrivateIP(ip) {
   const s = String(ip).toLowerCase();
   if (s.includes(':')) {
+    // IPv6: unspecified/loopback, ULA fc00::/7, link-local fe80::/10,
+    // multicast ff00::/8, dan IPv4-tertanam (::ffff:a.b.c.d / ::a.b.c.d).
     if (s === '::' || s === '::1') return true;
-    if (s.startsWith('fc') || s.startsWith('fd') || s.startsWith('fe80') || s.startsWith('ff')) return true;
-    if (s.startsWith('::ffff:')) return rdPrivateIP(s.slice(7));
-    return false;
+    const first = parseInt(s.split(':')[0] || '0', 16);
+    if (!Number.isNaN(first)) {
+      if ((first & 0xfe00) === 0xfc00) return true;   // fc00::/7 ULA
+      if ((first & 0xffc0) === 0xfe80) return true;   // fe80::/10 link-local
+      if ((first & 0xff00) === 0xff00) return true;   // ff00::/8 multicast
+    }
+    const m = s.match(/(\d+\.\d+\.\d+\.\d+)$/);   // oktet IPv4 yang tertanam
+    if (m) { const b = rdIPv4Bytes(m[1]); return !b || rdPrivateBytes(b); }
+    // ::ffff:HHHH:HHHH — mapped dalam bentuk heks (hasil normalisasi URL)
+    const hm = s.match(/^::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/);
+    if (hm) {
+      const num = parseInt(hm[1], 16) * 0x10000 + parseInt(hm[2], 16);
+      return rdPrivateBytes([Math.floor(num / 0x1000000) % 256, Math.floor(num / 0x10000) % 256, Math.floor(num / 0x100) % 256, num % 256]);
+    }
+    return false;   // IPv6 global unicast → publik
   }
-  const p = s.split('.').map(Number);
-  if (p.length !== 4 || p.some(n => !Number.isInteger(n) || n < 0 || n > 255)) return true;
-  return p[0] === 0 || p[0] === 10 || p[0] === 127 ||
-    (p[0] === 100 && p[1] >= 64 && p[1] <= 127) ||
-    (p[0] === 169 && p[1] === 254) ||
-    (p[0] === 172 && p[1] >= 16 && p[1] <= 31) ||
-    (p[0] === 192 && p[1] === 168) ||
-    (p[0] === 198 && (p[1] === 18 || p[1] === 19)) ||
-    p[0] >= 224;
+  const b = rdIPv4Bytes(s);
+  if (!b) return true;   // gagal parse → fail-closed, anggap privat
+  return rdPrivateBytes(b);
 }
 const rdDnsCache = new Map();   // host -> { addrs, at } — DNS lookup per redirect hop mahal, cache 5 mnt
 async function rdAssertPublic(raw) {
@@ -2350,6 +2550,11 @@ async function rdAssertPublic(raw) {
     rdDnsCache.set(h, ent);
     if (rdDnsCache.size > 500) rdDnsCache.delete(rdDnsCache.keys().next().value);
   }
+  // Catatan TOCTOU / DNS-rebinding: DNS di-resolve di sini saat validasi, tapi
+  // get()/fetch() di pemanggil me-resolve ULANG host waktu benar-benar connect.
+  // DNS jahat bisa kasih IP publik saat validasi lalu IP privat saat fetch. Sengaja
+  // tidak ditulis ulang (perlu pin alamat hasil resolve ke koneksi — berisiko regresi
+  // proxy media); mitigasi sebagian: PRIVATE_HOST menolak literal IP privat tanpa DNS.
   if (!ent.addrs.length) throw new Error('host tidak ditemukan');
   if (ent.addrs.some(a => rdPrivateIP(a.address))) throw new Error('alamat privat ditolak');
   return x;
@@ -2369,6 +2574,49 @@ async function rdSafeGet(raw, ms) {
   }
   throw new Error('terlalu banyak redirect');
 }
+// Fetch aman untuk endpoint proxy media (/img /hls /vhs /tomtom/tile dsb):
+// get() biasa mengikuti redirect buta — target bisa loncat ke IP privat/loopback.
+// Di sini rdAssertPublic (DNS + rdPrivateIP) divalidasi ULANG di setiap hop
+// redirect, dan hostOK (bila diberikan) ikut dicek per hop. Redirect manual,
+// maks 5 hop — sama seperti rdSafeGet tapi tanpa header accept html.
+async function mediaGet(raw, ms, headers, hostOK) {
+  let cur = raw;
+  for (let i = 0; i < 5; i++) {
+    await rdAssertPublic(cur);
+    if (hostOK && !hostOK(cur)) throw new Error('host tidak diizinkan');
+    const r = await get(cur, { redirect: 'manual', headers: headers || {} }, ms);
+    if (r.status >= 300 && r.status < 400) {
+      const loc = r.headers.get('location');
+      if (!loc) throw new Error('redirect tanpa lokasi');
+      cur = new URL(loc, cur).href;
+      continue;
+    }
+    return { r, url: cur };
+  }
+  throw new Error('terlalu banyak redirect');
+}
+// Baca body dengan cap byte: tolak cepat lewat content-length, lalu batalkan
+// stream begitu melewati batas (early-abort, tidak buffer penuh dulu).
+async function mediaBody(r, max) {
+  const len = Number(r.headers.get('content-length') || 0);
+  if (len > max) { try { if (r.body && r.body.cancel) await r.body.cancel(); } catch (e) {} throw new Error('body terlalu besar'); }
+  const reader = r.body && r.body.getReader ? r.body.getReader() : null;
+  if (!reader) {
+    const b = Buffer.from(await r.arrayBuffer());
+    if (b.length > max) throw new Error('body terlalu besar');
+    return b;
+  }
+  const chunks = []; let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.length;
+    if (total > max) { try { await reader.cancel(); } catch (e) {} throw new Error('body terlalu besar'); }
+    chunks.push(Buffer.from(value));
+  }
+  return Buffer.concat(chunks);
+}
+const mediaText = async (r, max) => (await mediaBody(r, max)).toString('utf8');
 function rdMeta(html) {
   const out = {};
   for (const m of html.matchAll(/<meta\b[^>]*>/gi)) {
@@ -2446,7 +2694,8 @@ async function rdProbeFull(u, referer) {
   if (rdProbeCache.has(u)) return rdProbeCache.get(u);
   let out = null;
   try {
-    const r = await get(u, { headers: { accept: 'image/avif,image/webp,image/apng,image/*,*/*;q=0.8', ...(referer ? { referer } : {}) } }, 8000);
+    // URL gambar dari HTML artikel — assert publik per hop redirect (anti-SSRF).
+    const { r } = await mediaGet(u, 8000, { accept: 'image/avif,image/webp,image/apng,image/*,*/*;q=0.8', ...(referer ? { referer } : {}) });
     if (r.ok && /^image\//i.test(r.headers.get('content-type') || '')) {
       // stream-cap 1.5MB: cukup untuk header dimensi + fingerprint hash.
       // Gambar yang sama via URL/CDN beda berbagi byte awal → dedupe tetap jalan.
@@ -2806,11 +3055,12 @@ async function rdHydrateVideos(d, article) {
   if (!probes.length) return d;
   const resolved = await Promise.all(probes.map(async p => {
     try {
-      const r = await get(p.url, { headers: { referer: article } }, 10000);
+      // p.url = og:video/embed pihak ketiga — assert publik per hop redirect.
+      const { r } = await mediaGet(p.url, 10000, { referer: article });
       if (!r.ok) return null;
       const ct = r.headers.get('content-type') || '';
       if (!/text\/html|application\//i.test(ct)) return { url: p.url, kind: VID_FILE.test(p.url) ? 'video' : 'probe', poster: p.poster };
-      const innerHtml = await r.text();
+      const innerHtml = await mediaText(r, 2 << 20);   // halaman embed — cap 2MB
       const im = rdMeta(innerHtml), iTitle = rdInline(im['og:title'] || im.title || '');
       const inner = rdVideos(innerHtml, p.url, true, d.title || '');
       let good = inner.find(v => v.kind === 'video') || inner.find(v => v.kind === 'iframe');
@@ -2855,6 +3105,12 @@ function rdExtract(html, finalURL) {
   const site = meta['og:site_name'] || rdHost(finalURL);
   let title = rdClean(meta['og:title'] || meta['twitter:title'] || rdName(art.headline) ||
     (html.match(/<title[^>]*>([\s\S]*?)<\/title>/i) || [])[1]);
+  const dc = title.match(/\s*::\s*(\S.{1,60}?)\s*$/);   // "Judul :: NamaSitus" — pola feed lokal
+  if (dc && site) {
+    const norm = x => x.toLowerCase().replace(/[^a-z0-9]+/g, '');
+    const tail = norm(dc[1]), s = norm(site);
+    if (tail && (s.includes(tail) || tail.includes(s))) title = title.slice(0, dc.index).trim();
+  }
   const sep = title.match(/\s*[|–—]\s*([^|–—]{2,45})\s*$/) || title.match(/\s+-\s+([^-]{2,45})\s*$/);
   if (sep && site) {
     const tail = sep[1].trim().toLowerCase(), s = site.toLowerCase();
@@ -3083,6 +3339,9 @@ async function rdRead(raw) {
   if (yid) return memo('yt:' + yid, 600000, () => rdReadYouTube(yid, raw));
   let target = raw;
   if (/(^|\.)news\.google\.com$/i.test(x.hostname) && GN_PATH.test(x.pathname)) target = await decodeGNews(raw);
+  // target dipakai juga oleh Jina/proxy/Firecrawl (bukan cuma rdSafeGet) —
+  // pastikan resolve ke IP publik sebelum dikirim ke layanan pihak ketiga.
+  await rdAssertPublic(target);
   return memo('read:' + target, 600000, async () => {
     const t0 = Date.now();
     const left = () => Math.max(5000, 40000 - (Date.now() - t0));   // frontend timeout 45s
@@ -3125,7 +3384,7 @@ async function rdRead(raw) {
       if (!/text\/html|application\/xhtml/i.test(ct)) throw new Error('bukan halaman HTML');
       const len = Number(r.headers.get('content-length') || 0);
       if (len > 3e6) throw new Error('halaman terlalu besar');
-      let html = await r.text();
+      let html = await mediaText(r, 5 << 20);   // hard cap stream — slice 3e6 di bawah
       if (html.length > 3e6) html = html.slice(0, 3e6);
       const d = tryHtml(html, url);
       if (!d) throw new Error('halaman challenge/block');
@@ -3133,9 +3392,9 @@ async function rdRead(raw) {
     })());
     // Jina reader — markdown, bukan html → thumb() fallback di rdFinish
     jobs.push((async () => {
-      const r = await get('https://r.jina.ai/' + target, { headers: { accept: 'text/plain' } }, Math.min(10000, left()));
+      const { r } = await mediaGet('https://r.jina.ai/' + target, Math.min(10000, left()), { accept: 'text/plain' });
       if (!r.ok) throw new Error('HTTP ' + r.status);
-      const txt = await r.text();
+      const txt = await mediaText(r, 5 << 20);
       if (!txt || txt.length <= 200) throw new Error('jina kosong');
       const d = rdJinaMd(txt, target);
       if (!(d.paras.length >= 2 && !BLOCKED_RE.test(d.title + ' ' + txt.slice(0, 3000)) && rdOnTopic(d.title, '', d.paras))) throw new Error('jina tidak valid');
@@ -3147,11 +3406,12 @@ async function rdRead(raw) {
       return { d, html: null, url: target };
     })());
     for (const px of RD_PROXIES) jobs.push((async () => {
-      const r = await get(px(target), {}, Math.min(12000, left()));
+      // mediaGet: proxy host + redirect hops tetap harus IP publik (anti-oracle).
+      const { r } = await mediaGet(px(target), Math.min(12000, left()));
       if (!r.ok) throw new Error('HTTP ' + r.status);
       const ct = r.headers.get('content-type') || '';
       if (!/text\/html|application\/xhtml/i.test(ct)) throw new Error('bukan html');
-      let html = await r.text();
+      let html = await mediaText(r, 5 << 20);
       if (html.length > 3e6) html = html.slice(0, 3e6);
       const d = tryHtml(html, target);
       if (!d) throw new Error('proxy tidak valid');
@@ -3212,9 +3472,12 @@ const haversine = (a, b) => {
   const s = Math.sin(dLat / 2) ** 2 + Math.cos(rad(a.lat)) * Math.cos(rad(b.lat)) * Math.sin(dLon / 2) ** 2;
   return 2 * R * Math.asin(Math.sqrt(s));
 };
+// host TomTom tetap (api + subdomain shuffle a-d) — redirect dibatasi ke domain
+// yang sama dan body JSON di-cap 2MB.
+const ttHostOK = u => { try { const h = new URL(u).hostname; return h === 'api.tomtom.com' || h.endsWith('.api.tomtom.com'); } catch (e) { return false; } };
 async function ttFetch(url) {
-  const r = await get(url, { headers: { accept: 'application/json' } }, 12000);
-  const txt = await r.text();
+  const { r } = await mediaGet(url, 12000, { accept: 'application/json' }, ttHostOK);
+  const txt = await mediaText(r, 2 << 20);
   let data; try { data = JSON.parse(txt); } catch (e) { data = { raw: txt.slice(0, 400) }; }
   if (!r.ok) { const err = new Error('TomTom ' + r.status + ' ' + (data.detailedError?.message || data.error || txt.slice(0, 120))); err.status = r.status; err.data = data; throw err; }
   return data;
@@ -3292,29 +3555,62 @@ async function ttTile(kind, z, x, y, res) {
   const p = paths[kind] || paths.flow;
   const host = 'abcdefghijklmnopqrstuvwxyz'[Math.floor(Math.random() * 4)] + '.api.tomtom.com';
   const url = 'https://' + host + p + '?key=' + encodeURIComponent(TOMTOM_KEY);
-  const r = await get(url, {}, 12000);
+  let r, buf;
+  try {
+    ({ r } = await mediaGet(url, 12000, {}, ttHostOK));
+    buf = await mediaBody(r, 2 << 20);   // tile PNG — cap 2MB
+  } catch (e) {
+    res.writeHead(/terlalu besar/.test(e && e.message) ? 413 : 502, { 'access-control-allow-origin': '*' });
+    return res.end();
+  }
   res.writeHead(r.status, { 'access-control-allow-origin': '*', 'content-type': r.headers.get('content-type') || 'image/png', 'cache-control': 'public, max-age=300' });
-  res.end(Buffer.from(await r.arrayBuffer()));
+  res.end(buf);
 }
 
 http.createServer(async (req, res) => {
   const u = new URL(req.url, 'http://x'), cors = { 'access-control-allow-origin': '*' };
   const json = (o, c = 200) => { res.writeHead(c, { ...cors, 'content-type': 'application/json', 'cache-control': 'no-store' }); res.end(JSON.stringify(o)); };
   try {
-    if (u.pathname === '/' || u.pathname === '/index.html') { res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' }); return res.end(fs.readFileSync(HTML)); }
+    // Gate token untuk semua /api/* (kecuali /api/ping, dipakai frontend cek hidup)
+    // DAN proxy media /img /hls /vhs. Token efektif = SITREP_TOKEN env, atau token
+    // boot acak yang di-inject ke <head> index.html sebagai <meta name="sitrep-token">
+    // — frontend membacanya lalu kirim header x-sitrep-token di request API, serta
+    // &token= di URL media (tag <img>/<video> nggak bisa set header). Terima dari
+    // SALAH SATU sumber saja sudah cukup.
+    // Bandingkan constant-time: cek panjang dulu, baru timingSafeEqual atas Buffer
+    // sama-panjang — timingSafeEqual melempar kalau panjang beda, dan pengecekan
+    // string biasa bocor lewat timing oracle panjang/karakter.
+    const eqTok = v => {
+      const a = Buffer.from(String(v == null ? '' : v)), b = Buffer.from(API_TOKEN);
+      return a.length === b.length && crypto.timingSafeEqual(a, b);
+    };
+    const gated = (u.pathname.startsWith('/api/') && u.pathname !== '/api/ping') ||
+      u.pathname === '/img' || u.pathname === '/hls' || u.pathname === '/vhs';
+    if (gated && !(eqTok(req.headers['x-sitrep-token']) || eqTok(u.searchParams.get('token'))))
+      return json({ ok: false, err: 'token tidak valid' }, 403);
+    if (u.pathname === '/' || u.pathname === '/index.html') {
+      // inject token boot/env ke <head> supaya JS frontend bisa membacanya
+      let html = fs.readFileSync(HTML, 'utf8');
+      const meta = '<meta name="sitrep-token" content="' + API_TOKEN + '">';
+      if (/<head[^>]*>/i.test(html)) html = html.replace(/<head[^>]*>/i, m => m + meta);
+      else html = meta + html;
+      res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' });
+      return res.end(html);
+    }
     if (u.pathname === '/idn.geo.json' || u.pathname === '/idn-context.geo.json' || u.pathname === '/idn-prov.geo.json' || u.pathname === '/world110.geo.json') { res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store', 'access-control-allow-origin': '*' }); return res.end(fs.readFileSync(path.join(__dirname, 'public', u.pathname.slice(1)))); }
     if (u.pathname === '/signals.js' || u.pathname === '/wxicons.js' || u.pathname === '/wire-core.js') { res.writeHead(200, { 'content-type': 'application/javascript; charset=utf-8', 'cache-control': 'no-store' }); return res.end(fs.readFileSync(path.join(__dirname, 'public', u.pathname.slice(1)))); }
     if (u.pathname === '/api/ping') return json({ ok: true, x: xHas(), classifierVersion: SOC.CLASSIFIER_VERSION });
     if (u.pathname === '/api/news') {
-      const srcs = await news();
+      const srcs = await news(), aOf = assessCycle();
       { // gambar yang sama dipakai >1 headline berbeda = aset situs/placeholder → kosongkan semua
         const cnt = new Map();
         for (const s of srcs) for (const i of s.items) if (i.img) { const k = rdImgKey(i.img); if (!cnt.has(k)) cnt.set(k, new Set()); cnt.get(k).add(i.url); }
         for (const s of srcs) for (const i of s.items) if (i.img && cnt.get(rdImgKey(i.img)).size > 1) i.img = '';
       }
       return json({ classifierVersion: SOC.CLASSIFIER_VERSION, sources: srcs.map(s => ({ ...s, items: s.items.map(i => {
-        const cat = catOf(i.title);
-        return { ...i, cat, feedTopic: feedCatOf(s.id), assessment: assessNews(i.title), label: cat ? catMeta(cat).label : '' };
+        const a = aOf(i.title);
+        const cat = catOf(i.title, a);
+        return { ...i, cat, feedTopic: feedCatOf(s.id), assessment: a, label: cat ? catMeta(cat).label : '' };
       }) })), at: Date.now() });
     }
     if (u.pathname === '/api/breaking') {

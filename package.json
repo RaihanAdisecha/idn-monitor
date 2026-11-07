@@ -5,8 +5,9 @@
   "description": "SITREP OSINT console — news wire, social monitor, incident globe, market, live TV",
   "scripts": {
     "start": "bash start.sh",
-    "audit:media": "node scripts/media-audit.js",
-    "test:signals": "node --test tests/signals.test.js tests/signal-engine.test.js"
+    "test": "node --test tests/*.js",
+    "test:signals": "node --test tests/signals.test.js tests/signal-engine.test.js",
+    "audit:reader": "node scripts/audit-reader.js"
   },
   "engines": {
     "node": ">=18"

@@ -51,8 +51,11 @@ const kabByCode = {}, provByCode = {};
 for (const p of G.prov) provByCode[p.code] = p;
 const kotaNames = new Set(G.kab.filter(k => k.kota).map(k => norm(k.name)));
 const idx = new Map();   // frasa → [entri]
-const put = (key, e) => {
-  if (!key || key.length < 4) return;
+const put = (key, e, minLen) => {
+  // minLen hanya untuk alias eksplisit (singkatan provinsi/kota seperti diy/ntb/dki);
+  // nama gazetteer & ibukota tetap wajib >=4 supaya token umum tak jadi lokasi.
+  const min = minLen || 4;
+  if (!key || key.length < min) return;
   const a = idx.get(key); if (a) { if (!a.some(x => x.id === e.id)) a.push(e); } else idx.set(key, [e]);
 };
 const LABEL_FIX = { 'Palangkaraya': 'Palangka Raya', 'Bau Bau': 'Baubau', 'Kep. Siau Tagulandang Biaro': 'Sitaro', 'Toli-Toli': 'Tolitoli' };
@@ -89,7 +92,7 @@ for (const k of G.kab) {
 }
 // alias manual (singkatan & sebutan umum)
 const kabByName = (nm, kota) => G.kab.find(k => norm(k.name) === norm(nm) && (kota == null || k.kota === kota));
-const alias = (key, nm, kota, label) => { const k = kabByName(nm, kota); if (k) put(key, { ...kabByCode[k.code], name: label || kabByCode[k.code].name }); };
+const alias = (key, nm, kota, label) => { const k = kabByName(nm, kota); if (k) put(key, { ...kabByCode[k.code], name: label || kabByCode[k.code].name }, 3); };
 alias('jakarta', 'Jakarta Pusat', true, 'Jakarta'); alias('dki', 'Jakarta Pusat', true, 'Jakarta');
 alias('jogja', 'Yogyakarta', true); alias('yogya', 'Yogyakarta', true);
 alias('tangsel', 'Tangerang Selatan', true); alias('pangkalpinang', 'Pangkal Pinang', true);
@@ -109,7 +112,9 @@ const PROV_ALIAS = {
 for (const p of G.prov) {
   const e = { id: 'P' + p.code, level: 'prov', name: p.name.replace('Daerah Khusus Ibukota ', '').replace('Daerah Istimewa ', 'DI '), la: p.la, lo: p.lo, prov: p.name, prec: 'prov' };
   put(norm(p.name), e);
-  for (const a of PROV_ALIAS[p.code] || []) put(a, e);
+  // alias:true + min 3 huruf: singkatan (diy/ntb/ntt) masuk index, tapi tidak boleh
+  // menjadi parent-context desa — "di NTT" terlalu kasar untuk menamai desa "Gunung".
+  for (const a of PROV_ALIAS[p.code] || []) put(a, { ...e, alias: true }, 3);
 }
 // provinsi dengan nama sama kota (Gorontalo, Bengkulu, Jambi, Bali..): ambil kota bila ada "kota"; selain itu tingkat provinsi
 // wilayah kepulauan (tanpa batas administratif, presisi kasar)
@@ -435,7 +440,9 @@ function locate(title) {
       if (!rows) continue;
       const parents = matchedOccurrences.filter(m => nearSeparate(m, i, n));
       const kabs = new Set(parents.filter(m => m.e.level === 'kab').map(m => m.e.id));
-      const provs = new Set(parents.filter(m => m.e.level === 'prov').map(m => m.e.id.slice(1)));
+      // prov-level alias (ntb/diy/dst) terlalu kasar untuk memilih desa — hanya
+      // nama provinsi resmi (non-alias) yang boleh jadi parent-context.
+      const provs = new Set(parents.filter(m => m.e.level === 'prov' && !m.e.alias).map(m => m.e.id.slice(1)));
       const fit = rows.filter(r => (!kabs.size || kabs.has(r.kabCode)) && (!provs.size || provs.has(r.provCode)));
       if (fit.length) districtMentions.push({ pos: i, n, codes: new Set(fit.map(r => r.code)) });
       break;
@@ -458,7 +465,9 @@ function locate(title) {
       if (destination) break;
       const parents = matchedOccurrences.filter(m => nearSeparate(m, i, n));
       const kabs = new Set(parents.filter(m => m.e.level === 'kab').map(m => m.e.id));
-      const provs = new Set(parents.filter(m => m.e.level === 'prov').map(m => m.e.id.slice(1)));
+      // prov-level alias (ntb/diy/dst) terlalu kasar untuk memilih desa — hanya
+      // nama provinsi resmi (non-alias) yang boleh jadi parent-context.
+      const provs = new Set(parents.filter(m => m.e.level === 'prov' && !m.e.alias).map(m => m.e.id.slice(1)));
       const kecs = districtMentions.filter(m => nearSeparate(m, i, n));
       let rows = allRows;
       if (typeCue) rows = rows.filter(r => r.type === typeCue);

@@ -41,6 +41,9 @@ const GOLD = [
   ['Gerak Cepat Pemerintah Tangani Banjir di Aceh dan Sumatra Utara', 'Aceh', ['Aceh', 'Sumatera Utara']],
   ['Longsor di Aceh, Jawa Tengah dan Jawa Timur Telan Korban', 'Aceh', ['Aceh', 'Jawa Tengah', 'Jawa Timur']],
   ['Pria Asal Bogor Ditangkap di Cilegon karena Curanmor', 'Cilegon'],             // asal bukan lokasi
+  ['Gempa di NTB', 'Nusa Tenggara Barat'],
+  ['Banjir di DIY', 'DI Yogyakarta'],
+  ['Gempa di DKI', 'Jakarta'],
 ];
 for (const [t, exp, multi] of GOLD) {
   const r = GEO.locate(t), got = r && r.name;
