@@ -4415,7 +4415,7 @@ const TV_CH = [
   { n:'BTV',            s:'https://lnd0t3b922.tenbytecdn.com/ta-sg1/90369cf5-6ac2-411d-b3d0-15fae10a2e2c/master.m3u8', src:'tenbyte',
     pg:'https://www.beritasatu.com/beritasatu-live-streaming' }
 ];
-let tvOn = false, tvIx = 0, tvHls = null, tvDrag = null, tvRz = null, tvIdleT = null, tvPx = false, tvTry = 0;
+let tvOn = false, tvIx = 0, tvHls = null, tvDrag = null, tvRz = null, tvIdleT = null, tvPx = false, tvTry = 0, tvRetryT = null;
 
 function tvPaint(){
   const c = TV_CH[tvIx];
@@ -4443,6 +4443,7 @@ function tvPlay(){
   tvPaint();
   tvWake();
   tvStop();
+  clearTimeout(tvRetryT); tvRetryT = null;
   body.dataset.state = 'load';
   $('#tv-msg-t').textContent = 'Menghubungkan…';
   v.muted = $('#tv-mute').getAttribute('aria-pressed') === 'true';
@@ -4458,6 +4459,7 @@ function tvPlay(){
     h = new Hls(hlsJak({ liveSyncDurationCount: 2, maxBufferLength: 6, capLevelToPlayerSize: true }));
     tvHls = h;
     h.on(Hls.Events.MANIFEST_PARSED, () => {
+      clearTimeout(tvRetryT); tvRetryT = null;
       body.dataset.state = 'ok';
       v.play().catch(() => {});
     });
@@ -4467,6 +4469,7 @@ function tvPlay(){
       tvPx = false; tvTry = 0;
       tvFail(d.details);
       if (tvHls === h) { try { h.destroy(); } catch (e) {} tvHls = null; }
+      tvRetryT = setTimeout(() => { tvRetryT = null; if (tvOn) tvPlay(); }, 90000);   // auto-retry saat upstream pulih
     });
     h.loadSource(src);
     h.attachMedia(v);
@@ -4475,7 +4478,11 @@ function tvPlay(){
       body.dataset.state = 'ok';
       v.play().catch(() => {});
     }, { once: true });
-    v.addEventListener('error', () => { if (!retryPx()) { tvPx = false; tvTry = 0; tvFail('stream mati'); } }, { once: true });
+    v.addEventListener('error', () => {
+      if (retryPx()) return;
+      tvPx = false; tvTry = 0; tvFail('stream mati');
+      tvRetryT = setTimeout(() => { tvRetryT = null; if (tvOn) tvPlay(); }, 90000);
+    }, { once: true });
     v.src = src;
   } else {
     tvFail('HLS tidak didukung browser ini');
@@ -4534,6 +4541,7 @@ function tvClose(){
   if (!tvOn) return;
   tvOn = false;
   clearTimeout(tvIdleT);
+  clearTimeout(tvRetryT); tvRetryT = null;
   tvStop();
   const w = $('#tvwrap');
   w.classList.remove('on', 'idle');
