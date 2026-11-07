@@ -5827,8 +5827,7 @@ $$('.pane').forEach(p => {
 if (matchMedia('(max-width: 820px)').matches) {
   const first = $('.pane');
   if (first) first.classList.add('open');
-  const segW0 = $('#segwrap');
-  if (segW0) { segW0.classList.add('closed'); $('#seg-h').setAttribute('aria-expanded', 'false'); }
+  // "Detail situasi" dibiarkan expanded default — user collapse manual kalau mau
 }
 
 (async () => {
