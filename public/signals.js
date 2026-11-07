@@ -5,7 +5,9 @@
 }(typeof globalThis !== 'undefined' ? globalThis : this, function () {
   'use strict';
 
-  const VERSION = '2026-11-07.1';
+  // Default bawaan client. Boleh diadopsi ulang dari classifierVersion snapshot
+  // terbaru di reconcile() — server berhak bump versi classifier kapan saja.
+  let VERSION = '2026-11-07.2';
   const SIGNAL_WINDOW = 90 * 60 * 1000;
   const RETENTION_WINDOW = 24 * 60 * 60 * 1000;
   const REPORT_TYPES = new Set(['reported', 'warning']);
@@ -200,9 +202,19 @@
     options = options || {};
     const now = options.now === undefined ? Date.now() : options.now;
     const previous = () => ({ accepted: false, posts: Array.from(currentMap.values()) });
-    if (!payload || payload.snapshot !== true || payload.classifierVersion !== VERSION || payload.ok !== true ||
+    if (!payload || payload.snapshot !== true || payload.ok !== true ||
       !Array.isArray(payload.posts) || typeof payload.snapshotAt !== 'number' || !Number.isFinite(payload.snapshotAt) ||
       !Number.isFinite(now) || (Number.isFinite(currentMap._snapshotAt) && payload.snapshotAt < currentMap._snapshotAt)) return previous();
+    // Jangan hard-gate classifierVersion: versi server boleh naik. Adopsi versi
+    // payload selama ada post yang membuktikannya (assessment.version sama —
+    // classifierVersion dan assessment.version satu sumber di server). Versi asing
+    // tanpa bukti = incompatible, map lama dipertahankan.
+    if (typeof payload.classifierVersion !== 'string' || !payload.classifierVersion) return previous();
+    if (payload.classifierVersion !== VERSION) {
+      const proven = payload.posts.some(p => p && p.assessment && p.assessment.version === payload.classifierVersion);
+      if (!proven) return previous();
+      VERSION = payload.classifierVersion;
+    }
     const max = options.max === undefined ? Infinity : options.max;
     if (!(max === Infinity || (Number.isFinite(max) && max >= 0)) ||
       (options.keyOf !== undefined && typeof options.keyOf !== 'function')) return previous();
@@ -217,5 +229,5 @@
     return { accepted: true, posts: Array.from(currentMap.values()) };
   }
 
-  return { VERSION, buildGroups, related, reconcile, tokens, matches, relation };
+  return { get VERSION() { return VERSION; }, buildGroups, related, reconcile, tokens, matches, relation };
 }));

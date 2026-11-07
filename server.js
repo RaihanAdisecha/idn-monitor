@@ -54,21 +54,31 @@ let ADHOC = [];   // topik dinamis dari berita yang lagi naik (nama kasus), in-m
 const histUser = p => String(p.handle || p.username || '').toLowerCase();
 // anti-astroturf: teks identik dari >=3 akun berbeda = koordinasi bot, bukan liputan.
 // retweet ("RT @") di-skip — viral legit memang share teks yang sama.
+// astroturfSig dipotong 160 char: dua posting beda bisa tabrakan di prefix. Karena itu
+// sig cuma dipakai buat kandidat — penghapusan mensyaratkan teks ternormalisasi PENUH identik.
+const astroturfFull = t => String(t || '').toLowerCase()
+  .replace(/https?:\/\/\S+/g, ' ')
+  .replace(/@[\w]+/g, ' ')
+  .replace(/#[\p{L}\p{N}_]+/gu, ' ')
+  .replace(/[^\p{L}\p{N} ]/gu, ' ')
+  .replace(/\s+/g, ' ').trim();   // replika persis astroturfSig tanpa .slice(0,160)
 function histAstroturf(map) {
-  const groups = new Map();
-  for (const p of map.values()) {
-    const t = String(p.text || '');
-    if (t.length < 50 || /^\s*(rt\s+)?@/i.test(t)) continue;
-    const sig = SOC.astroturfSig(t);
+  const eligible = p => { const t = String(p.text || ''); return t.length >= 50 && !/^\s*(rt\s+)?@/i.test(t); };
+  const cand = new Map();   // sig -> Map(fullText -> Set(user))
+  for (const [k, p] of map) {
+    if (!eligible(p)) continue;
+    const sig = SOC.astroturfSig(p.text);
     if (sig.length < 40) continue;
-    if (!groups.has(sig)) groups.set(sig, new Set());
-    groups.get(sig).add(histUser(p));
+    if (!cand.has(sig)) cand.set(sig, new Map());
+    const byFull = cand.get(sig), full = astroturfFull(p.text);
+    if (!byFull.has(full)) byFull.set(full, new Set());
+    byFull.get(full).add(histUser(p));
   }
   for (const [k, p] of map) {
-    const t = String(p.text || '');
-    if (t.length < 50 || /^\s*(rt\s+)?@/i.test(t)) continue;
-    const sig = SOC.astroturfSig(t);
-    if (sig.length >= 40 && (groups.get(sig) || new Set()).size >= 3) map.delete(k);
+    if (!eligible(p)) continue;
+    const byFull = cand.get(SOC.astroturfSig(p.text));
+    const users = byFull && byFull.get(astroturfFull(p.text));
+    if (users && users.size >= 3) map.delete(k);
   }
 }
 function histMerge(map, posts, max, file) {
@@ -78,6 +88,16 @@ function histMerge(map, posts, max, file) {
   histAstroturf(map);
   const arr = [...map.values()].filter(p => histTs(p) > 0 && histTs(p) <= now && now - histTs(p) <= HIST_AGE).sort((a, b) => histTs(b) - histTs(a));
   const kept = SOC.socBalance(arr, max, histUser);   // cap per topik + per akun, biar karhutla nggak makan buffer
+  // laporan terverifikasi (signalEligible) adalah sinyal insiden nyata — jangan sampai
+  // di-evict cap per-topik. Langka (~5% post), jadi re-add dengan bound kecil di atas max.
+  const keptSet = new Set(kept);
+  const rescueCap = Math.max(10, Math.ceil(max * 0.05));
+  let rescued = 0;
+  for (const p of arr) {
+    if (rescued >= rescueCap) break;
+    if (keptSet.has(p) || !(p.assessment && p.assessment.signalEligible === true)) continue;
+    kept.push(p); keptSet.add(p); rescued++;
+  }
   map.clear();
   for (const p of kept) map.set(histKey(p), p);
   histMarkDirty(file, map, max);
@@ -588,11 +608,15 @@ const xposts = () => memo('x', 300000, async () => {
     const N = 12, pri = t => ((now - (xSeen.get(t) || 0)) / 60000) * (1 + Math.min(heat(t), 60) / 15);
     const rest = [...byTopic.keys()].filter(t => !forced.has(t)).sort((a, b) => pri(b) - pri(a));
     let used = 0;
-    for (const t of forced) { chosen.add(t); used += byTopic.get(t).length; }
-    for (const t of rest) { const n = byTopic.get(t).length; if (used + n > N) continue; chosen.add(t); used += n; }
+    // forced bisa berisi id topik tanpa query (trending basi / ad-hoc yang sudah
+    // keluar registry) — byTopic.get(t) undefined di situ, jangan sampai TypeError.
+    for (const t of forced) { if (!byTopic.has(t)) continue; chosen.add(t); used += byTopic.get(t).length; }
+    for (const t of rest) { const n = (byTopic.get(t) || []).length; if (used + n > N) continue; chosen.add(t); used += n; }
   }
   const sel = new Map();
-  for (const t of chosen) for (const e of byTopic.get(t)) sel.set(e.q, e);
+  // tick pertama: satu query per topik saja — sweep semua query sekaligus = burst 429.
+  if (first) { for (const t of chosen) { const l = byTopic.get(t) || []; if (l[0]) sel.set(l[0].q, l[0]); } }
+  else for (const t of chosen) for (const e of byTopic.get(t) || []) sel.set(e.q, e);
   for (const t of chosen) xSeen.set(t, now);
   const queries = [...sel.values()], errs = [], batch = [], page2 = [];
   let rawN = 0, dropTs = 0, dropTag = 0, dropSample = null, newest = 0;

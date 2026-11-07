@@ -3,6 +3,8 @@ const SOC = require('./social');
 const AGE = 24 * 3600e3;
 const keyOf = p => p.url || p.code || p.text || '';
 const tsOf = p => Number(p.ts) || Date.parse(p.created_at || '') || 0;
+// Huruf efektif setelah bersih-bersih: nolak post isi-minim seperti "#banjir".
+const bodyLen = s => String(s).replace(/https?:\/\/\S+/g, ' ').replace(/[#@]\S+/g, ' ').replace(/[^\p{L}\p{N}]+/gu, '').length;
 function tag(p, extra = [], now = Date.now()) {
   const ts = tsOf(p);
   if (!Number.isFinite(ts) || ts <= 0 || ts > now || now - ts > AGE) return false;
@@ -12,8 +14,12 @@ function tag(p, extra = [], now = Date.now()) {
   if (SOC.socNonLatin(text) || SOC.socVi(text) || SOC.socHashJunk(text) || SOC.socForeignLang(text)) return false;
   p.ts = ts;
   p.assessment = SOC.socAssess(p.text, extra);
-  // isu yang SEMUA temuannya scope foreign = bukan sinyal buat feed Indonesia
-  if (p.assessment.scope === 'foreign') return false;
+  // denied/historical/educational = bukan materi liputan feed
+  if (['denied', 'historical', 'educational'].includes(p.assessment.reportType)) return false;
+  if (bodyLen(p.text) < 10) return false;
+  // feedEligible = ada finding scope Indonesia, atau reported/warning walau scope unknown.
+  // Tanpa ini, obrolan topik tanpa lokasi & tanpa kejadian (commentary+unknown) membanjiri feed.
+  if (!p.assessment.feedEligible) return false;
   p.topics = p.assessment.topics.slice();
   p.qs = p.topics.slice(); // compatibility only, never query provenance
   p.adhocPhrases = extra.filter(t => t.adhoc && p.topics.includes(t.id)).map(t => t.id);

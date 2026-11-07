@@ -7,12 +7,11 @@
    ============================================================ */
 
 // metafora / idiom: "kebakaran jenggot", "banjir orderan", dst. Post begini bukan kejadian.
-const SOC_NOISE_RE = /(kebakaran jenggot|banjir (order|orderan|diskon|promo|pujian|notif|notifikasi|air mata|komen|komentar|dm|like|followers?|rezeki|cuan|berkah|hadiah|bonus|kado|tawaran|pesanan|chat|ucapan)|(hati|dada|semangat|jiwa|emosi|cemburu|amarah)[^.\n]{0,12}terbakar|terbakar (semangat|emosi|cemburu|amarah|api asmara|rindu)|tenggelam dalam|hanyut dalam|terjun (bebas )?(ke dunia|ke politik|payung)|gempa (hati|rasa|jantung)|meledak(-ledak)? (emosi|tawa|tangis))/i;
+const SOC_NOISE_RE = /(kebakaran jenggot|banjir (order|orderan|diskon|promo|pujian|notif|notifikasi|air\s?mata|ingus|berita|informasi|data|inbox|email|surel|wa|whatsapp|komen|komentar|dm|like|followers?|rezeki|cuan|berkah|hadiah|bonus|kado|tawaran|pesanan|chat|ucapan)|(hati|dada|semangat|jiwa|emosi|cemburu|amarah)[^.\n]{0,12}terbakar|terbakar (semangat|emosi|cemburu|amarah|api asmara|rindu)|tenggelam dalam|hanyut dalam|terjun (bebas )?(ke dunia|ke politik|payung)|gempa (hati|rasa|jantung)|meledak(-ledak)? (emosi|tawa|tangis)|film|sinema|bioskop|trailer|teaser|nonton|netflix|sinetron|sinetrik|drakor|kpop|k-pop|fancam|webtoon|anime|episode|\beps\b|chapter|konser|concert)/i;
 
 // spam/farming/phishing: engagement-bait & jualan, bukan konten kejadian.
 // pola: "Vote for X", rantai "Follow A. Follow B.", "DM untuk order", "link di bio", hashtag stuffing.
-const SOC_SPAM_RE = /(vote for|follow\s+[\w.@-]+\s*[+.&]?\s*follow|like\s*(dan|&|\+)\s*(follow|rt)|rt\s*(dan|&|\+)\s*follow|dm\s+(untuk|di|ke)\s*(order|harga|promo|info|respon|detail|ticket|tiket)|link\s+(di|ada di)\s+bio|cek\s+(link\s+)?di\s+bio|order\s+(via|melalui|di)\s+(wa|dm|wa\.me))/i;
-const socHashCount = t => (String(t).match(/#[\p{L}\p{N}_]+/gu) || []).length;
+const SOC_SPAM_RE = /(vote for|follow\s+[\w.@-]+\s*[+.&]?\s*follow|like\s*(dan|&|\+)\s*(follow|rt)|rt\s*(dan|&|\+)\s*follow|dm\s+(untuk|di|ke)\s*(order|harga|promo|info|respon|detail|ticket|tiket)|dm\s+ke\s+@|link\s+(di|ada di)\s+bio|cek\s+(link\s+)?di\s+bio|order\s+(via|melalui|di)\s+(wa|whatsapp|dm|bio|link)|order\s+(di|via)\s+bio|linktree|lynk\.?id|beacons\.?ai|taplink|bio\.?link|kasih\s+follow|follow\s+balik|jangan\s+lupa\s+follow|\bfyp\b|foryou|new\s+followers?|boost\s+followers?|giveaway|gifted|berhadiah|klaim\s+(hadiah|reward|bonus)|winner\s+dm|pemenang\s+(dm|di\s+(comment|komentar))|tag\s+(teman|orang|friend)|sebutkan\s+\d+\s*teman|tag\s+\d+\s*teman|(like|comment|share|follow)\s*(dan|&|\+)\s*(like|comment|share|follow|rt)|\b\d{1,2}\s*\/\s*(thread|bagian|part|lanjutan)|thread\s*\/|🧵|lanjut\s+di\s+thread|baca\s+sampai\s+habis|qris[^.\n]{0,40}order|order[^.\n]{0,40}qris|binary\s+option|robot\s+trading|signal\s+(trading|emas|crypto|kripto|saham)|rekomendasi\s+(saham|crypto|kripto)|cuan\s+tiap\s+hari|airdrop|seed\s+phrase|private\s+key|withdraw\s+(cepat|instan|kilat)|pinjol|investasi bodong|\bwtb\b|\bwts\b|jasa titip|\bjastip\b|jasa war|war tiket|titip (tiket|beli))/i;
 // aksara non-Latin (Hangul, Thai, CJK, Kiril, Arab, Devanagari) dominan = konten luar negeri
 // yang tidak tertangkap nama-negara Latin — misal spam tiket Korea full Hangul
 const SOC_NONLATIN_RE = /[\u0E00-\u0E7F\u0E80-\u0EFF\u3040-\u30FF\u3400-\u4DBF\u4E00-\u9FFF\uAC00-\uD7AF\u0400-\u04FF\u0600-\u06FF\u0900-\u097F\u10A0-\u10FF]/g;
@@ -47,13 +46,21 @@ function socVi(t) {
   const lat = (s.match(/[A-Za-z]/g) || []).length;
   return (vi >= 15 && vi * 4 >= lat) || (vi >= 8 && vi * 3 >= lat);
 }
-// kepadatan hashtag: spam kampanye/crypto numpuk tag; rasio karakter tag vs total teks
+// kepadatan hashtag: spam kampanye/crypto numpuk tag; rasio karakter tag vs total teks.
+// ＃ fullwidth ikut dihitung; cashtag ($XXX) dihitung terpisah — >=3 + istilah
+// komersial/kripto = junk walau tanpa hashtag biasa.
 function socHashJunk(t) {
   const s = String(t || '');
   const tags = s.match(/#[\p{L}\p{N}_]+/gu) || [];
-  if (tags.length > 10) return true;
-  const chars = tags.reduce((n, h) => n + h.length, 0);
-  return s.length > 60 && chars / s.length > 0.4;
+  const n = tags.length + (s.match(/＃/g) || []).length;
+  const cashtags = (s.match(/\$[\p{L}\p{N}]{2,}/gu) || []).length;
+  if (n > 10) return true;
+  if (cashtags >= 3 && /\b(crypto|kripto|bitcoin|btc|ethereum|airdrop|trading|cuan|investasi|signal|token|wallet)\b/i.test(s)) return true;
+  const chars = tags.reduce((x, h) => x + h.length, 0);
+  const ratio = chars / Math.max(1, s.length);
+  if (n >= 8 && ratio > 0.28) return true;
+  if (n >= 5 && s.length <= 80 && ratio > 0.30) return true;
+  return s.length > 60 && ratio > 0.4;
 }
 // tanda tangan teks untuk deteksi astroturf: buang URL/mention/tag/emoji,
 // sisakan alfabet+angka — dua postingan "sama" dari akun beda = koordinasi
@@ -85,31 +92,31 @@ const SOC_LOCAL_RE = /(indonesia|\bwni\b|jakarta|jabar|jateng|jatim|jawa|sumater
 
 const SOC_TOPICS = [
   { id: 'demo', local: true,
-    pos: /(unjuk rasa|demonstrasi|demonstran|pengunjuk rasa|aksi massa|\bdemo\b|women'?s\s+march|international\s+women'?s\s+day|hari\s+buruh|buruh\s+sedunia|labour\s+day|labor\s+day)/i,
+    pos: /(unjuk rasa|demonstrasi|demonstran|pengunjuk rasa|aksi massa|\bdemo\b|women'?s\s+march|international\s+women'?s\s+day|hari\s+buruh|buruh\s+sedunia|labour\s+day|labor\s+day|orasi|ricuh|gas air mata|water cannon|buruh mogok|\bkspi\b|\bfspi\b|aksi buruh|reformasi|turun ke jalan|may day|long march|barikade|tuntutan mahasiswa)/i,
     strong: /(unjuk rasa|demonstrasi|demonstran|pengunjuk rasa|aksi massa|women'?s\s+march|international\s+women'?s\s+day|hari\s+buruh|buruh\s+sedunia|labour\s+day|labor\s+day)/i,   // tanpa ini, kata "demo" polos butuh konteks
     ctx: /(tuntut|tolak|mahasiswa|\bbem\b|buruh|ojol|\bdpr\b|dprd|gedung|polisi|aparat|gas air mata|\baksi\b|\bmassa\b|orasi|turun ke jalan|spanduk|ricuh|bentrok|rusuh|ditangkap|diamankan|bubarkan|barikade|molotov|water cannon|kapolda|kapolres|reformasi|pemerintah|istana|patung kuda|march|aksi damai|long march)/i,
-    neg: /(demo (lagu|musik|reel|reels|app|apps|aplikasi|akun|produk|plane|game|beat|tape|masak|memasak|cooking|vokal|record|rekaman|day|link|version|ui|web|website|bot|trading)|free demo|live demo|cooking demo|demonstrasi (produk|alat|masak|memasak|fitur)|\bdemo\b.{0,20}#(music|musik|beat))/i,
+    neg: /(demo (lagu|musik|reel|reels|app|apps|aplikasi|akun|produk|plane|game|beat|tape|masak|memasak|cooking|vokal|record|rekaman|day|link|version|ui|web|website|bot|trading)|free demo|live demo|cooking demo|demonstrasi (produk|alat|masak|memasak|fitur)|happy\s+(labor|labour|international\s+women'?s)\s+day|selamat\s+(hari buruh|hari perempuan|international women'?s day)|\bdemo\b.{0,20}#(music|musik|beat))/i,
     x: ['(unjuk rasa OR demonstrasi OR "aksi massa" OR demonstran) -filter:replies',
         'demo (mahasiswa OR buruh OR ojol OR DPR OR tuntutan OR ricuh OR polisi) -filter:replies'],
-    th: ['unjuk rasa', 'demo mahasiswa', '#unjukrasa'] },
+    th: ['unjuk rasa', 'demo mahasiswa', '#unjukrasa', 'aksi massa', 'hari buruh', 'buruh sedunia'] },
   { id: 'kebakaran', local: true,
-    pos: /(kebakaran|terbakar|kobaran api|si jago merah|dilalap api|ludes dilalap)/i,
-    neg: /(kebakaran (hutan|lahan)|karhutla|kebakaran (harga|promo|diskon|obral|sale|murah|gila|meriah|jagoan|gaib|mangling|total)|harga (kebakaran|panas|terbakar))/i,   // hutan/lahan masuk topik sendiri; "kebakaran harga" = slang sale
+    pos: /(kebakaran|terbakar|kobaran api|si jago merah|dilalap api|ludes dilalap|\bdamkar\b)/i,
+    neg: /(kebakaran (hutan|lahan)|karhutla|kebakaran (harga|promo|diskon|obral|sale|murah|gila|meriah|jagoan|gaib|mangling|total)|harga (kebakaran|panas|terbakar)|(terbakar|kebakaran)[^.\n]{0,20}(nasi|roti|ayam|makanan|kuliner|resep|memasak|cooking|wajan|panci|steak|bakso|mie\b))/i,   // hutan/lahan masuk topik sendiri; "kebakaran harga" = slang sale; "nasi terbakar" = kuliner
     x: ['(kebakaran OR "si jago merah" OR "ludes terbakar" OR damkar) -filter:replies'],
-    th: ['kebakaran', '#kebakaran', 'kebakaran hari ini'] },
+    th: ['kebakaran', '#kebakaran', 'kebakaran hari ini', 'terbakar', 'kobaran api', 'dilalap api'] },
   { id: 'karhutla', local: true,
-    pos: /(karhutla|kebakaran (hutan|lahan)|titik panas|hotspot|kabut asap)/i,
+    pos: /(karhutla|kebakaran (hutan|lahan)|titik panas|hotspot|kabut asap|\basap\b|sipongi)/i,
     // "titik panas" juga dipakai wabah/kesehatan — wajib konteks kebakaran lahan
     strong: /(karhutla|kebakaran (hutan|lahan)|kabut asap)/i,
-    ctx: /(hutan|lahan|karhutla|asap|kebakaran|riau|sumatera|kalimantan|papua|jambi|sumsel)/i,
-    x: ['(karhutla OR "kebakaran hutan" OR "kebakaran lahan" OR "kabut asap") -filter:replies'],
-    th: ['karhutla', 'kabut asap', '#karhutla'] },
+    ctx: /(hutan|lahan|karhutla|kebakaran|riau|sumatera|kalimantan|papua|jambi|sumsel)/i,
+    x: ['(karhutla OR "kebakaran hutan" OR "kebakaran lahan" OR "kabut asap" OR "titik panas" OR hotspot) -filter:replies'],
+    th: ['karhutla', 'kabut asap', '#karhutla', 'titik panas', 'hotspot'] },
   { id: 'banjir', local: true,
-    pos: /(banjir|longsor|tanggul jebol|air meluap|genangan)/i,
+    pos: /(banjir|longsor|tanggul jebol|air meluap|genangan|hujan deras|air bah)/i,
     x: ['(banjir OR longsor OR "banjir bandang" OR "tanggul jebol") -filter:replies'],
-    th: ['banjir', '#banjir', 'banjir bandang'] },
+    th: ['banjir', '#banjir', 'banjir bandang', 'longsor', 'air meluap', 'genangan', 'tanggul jebol'] },
   { id: 'gempa', local: true,
-    pos: /(gempa|tsunami|magnitudo|erupsi|letusan gunung)/i,
+    pos: /(gempa|tsunami|magnitudo|erupsi|letusan gunung|guncangan|megathrust|hujan abu)/i,
     // "tsunami" sendirian sering kiasan: "blue/blauwe tsunami" = gerakan protes politik,
     // tsunami finance/sport — wajib konteks seismik atau lokasi bencana
     neg: /(blue|blauwe)\s+tsunami|tsunami\s+(biru|politik|protes)/i,
@@ -120,143 +127,179 @@ const SOC_TOPICS = [
   { id: 'kecelakaan', local: true,
     pos: /(kecelakaan|tabrakan|tabrak lari|kapal (tenggelam|karam)|pesawat jatuh|bus terguling|truk terguling|kereta anjlok|ledakan)/i,
     // "ledakan"/"tabrakan" sering kiasan: ledakan penduduk, tabrakan pendapat
-    neg: /(ledakan (penduduk|jumlah|kasus|order|orders|promo|penjualan|chat|emoji|tawa|tangis|debat|lagu|musik|harga|bonus|like|komentar|followers?|data|traffic|trafik)|tabrakan (pendapat|argumen|prinsip|debat|pemikiran))/i,
-    x: ['(kecelakaan OR "tabrak lari" OR "bus terguling" OR "kapal tenggelam" OR ledakan) -filter:replies'],
-    th: ['kecelakaan', 'kecelakaan lalu lintas'] },
+    neg: /(ledakan (penduduk|jumlah|kasus|order|orders|promo|penjualan|chat|emoji|tawa|tangis|debat|lagu|musik|harga|bonus|like|komentar|followers?|data|traffic|trafik)|tabrakan (pendapat|argumen|prinsip|debat|pemikiran|jadwal|acara|event|konser|libur|ujian|meeting|praktik|praktikum)|(jadwal|acara|event|konser|libur|ujian|meeting|praktik)[^.\n]{0,15}tabrakan|kecelakaan (cinta|asmara))/i,
+    x: ['(kecelakaan OR "tabrak lari" OR "bus terguling" OR "kapal tenggelam" OR "truk terguling" OR "kereta anjlok" OR "pesawat jatuh" OR "kapal karam" OR tabrakan OR ledakan) -filter:replies'],
+    th: ['kecelakaan', 'kecelakaan lalu lintas', 'truk terguling', 'kereta anjlok', 'pesawat jatuh', 'kapal karam', 'tabrakan'] },
   { id: 'penembakan', local: true,
     pos: /(penembakan|ditembak|baku tembak|tertembak)/i,
     neg: /(ditembak (hati|cinta|asmara|batin|panah|tatapan))/i,   // kiasan asmara/cinta
     x: ['(penembakan OR ditembak OR "baku tembak") -filter:replies'],
-    th: ['penembakan', 'ditembak'] },
+    th: ['penembakan', 'ditembak', 'tertembak', 'baku tembak'] },
   { id: 'pencurian', local: true,
-    pos: /(pencurian|curanmor|begal|perampokan|jambret|dirampok|kemalingan)/i,
+    pos: /(pencurian|curanmor|begal|perampokan|jambret|dirampok|kemalingan|maling|pencuri)/i,
+    neg: /((pencuri|maling)[^.\n]{0,15}(hati|cinta|perhatian))/i,
     x: ['(pencurian OR curanmor OR begal OR perampokan OR jambret) -filter:replies'],
-    th: ['pencurian', 'curanmor', 'begal'] },
+    th: ['pencurian', 'curanmor', 'begal', 'perampokan', 'jambret', 'dirampok', 'kemalingan'] },
   { id: 'penangkapan', local: true,
-    pos: /(penangkapan|ditangkap|diamankan|\bott\b)/i,
+    pos: /(penangkapan|ditangkap|diamankan|\bott\b|razia|penahanan|buron|tersangka)/i,
     ctx: /(polisi|polres|polda|polsek|\bkpk\b|kejaksaan|\bbnn\b|densus|petugas|aparat|tersangka|pelaku|buron)/i,
     x: ['(penangkapan OR ditangkap OR OTT) (polisi OR KPK OR Densus OR tersangka) -filter:replies'],
-    th: ['penangkapan', 'ditangkap polisi'] },
+    th: ['penangkapan', 'ditangkap polisi', 'ditangkap', 'diamankan', 'OTT', 'Densus'] },
   { id: 'phk',
     pos: /(\bphk\b|pemutusan hubungan kerja|dirumahkan|pabrik tutup)/i,
     x: ['(PHK OR "pemutusan hubungan kerja" OR dirumahkan OR "pabrik tutup") -filter:replies'],
-    th: ['PHK', 'pemutusan hubungan kerja'] },
+    th: ['PHK', 'pemutusan hubungan kerja', 'dirumahkan', 'pabrik tutup'] },
   { id: 'rupiah',
     pos: /(rupiah|kurs dolar|kurs dollar|nilai tukar)/i,
     x: ['(rupiah OR "kurs dolar" OR "nilai tukar") -filter:replies'],
-    th: ['rupiah', 'kurs dollar', 'dollar naik'] },
+    th: ['rupiah', 'kurs dollar', 'dollar naik', 'kurs dolar', 'nilai tukar'] },
   { id: 'ihsg',
     pos: /(\bihsg\b|trading halt|bursa efek|\bidx\b)/i,
-    x: ['(IHSG OR "trading halt" OR "bursa efek") -filter:replies'],
-    th: ['IHSG', 'bursa efek', 'trading halt'] },
+    x: ['(IHSG OR "trading halt" OR "bursa efek" OR IDX) -filter:replies'],
+    th: ['IHSG', 'bursa efek', 'trading halt', 'IDX'] },
   { id: 'listrik padam',
     pos: /(listrik padam|padam listrik|pemadaman listrik|mati listrik|blackout|byarpet)/i,
     // "blackout" sendirian terlalu longgar: dipakai kampanye K-pop (#Blackoutforboom),
     // EDM, dan spam tiket — wajib konteks utilitas/Indonesia
     strong: /(listrik padam|padam listrik|pemadaman listrik|mati listrik|byarpet)/i,
     ctx: /(listrik|pln|pemadaman listrik|padam listrik|mati listrik)/i,
-    x: ['("listrik padam" OR "mati listrik" OR "pemadaman listrik" OR blackout) -filter:replies'],
-    th: ['listrik padam', 'mati listrik', 'PLN padam'] },
+    x: ['("listrik padam" OR "mati listrik" OR "pemadaman listrik" OR "padam listrik" OR byarpet OR blackout) -filter:replies'],
+    th: ['listrik padam', 'mati listrik', 'PLN padam', 'padam listrik', 'byarpet'] },
   { id: 'wabah',
-    pos: /(wabah|\bklb\b|kejadian luar biasa|keracunan (massal|makanan|mbg)|kasus (dbd|campak|difteri|kolera|covid|flu burung))/i,
+    pos: /(wabah|kejadian luar biasa|keracunan (massal|makanan|mbg)|kasus (dbd|campak|difteri|kolera|covid|flu burung))/i,
     neg: /(film|sinema|bioskop|trailer|teaser|poster|nonton|netflix|zombie|mayat hidup|hantu|sekuel|layar lebar|sinetron|sinetrik|hollywood)/i,
-    x: ['(wabah OR "keracunan massal" OR "keracunan makanan" OR KLB OR "kasus DBD") -filter:replies'],
-    th: ['wabah', 'keracunan massal', 'demam berdarah', 'DBD'] },
+    x: ['(wabah OR "keracunan massal" OR "keracunan makanan" OR KLB OR "kejadian luar biasa" OR "kasus DBD") -filter:replies'],
+    th: ['wabah', 'keracunan massal', 'demam berdarah', 'DBD', 'kejadian luar biasa'] },
   { id: 'pemilu', local: true,
-    pos: /(pemilu|pilkada|pilpres|\bkpu\b|bawaslu)/i,
+    pos: /(pemilu|pilkada|pilpres|\bkpu\b|bawaslu|quick count|real count|coblos|surat suara|pilwalkot)/i,
     x: ['(pemilu OR pilkada OR pilpres OR KPU OR Bawaslu) -filter:replies'],
-    th: ['pemilu', 'pilkada', 'pilpres', '#pilkada2026'] },
+    th: ['pemilu', 'pilkada', 'pilpres', '#pilkada'] },
   { id: 'politik', local: true,
-    pos: /(partai politik|caleg|capil|daftar caleg|\bdpr\b|\bdprd\b|parlemen|fraksi|koalisi|oposisi|kabinet|reshuffle|\bmenteri\b|wakil (presiden|menteri)|\bistana\b|senayan|menko|kadin|\bgubernur\b|\bbupati\b|wali kota|\bpilkada\b|\bpilgub\b|\bpilbup\b|\bpilgici\b|\bkpud\b|impeachment|majelis kehormatan|sidang mk)/i,
-    neg: /(film|sinema|bioskop|trailer|teaser|poster|nonton|netflix|zombie|sinetron|sinetrik|hakase|kpop|k-pop|\bdpr\b[^.\n]{0,15}(cream|artic|live|concert|fan|bias|music|song|album|stage)|dpr (cream|artic))/i,
+    pos: /(partai politik|caleg|capil|daftar caleg|\bdpr\b|\bdprd\b|parlemen|fraksi|koalisi|oposisi|kabinet|\bmenteri\b|wakil (presiden|menteri)|\bistana\b|senayan|menko|kadin|\bgubernur\b|\bbupati\b|wali kota|\bpilkada\b|\bpilgub\b|\bpilbup\b|\bpilgici\b|\bkpud\b|impeachment|majelis kehormatan|sidang mk|prabowo|apbn|rapbn|danantara|gibran|reshuffle[^.\n]{0,20}kabinet|kabinet[^.\n]{0,20}reshuffle)/i,
+    neg: /(film|sinema|bioskop|trailer|teaser|poster|nonton|netflix|zombie|sinetron|sinetrik|hakase|kpop|k-pop|bias[^.\n]{0,10}\bdpr\b|fans?[^.\n]{0,10}\bdpr\b|\bdpr\b[^.\n]{0,15}(cream|artic|live|concert|fan|bias|music|song|album|stage)|dpr (cream|artic))/i,
     x: ['(pemilu OR pilkada OR pilpres OR "partai politik" OR caleg OR DPR OR kabinet OR reshuffle OR menteri) -filter:replies'],
     th: ['pemilu', 'pilkada', 'pilpres', 'DPR', 'kabinet', 'reshuffle'] },
   { id: 'konflik', local: true,
     pos: /(perang|konflik|invasi|aneksasi|pendudukan|gencatan senjata|ultimatum|kudeta|pemberontakan|separatis|genosida|blokade|embargo|sandera|pembajakan|pertempuran|darurat militer|darurat sipil|mobilisasi|milisi|paramiliter|peluru kendali|\brudal\b|\bdrone\b|\bdron\b|serangan udara|serangan rudal|\bbom\b|granat|artileri|\btni\b|\btentara\b|militer|perjanjian damai|perundingan damai)/i,
     // "perang harga" = sale; "konflik batin/rumah tangga" = personal; "bom waktu/saraf" = bukan senjata
-    neg: /(perang harga|konflik (batin|psikologis|rumah tangga|hukum|personal)|bom (waktu|tank|mobil|rakit|dekat|saraf)|film|sinema|bioskop|trailer|teaser|poster|nonton|netflix|zombie|sinetron|sinetrik|dirgahayu|kami (akan |sedang )?melaksanakan|wajib hijrah|jauhi yang kafir|khalifahah)/i,
+    neg: /(perang harga|perang (saudara|dagang|harga|dunia ketiga|polusi|sampah|hati|jiwa|batin|pendapat|online|dunia maya|netizen|gosip)|konflik (batin|psikologis|rumah tangga|hukum|personal)|bom (wacana|waktu|tank|mobil|rakit|dekat|saraf)|film|sinema|bioskop|trailer|teaser|poster|nonton|netflix|zombie|sinetron|sinetrik|dirgahayu|kami (akan |sedang )?melaksanakan|wajib hijrah|jauhi yang kafir|khalifahah)/i,
     x: ['(perang OR "gencatan senjata" OR ultimatum OR invasi OR aneksasi OR kudeta OR "perjanjian damai" OR "darurat militer") -filter:replies'],
-    th: ['perang', 'konflik', 'gencatan senjata', 'invasi', 'kudeta', 'serangan udara'] },
+    th: ['perang', 'konflik', 'gencatan senjata', 'invasi', 'kudeta', 'serangan udara', 'militer', 'tentara', 'TNI', 'rudal', 'drone', 'pertempuran', 'sandera', 'pembajakan', 'ultimatum', 'aneksasi', 'mobilisasi', 'darurat militer', 'perundingan damai'] },
   { id: 'insiden', local: true,
-    pos: /(ambruk|runtuh|pohon tumbang|tenggelam|kapal karam|kapal tenggelam|hanyut|tergelincir|jatuh dari gedung)/i,
+    pos: /(ambruk|runtuh|pohon tumbang|tenggelam|kapal karam|kapal tenggelam|hanyut|tergelincir|jatuh dari gedung|jembatan putus|bangunan roboh)/i,
+    // metafora: "runtuhnya NKRI/keluarga", "ambruknya kurs/ekonomi" bukan insiden fisik
+    neg: /(runtuhnya (NKRI|negara|keluarga|ekonomi|rezim|pemerintah|sistem|karir|hubungan|cinta|pernikahan)|ambruknya (kurs|ekonomi|pendidikan|parlementarisme|rezim|pemerintah|sistem|hubungan|cinta|karir))/i,
     x: ['(ambruk OR runtuh OR "pohon tumbang" OR tenggelam OR karam) -filter:replies'],
     th: ['ambruk', 'kapal tenggelam', 'runtuh', 'tenggelam'] },
   { id: 'kriminal', local: true,
-    pos: /(pembunuhan|dibunuh|pengeroyokan|dikeroyok|begal|\bcurat\b|perampokan|dirampok|terorisme|narkoba|penculikan|perkosaan|rudapaksa)/i,
+    pos: /(pembunuhan|dibunuh|pengeroyokan|dikeroyok|begal|\bcurat\b|perampokan|dirampok|terorisme|narkoba|penculikan|perkosaan|rudapaksa|kdrt|judol|tppo|judi online)/i,
     x: ['(pembunuhan OR pengeroyokan OR begal OR perampokan OR penculikan OR narkoba) -filter:replies'],
     th: ['pembunuhan', 'begal', 'pengeroyokan', 'perampokan'] },
   { id: 'kesehatan', local: true,
-    pos: /(demam berdarah|\bdbd\b|\bdhf\b|covid|korona|influenza|\bflu\b|mpox|cacar monyet|campak|morbili|cacar air|tangan kaki mulut|hfmd|leptospirosis|tifus|thypoid|kolera|rabies|gila anjing|anthrax|difteri|polio|meningitis|meningokokus|ensefalitis|chikungunya|cikungunya|zika|filariasis|kaki gajah|hepatitis|\bhiv\b|\baids\b|kusta|lepra|\bispa\b|pneumonia|bronkopneumonia|bronkitis|hmpv|human metapneumovirus|\brsv\b|\bmers\b|ebola|marburg|lassa|west nile|h5n1|avian influenza|\btbc\b|tuberkulosis|\btb\b|diare|disentri|scabies|kudis|keracunan|rotavirus|flu burung|h1n1|malaria|wabah|\bklb\b|kejadian luar biasa|gagal ginjal|stunting|vaksin|imunisasi)/i,
+    pos: /(demam berdarah|\bdbd\b|\bdhf\b|covid|korona|influenza|\bflu\b|mpox|cacar monyet|campak|morbili|cacar air|tangan kaki mulut|hfmd|leptospirosis|tifus|thypoid|kolera|rabies|gila anjing|anthrax|difteri|polio|meningitis|meningokokus|ensefalitis|chikungunya|cikungunya|zika|filariasis|kaki gajah|hepatitis|\bhiv\b|\baids\b|kusta|lepra|\bispa\b|pneumonia|bronkopneumonia|bronkitis|hmpv|human metapneumovirus|\brsv\b|\bmers\b|ebola|marburg|lassa|west nile|h5n1|avian influenza|\btbc\b|tuberkulosis|\btb\b|diare|disentri|scabies|kudis|keracunan|rotavirus|flu burung|h1n1|malaria|wabah|kejadian luar biasa|gagal ginjal|stunting|vaksin|imunisasi|puskesmas|kemenkes|rumah sakit|obat palsu|gizi buruk)/i,
     // DBD = Dead by Daylight (game) sangat ramai di X — "main DBD", "DBD match/rank/chapter" bukan demam berdarah.
     // "TBC" = to be confirmed di posting hasil laga: "FINAL | X 1 Y 0 TBC", "we exit the cup" — bukan tuberkulosis.
-    neg: /(film|sinema|bioskop|trailer|teaser|poster|nonton|netflix|zombie|mayat hidup|hantu|sekuel|layar lebar|sinetron|sinetrik|hollywood|dead by daylight|main\s+dbd|play\s+dbd|dbd[^.\n]{0,30}(match|rank|chapter|killer|survivor|lag|server|mobile|skin|update|repair|macro|rivals|phasmo|twitch|stream|queue|gaming|lobby|game|main|play|take on|grinding|leveling)|deadbydaylight|dead[- ]by[- ]daylight|\b(?:el|la|del|al)\s+dbd\b|\bwe\s+(?:exit|advance|progress|through|win|drew|lost|booked|qualified)\b[^.\n]{0,50}\b(?:cup|final|match|game|tie|round|knockout|semi|qf|sf|league)\b|\b(?:man|player|goal|motm)\s+of\s+the\s+match\b|\bsafe trip home\b|\b(?:full[- ]?time|ft)\s*(?:result|score|whistle|report)\b)/i,
+    neg: /(film|sinema|bioskop|trailer|teaser|poster|nonton|netflix|zombie|mayat hidup|hantu|sekuel|layar lebar|sinetron|sinetrik|hollywood|dead by daylight|main\s+dbd|play\s+dbd|dbd[^.\n]{0,30}(match|rank|chapter|killer|survivor|lag|server|mobile|skin|update|repair|macro|rivals|phasmo|twitch|stream|queue|gaming|lobby|game|main|play|take on|grinding|leveling)|deadbydaylight|dead[- ]by[- ]daylight|\b(?:el|la|del|al)\s+dbd\b|\bwe\s+(?:exit|advance|progress|through|win|drew|lost|booked|qualified)\b[^.\n]{0,50}\b(?:cup|final|match|game|tie|round|knockout|semi|qf|sf|league)\b|\b(?:man|player|goal|motm)\s+of\s+the\s+match\b|\bsafe trip home\b|\b(?:full[- ]?time|ft)\s*(?:result|score|whistle|report)\b|\btbc\b[^.\n]{0,40}(lineup|squad|bench|starting|kick.?off|match|game|vs\b|injur|suspend)|\(tbc\))/i,
     // "TBC" telanjang di X = "to be confirmed" (hasil laga) — dipisah ke query lang:id
     x: ['("demam berdarah" OR DBD OR COVID OR influenza OR campak OR "tangan kaki mulut" OR leptospirosis OR rabies OR kolera OR mpox OR polio OR "gagal ginjal" OR KLB OR wabah OR imunisasi OR vaksin) -filter:replies',
         'lang:id (TBC OR tuberkulosis OR "TBC paru") -filter:replies'],
-    th: ['demam berdarah', 'wabah', 'TBC', 'influenza', 'keracunan massal', 'gagal ginjal', 'vaksin', 'imunisasi'] },
+    th: ['demam berdarah', 'wabah', 'TBC', 'influenza', 'keracunan massal', 'gagal ginjal', 'vaksin', 'imunisasi', 'DBD', 'covid', 'korona', 'tifus', 'stunting', 'malaria', 'diare', 'campak', 'kolera', 'rabies', 'tuberkulosis', 'pneumonia', 'tangan kaki mulut', 'leptospirosis'] },
   { id: 'ransomware', local: true,
-    pos: /(ransomware|malware)/i,
+    pos: /(ransomware|malware|lockbit|blackcat|alphv|\bclop\b)/i,
     // "malware" dipakai kiasan ("humans were malware infected") dan disebut dalam daftar kejahatan
     // artikel regulasi — wajib konteks insiden siber nyata
     neg: /(humans?|manusia|people|manusiawi|otak|hati|jiwa|semangat|energi|pikiran)[^.\n]{0,40}(malware|virus)|(malware|virus)[^.\n]{0,40}(humans?|manusia|people|manusiawi|otak|hati|jiwa|semangat|pikiran)/i,
     x: ['(ransomware OR malware) -filter:replies'],
     th: ['ransomware', 'malware', 'bocor data'] },
   { id: 'serangan siber', local: true,
-    pos: /(serangan siber|serangan cyber|peretasan|\bperetas\b|diretas|dibobol|kebocoran data|bocor data|pencurian data|(mencuri|curi|curian) data|\bddos\b|data breach|\bbssn\b|\bpdn\b|exploit|dieksploitasi|\bcve[- ]?\d{4}|kerentanan|vulnerabilit|backdoor|spyware|skimming|carding|cryptojack|deepfake|deface|defacement|phishing|\bphish|vishing|smishing|sextortion|botnet|\bzero[- ]day\b|\bn[- ]?day\b|infrastruktur kritis|apt\d{1,2}\b|\bc2\b|command and control|leak site|layanan lumpuh|situs lumpuh|gangguan (layanan|sistem|jaringan|aplikasi|infrastruktur)|insiden keamanan|maintenance keamanan|uu pdp|\bpdp\b|dompet kripto|investasi bodong|scam|penipuan online|pinjol ilegal|akun palsu)/i,
+    pos: /(serangan siber|serangan cyber|peretasan|\bperetas\b|diretas|dibobol|kebocoran data|bocor data|pencurian data|(mencuri|curi|curian) data|\bddos\b|data breach|\bbssn\b|\bpdn\b|dieksploitasi|\bcve[- ]?\d{4}|kerentanan|vulnerabilit|backdoor|spyware|skimming|carding|cryptojack|deepfake|deface|defacement|phishing|\bphish|vishing|smishing|sextortion|botnet|\bzero[- ]day\b|\bn[- ]?day\b|infrastruktur kritis|apt\d{1,2}\b|\bc2\b|command and control|leak site|layanan lumpuh|situs lumpuh|gangguan (layanan|sistem|jaringan|aplikasi|infrastruktur)|insiden keamanan|maintenance keamanan|uu pdp|\bpdp\b|dompet kripto|investasi bodong|scam|penipuan online|pinjol ilegal|akun palsu|\bhacker\b|\bcve\b|dieksploitasi|di-?exploit(?:asi|kan)?|exploit\s+(?:celah|kerentanan|sistem|jaringan|server|akun|data|perangkat|zero[- ]day|vulnerabilit))/i,
     neg: /(film|sinema|bioskop|trailer|teaser|poster|nonton|netflix|zombie|sinetron|sinetrik|hackathon|mbti|enneagram)/i,
     x: ['("serangan siber" OR peretasan OR diretas OR "kebocoran data" OR BSSN OR DDoS OR exploit OR phishing OR ransomware OR deepfake) -filter:replies'],
-    th: ['serangan siber', 'kebocoran data', 'ransomware', 'phishing', 'exploit', 'diretas', 'BSSN'] },
+    th: ['serangan siber', 'kebocoran data', 'ransomware', 'phishing', 'exploit', 'diretas', 'BSSN', 'peretasan', 'dibobol', 'ddos', 'deepfake', 'penipuan online', 'pinjol', 'investasi bodong', 'situs lumpuh', 'insiden keamanan', 'akun palsu'] },
   { id: 'akun dibajak', local: true,
     pos: /(akun[^.\n]{0,30}(dibajak|diretas|dibobol|di-?hack|kena hack|disusupi)|akun (instagram|facebook|whatsapp|telegram|twitter|\bx\b|tiktok)[^.\n]{0,25}(dibajak|diretas|dibobol|hack))/i,
     x: ['(akun (dibajak OR diretas OR dibobol OR "kena hack")) -filter:replies'],
     th: ['akun dibajak', 'akun diretas', 'akun dibobol'] },
   { id: 'mbg', local: true,
-    pos: /\bmbg\b|makan bergizi gratis|\bsppg\b|badan gizi nasional|\bbgn\b|keracunan mbg/i,
-    neg: /(resep|food ?vlog|foodreview|food review|cooking|memasak|review makanan)/i,   // konten kuliner, bukan program
+    pos: /\bmbg\b|makan bergizi gratis|makan gratis|program makan gratis|gizi gratis|makan siang gratis|\bsppg\b|badan gizi nasional|\bbgn\b|keracunan mbg/i,
+    // "mbg" telanjang sering Mbappé / "my bini gue"; "bgn" = singkatan "bagaimana".
+    // Program MBG wajib konteks gizi/makanan — istilah yang sudah spesifik bypass via strong.
+    strong: /(makan bergizi gratis|makan gratis|program makan gratis|gizi gratis|makan siang gratis|\bsppg\b|badan gizi nasional|keracunan mbg)/i,
+    ctx: /(makan|bergizi|gizi|bgn|program|keracunan|gratis|balita|sekolah|kantin|siswa|mbg)/i,
+    neg: /(resep|food ?vlog|foodreview|food review|cooking|memasak|review makanan|mbappe|real madrid|bundesliga|my bini)/i,   // konten kuliner/bola, bukan program
     x: ['("makan bergizi gratis" OR MBG OR SPPG OR "badan gizi nasional" OR BGN) -filter:replies'],
     th: ['makan bergizi gratis', 'MBG', '#makanbergizigratis'] },
   { id: 'bbm', local: true,
-    pos: /\bbbmm?\b|bahan bakar (minyak|non ?subsidi|subsidi)|pertalite|pertamax|dexlite|biosolar|\bspbu\b|kelangkaan (bbm|minyak|solar)|antrean (spbu|bbm|minyak)|harga (bbm|minyak tanah)/i,
-    neg: /(minyak (goreng|zaitun|wangi)|solar (panel|pembangkit)|bensin (romantis|story))/i,
+    pos: /\bbbmm?\b|bahan bakar (minyak|non ?subsidi|subsidi)|pertalite|pertamax|dexlite|biosolar|\bspbu\b|kelangkaan (bbm|minyak|solar)|antrean (spbu|bbm|minyak)|harga (bbm|minyak tanah)|harga minyak|subsidi energi|gas langka/i,
+    neg: /(minyak (goreng|zaitun|wangi)|solar (panel|pembangkit)|bensin (romantis|story)|\bbbmm?\b[^.\n]{0,40}(bola|football|soccer|liga|premier league|manager|coach|lineup|formasi|gol\b|assist))/i,
     x: ['(BBM OR Pertalite OR Pertamax OR "harga BBM" OR SPBU OR "bahan bakar" OR "minyak tanah") -filter:replies'],
     th: ['BBM', 'harga BBM', 'Pertalite', 'SPBU', '#bbm'] },
   { id: 'pangan', local: true,
-    pos: /(minyak goreng|harga (beras|telur|daging|cabai|gula|tepung|beras medium)|sembako|inflasi pangan|pangan (mahal|pasti)|stok (beras|pangan|sembako)|impor (beras|pangan|gula|tepung)|operasi pasar|bantuan pangan)/i,
+    pos: /(minyak goreng|harga (beras|telur|daging|cabai|gula|tepung|beras medium)|sembako|inflasi pangan|pangan (mahal|pasti)|stok (beras|pangan|sembako)|impor (beras|pangan|gula|tepung)|operasi pasar|bantuan pangan|beras oplosan|harga pangan|bawang merah|daging ayam)/i,
     neg: /(resep|menu masak|food ?vlog|kuliner|review (makanan|resto))/i,
     x: ['("minyak goreng" OR "harga beras" OR sembako OR "operasi pasar" OR "inflasi pangan" OR "harga telur" OR "harga daging") -filter:replies'],
-    th: ['minyak goreng', 'harga beras', 'sembako', 'inflasi pangan'] },
+    th: ['minyak goreng', 'harga beras', 'sembako', 'inflasi pangan', 'harga telur', 'harga daging', 'harga cabai', 'stok beras', 'impor beras', 'operasi pasar'] },
   { id: 'bansos', local: true,
-    pos: /(bansos|bantuan sosial|bantuan langsung tunai|\bblt\b|\bpkh\b|\bbpnt\b|\bbsu\b|subsidi (listrik|gula|upah|pupuk)|rastra|kartu (sembako|prakerja|indonesia pintar)|program keluarga harapan)/i,
+    pos: /(bansos|bantuan sosial|bantuan langsung tunai|\bblt\b|\bpkh\b|\bbpnt\b|\bbsu\b|subsidi (listrik|gula|upah|pupuk)|rastra|kartu (sembako|prakerja|indonesia pintar)|program keluarga harapan|kemensos|\bdtks\b)/i,
+    // "BLT" = bacon-lettuce-tomato & singkatan olahraga AS; akronim bansos wajib konteks program
+    strong: /(bansos|bantuan sosial|bantuan langsung tunai|subsidi (listrik|gula|upah|pupuk)|rastra|kartu (sembako|prakerja|indonesia pintar)|program keluarga harapan|kemensos|\bdtks\b)/i,
+    ctx: /(bansos|bantuan|pemerintah|kuota|cair|desember|regulasi|program|tunai|sosial|dtks|kemensos|penerima|kartu|subsidi|raskin|sembako|\bblt\b|\bpkh\b|\bbpnt\b|\bbsu\b)/i,
     neg: /(film|sinema|sinetron|nonton)/i,
     x: ['(bansos OR "bantuan sosial" OR PKH OR BPNT OR BSU OR BLT OR "subsidi listrik" OR "kartu prakerja") -filter:replies'],
-    th: ['bansos', 'bantuan sosial', 'PKH', 'BSU', 'subsidi listrik'] },
+    th: ['bansos', 'bantuan sosial', 'PKH', 'BSU', 'subsidi listrik', 'BLT', 'BPNT', 'rastra', 'kartu sembako', 'kartu prakerja'] },
   { id: 'hukum', local: true,
     pos: /(rkuhap|rkuhp|\bkuhp\b|\bkuhap\b|tipikor|korupsi|gratifikasi|suap|penyuapan|pengadilan|putusan (pengadilan|hakim)|kasasi|\bdiversi\b|kejaksaan|upacara hukuman mati|eksekusi (hukuman|mati)|rehabilitasi narkotika)/i,
     neg: /(film|sinema|sinetron|sinetrik|trailer|nonton|netflix)/i,
     x: ['(RKUHAP OR RKUHP OR KUHP OR KUHAP OR tipikor OR korupsi OR KPK OR kejaksaan OR "putusan pengadilan") -filter:replies'],
-    th: ['RKUHAP', 'tipikor', 'korupsi', 'KPK', 'RKUHP'] },
-  { id: 'olahraga', local: false,
-    pos: /(timnas|bulu tangkis|badminton|sepak ?bola|liga 1|liga 2|liga champions|premier league|piala AFF|sea games|\bpiala dunia\b|\bolimpiade\b|atletik|panjat tebing|motogp|motoGp|balap (f1|motor|mobil)|formula 1|ganda (putra|putri|campuran)|tunggal (putra|putri)|volleyball|basket\b|nba\b)/i,
-    neg: /(film|trailer|nonton|netflix|sinetron|sinetrik|game|genshin)/i,
-    x: ['(timnas OR bulu tangkis OR badminton OR "piala AFF" OR "sea games" OR "liga 1" OR "premier league" OR atletik OR panjat tebing) -filter:replies'],
-    th: ['timnas', 'bulu tangkis', 'piala AFF', 'sea games', 'liga 1', 'atletik'] },
+    th: ['RKUHAP', 'tipikor', 'korupsi', 'KPK', 'RKUHP', 'KUHP', 'KUHAP', 'pengadilan', 'kasasi', 'suap', 'kejaksaan'] },
+  { id: 'olahraga', local: true,
+    // hanya ejaan/istilah Indonesia — "premier league"/"nba" dsb bukan konten lokal
+    // dan pernah menarik feed bola Inggris (Arsenal, Konsa, dll)
+    pos: /(timnas|timnas (indonesia|putri|putra)|bulu tangkis|badminton|piala aff|sea games|olimpiade|panjat tebing|panjat speed|liga 1|liga 2|piala presiden|kontingen indonesia|asiad|aff cup|volleyball indonesia|timnas basket|timnas bola voli|ganda (putra|putri|campuran)|tunggal (putra|putri)|bulutangkis|atletik)/i,
+    neg: /(film|trailer|nonton|netflix|sinetron|sinetrik|genshin|pubg|mobile legends|free ?fire|honkai|zenless|valorant|premier league|la liga|serie a|bundesliga|champions league|nba|nfl|mlb)/i,
+    x: ['(timnas OR bulu tangkis OR badminton OR "piala AFF" OR "sea games" OR "liga 1" OR "panjat tebing") -filter:replies'],
+    th: ['timnas', 'bulu tangkis', 'piala AFF', 'sea games', 'liga 1'] },
   { id: 'transport', local: true,
-    pos: /(kereta api|\bkai\b|delay (penerbangan|pesawat|kereta)|penerbangan (delay|dibatalkan|batal landas)|tiket (pesawat|kereta|kapal)|\bdermaga\b|kapal feri|\bferry\b|mudik|batal mudik|tol (macet|boleh|putus|buntu|lalu lintas)|jalan tol|busway|transjakarta|\bmrt\b|\blrt\b|\bkrl\b|angkot|ojol|gojek|grabfood|\bgrab\s*(?:car|bike|food|motor|ride|dana|share|express)\b|taxi online|kecelakaan (kereta|bus|truk))/i,
+    pos: /(kereta api|\bkai\b|delay (penerbangan|pesawat|kereta)|penerbangan (delay|dibatalkan|batal landas)|tiket (pesawat|kereta|kapal)|\bdermaga\b|kapal feri|\bferry\b|mudik|batal mudik|tol (macet|boleh|putus|buntu|lalu lintas)|jalan tol|busway|transjakarta|\bmrt\b|\blrt\b|\bkrl\b|angkot|ojol|gojek|grabfood|\bgrab\s*(?:car|bike|food|motor|ride|dana|share|express)\b|taxi online|kecelakaan (kereta|bus|truk)|bandara)/i,
+    // nama moda telanjang (lrt/krl/mrt/kai/angkot/ojol) terlalu ambigu: LRT = grup K-pop,
+    // KRL = slang Portugis, MRT = listing Malaysia, KAI = Kai Havertz / jasa tiket.
+    // Wajib anchor transit/insiden; frasa yang sudah spesifik bypass via strong.
+    strong: /(kereta api|tiket (pesawat|kereta|kapal)|delay (penerbangan|pesawat|kereta)|penerbangan (delay|dibatalkan|batal landas)|kapal (feri|tenggelam|karam)|\bdermaga\b|\bferry\b|busway|transjakarta|jalan tol|tol (macet|boleh|putus|buntu|lalu lintas)|mudik|batal mudik|taxi online|kecelakaan (kereta|bus|truk))/i,
+    ctx: /(jakarta|jabodetabek|indonesia|stasiun|bandara|terminal|pelabuhan|dermaga|mudik|pulang kampung|penumpang|tiket|tol|busway|transjakarta|kereta api|commuter line|delay|batal landas|angkutan umum|ojek online|angkot umum|penerbangan|pesawat|kapal|ferry|macet|gangguan|kerusakan|dibatalkan|kecelakaan|tabrakan|kembali normal|operasional|naik|turun|perjalanan)/i,
     neg: /(judi|togel|slot online|gacor|prediksi)/i,
-    x: ['(kereta api OR "delay penerbangan" OR "penerbangan dibatalkan" OR bandara OR "jalan tol" OR mudik OR ojol OR TransJakarta OR MRT OR KRL OR angkot) -filter:replies'],
-    th: ['kereta api', 'delay penerbangan', 'jalan tol', 'mudik', 'ojol', 'TransJakarta'] },
+    x: ['(kereta api OR "delay penerbangan" OR "penerbangan dibatalkan" OR "jalan tol" OR mudik OR ojol OR TransJakarta OR MRT OR KRL OR angkot OR LRT OR "kapal feri" OR "batal mudik" OR dermaga OR "tol macet") -filter:replies'],
+    th: ['kereta api', 'delay penerbangan', 'jalan tol', 'mudik', 'ojol', 'TransJakarta', 'MRT', 'KRL', 'LRT', 'angkot', 'penerbangan dibatalkan', 'tol macet', 'kapal feri', 'batal mudik', 'dermaga'] },
   { id: 'pendidikan', local: true,
-    pos: /(ukt|biaya kuliah tunggal|beasiswa (dipotong|batal|ditolak|gelombang)|guru (honorer|pppk)|keracunan (kantin|sekolah|massal|makanan)|murid (pingsan|tenggelam|meninggal|kecelakaan)|siswa (pingsan|tenggelam|meninggal|keracunan|kecelakaan)|mahasiswa (pingsan|tenggelam|meninggal|keracunan|demo|unjuk rasa|demonstrasi)|sekolah (kebakaran|longsor|ambruk|ditutup|runtuh|tenggelam)|kampus (kebakaran|longsor|ambruk)|snbt|sbmptn|kurikulum merdeka)/i,
+    pos: /(ukt|biaya kuliah tunggal|beasiswa (dipotong|batal|ditolak|gelombang)|guru (honorer|pppk)|keracunan (kantin|sekolah|siswa|mahasiswa|mbg|massal)|murid (pingsan|tenggelam|meninggal|kecelakaan)|siswa (pingsan|tenggelam|meninggal|keracunan|kecelakaan)|mahasiswa (pingsan|tenggelam|meninggal|keracunan|demo|unjuk rasa|demonstrasi)|sekolah (kebakaran|longsor|ambruk|ditutup|runtuh|tenggelam)|kampus (kebakaran|longsor|ambruk)|snbt|sbmptn|kurikulum merdeka|\bpppk\b|\bcpns\b|\bcasn\b|\bspp\b|lpdp|kip kuliah|sekolah gratis)/i,
     neg: /(film|sinema|sinetron|nonton|netflix)/i,
     x: ['(UKT OR "biaya kuliah" OR "guru honorer" OR "siswa pingsan" OR "keracunan sekolah" OR "sekolah kebakaran" OR beasiswa OR SNBT OR "guru PPPK") -filter:replies'],
-    th: ['UKT', 'biaya kuliah', 'guru honorer', 'siswa pingsan', 'keracunan sekolah', 'beasiswa'] }
+    th: ['UKT', 'biaya kuliah', 'guru honorer', 'siswa pingsan', 'keracunan sekolah', 'beasiswa', 'SNBT', 'SBMPTN', 'kurikulum merdeka', 'guru PPPK', 'sekolah ambruk', 'sekolah longsor', 'beasiswa dipotong'] }
 ];
 for (const t of SOC_TOPICS) t.adhoc = false;
 
 /* ---------- klasifikasi: teks -> topics[] ---------- */
 const ASSESS = require('./assessment');
+// eventType dikoreksi di lapisan ini (eventType inti milik assessment.js):
+//  - insiden: 'maritime_accident' hanya kalau span memang konteks laut/kapal;
+//    tenggelam/hanyut generik (kolam, got, anak) -> 'kecelakaan' supaya bisa
+//    korelasikan dengan event topik kecelakaan.
+//  - kecelakaan + konteks laut -> 'maritime_accident' (menyamakan dgn insiden,
+//    jadi "kapal tenggelam" dari dua topik bisa corroborate).
+//  - wabah -> type 'health_incident' + category 'kesehatan' (menyamakan dgn
+//    topik kesehatan; sebelumnya category null jadi event-nya tak pernah
+//    bisa masuk grup sinyal).
+const SOC_SEA_RE = /(kapal|laut|selat|ombak|nelayan|feri|perahu|sungai|perairan|samudra|ocean|boat|ship|tpi|dermaga)/i;
+function socFixEvents(res) {
+  for (const f of res.findings || []) {
+    const ev = f.evidence || '';
+    if (f.topic === 'insiden' && f.type === 'maritime_accident' && !SOC_SEA_RE.test(ev)) f.type = 'kecelakaan';
+    else if (f.topic === 'kecelakaan' && /tenggelam|karam|hanyut/i.test(ev) && SOC_SEA_RE.test(ev)) f.type = 'maritime_accident';
+    else if (f.topic === 'wabah') { f.type = 'health_incident'; if (!f.category) f.category = 'kesehatan'; }
+  }
+  return res;
+}
 function socAssess(text, extra) {
-  return ASSESS.assess(text, SOC_TOPICS.concat(extra || []), { noise: SOC_NOISE_RE, spam: SOC_SPAM_RE });
+  return socFixEvents(ASSESS.assess(text, SOC_TOPICS.concat(extra || []), { noise: SOC_NOISE_RE, spam: SOC_SPAM_RE }));
 }
 function socTopics(text, extra) { return socAssess(text, extra).topics; }
 
@@ -281,14 +324,25 @@ function socKeepTh(p) {
 }
 
 /* ---------- balancer: satu topik / satu akun nggak boleh makan buffer ---------- */
-function socBalance(arr, max, userOf, perTopic = 0.22, perUser = 3) {
-  const capT = Math.max(8, Math.ceil(max * perTopic)), tc = Object.create(null), uc = Object.create(null), out = [];
-  for (const p of arr) {
-    const tps = [...new Set(p.topics || [])], u = String(userOf(p) || '?').toLowerCase();
-    if (!tps.length || tps.some(t => (tc[t] || 0) >= capT || (uc[u + '|' + t] || 0) >= perUser)) continue;
-    for (const t of tps) { tc[t] = (tc[t] || 0) + 1; uc[u + '|' + t] = (uc[u + '|' + t] || 0) + 1; }
-    out.push(p);
-    if (out.length >= max) break;
+// Dua pass: post prioritas (assessment.signalEligible atau reportType 'reported')
+// klaim budget topik/akun DULU, baru komentar biasa ngikutin cap yang sama.
+// Cap global per user (~10/24h) hanya berlaku untuk non-signalEligible.
+function socBalance(arr, max, userOf, perTopic = 0.22, perUser = 3, userCap = 10) {
+  if (!(max > 0)) return [];
+  const capT = Math.max(8, Math.ceil(max * perTopic)), tc = Object.create(null), uc = Object.create(null), ug = Object.create(null), out = [];
+  const isSig = p => !!(p && p.assessment && p.assessment.signalEligible === true);
+  const isRep = p => isSig(p) || !!(p && p.assessment && p.assessment.reportType === 'reported');
+  for (const want of [isRep, p => !isRep(p)]) {
+    for (const p of arr) {
+      if (!want(p)) continue;
+      const tps = [...new Set(p.topics || [])], u = String(userOf(p) || '?').toLowerCase();
+      if (!tps.length || tps.some(t => (tc[t] || 0) >= capT || (uc[u + '|' + t] || 0) >= perUser)) continue;
+      if (!isSig(p) && userCap > 0 && (ug[u] || 0) >= userCap) continue;
+      for (const t of tps) { tc[t] = (tc[t] || 0) + 1; uc[u + '|' + t] = (uc[u + '|' + t] || 0) + 1; }
+      if (!isSig(p)) ug[u] = (ug[u] || 0) + 1;
+      out.push(p);
+      if (out.length >= max) return out;
+    }
   }
   return out;
 }
@@ -336,4 +390,6 @@ function socHot(posts, now = Date.now()) {
   return { stats, hot: hot.slice(0, 6) };
 }
 
-module.exports = { CLASSIFIER_VERSION: ASSESS.VERSION, SOC_TOPICS, socAssess, socTopics, socAdhoc, socKeepX, socKeepTh, socBalance, socQueries, socHot, socNonLatin, socVi, socHashJunk, astroturfSig, socForeignLang, SOC_FOREIGN_RE, SOC_LOCAL_RE };
+// patch bump di atas VERSION assessment.js: registry/klasifikasi di file ini berubah
+const SOC_CLASSIFIER_VERSION = ASSESS.VERSION;
+module.exports = { CLASSIFIER_VERSION: SOC_CLASSIFIER_VERSION, SOC_TOPICS, socAssess, socTopics, socAdhoc, socKeepX, socKeepTh, socBalance, socQueries, socHot, socNonLatin, socVi, socHashJunk, astroturfSig, socForeignLang, SOC_FOREIGN_RE, SOC_LOCAL_RE };
