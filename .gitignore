@@ -7,6 +7,9 @@ config.local.json
 data/
 fxhist.json
 
+# generated artifacts
+scripts/audit-output.json
+
 # python venv & tooling
 .venv/
 .playwright-mcp/
