@@ -5315,7 +5315,7 @@ function rdError(url, msg) {
 function rdArticle(d, url) {
   const ts = d.time && !isNaN(Date.parse(d.time)) ? wibFull(Date.parse(d.time)) + ' WIB' : '';
   const meta = [d.site, d.byline, ts].filter(Boolean);
-  const hero = d.img || rdHero;
+  const hero = d.img;   // server sudah memvalidasi (gambar RSS ikut gerbang ukuran/duplikat); jangan fallback mentah
   const img = hero ? `<img class="rd-hero" src="${esc(hero)}" alt="" loading="eager" referrerpolicy="no-referrer" onerror="this.remove()">` : '';
   const rdVidHtml = v => v.kind === 'iframe'
     ? `<div class="rd-vid"><iframe src="${esc(v.url)}" title="Video" loading="lazy" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe></div>`

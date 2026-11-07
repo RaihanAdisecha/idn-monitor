@@ -126,6 +126,13 @@ const dec = s => s.replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1').replace(/&lt;/g,
   .replace(/&amp;/g, '&').replace(/<[^>]+>/g, '').trim();
 const tag = (b, n) => { const m = b.match(new RegExp('<' + n + '[^>]*>([\\s\\S]*?)</' + n + '>', 'i')); return m ? dec(m[1]) : ''; };
 function feedImage(b) {
+  const u = feedImageRaw(b);
+  if (!u) return '';
+  const p = u.split('?')[0];
+  if (/\.(svg|gif|ico)$/i.test(p) || rdSmallHint(u) || rdJunkUrl(u) || /(logo|favicon|sprite|placeholder|avatar|icon|emoji|emoticon|default[-_]|no[-_]?image|blank|pixel)[^/]*$/i.test(p)) return '';
+  return u;
+}
+function feedImageRaw(b) {
   const custom = b.match(/<img>\s*(https?:\/\/[^<\s]+)\s*<\/img>/i);
   if (custom) return dec(custom[1]);
   const direct = b.match(/<media:content[^>]*url="([^"]+)"/i)
@@ -1401,6 +1408,7 @@ function addCandidate(out, raw, base, kind) {
     const fn = x.pathname.split('/').pop() || '';
     if (/(logo|logotype|semangka|favicon|sprite|watermark|placeholder|avatar|icon|default)/i.test(fn)) return;   // aset situs, bukan foto berita
     if (rdJunkUrl(x.href)) return;   // badge app-store, icon sosmed, tracker, foto wartawan, dll
+    if (rdSmallHint(x.href)) return;   // thumb/24x24, ?w=100 — terlalu kecil untuk foto berita
     const url = x.href;
     if (!out.some(c => c.url === url)) out.push({ url, kind });
   } catch (e) {}
@@ -1617,6 +1625,7 @@ async function decodeGNews(u) {
 // og:image yang sama muncul di banyak artikel berbeda pada satu host = aset situs (logo), bukan foto berita
 const ogReuseMap = new Map();   // host -> Map(imgUrl -> Set(articleUrl))
 function ogReuse(host, imgUrl, article) {
+  imgUrl = rdImgKey(imgUrl);   // normalisasi: ?w=, /300x169/, varian CDN = gambar yang sama
   let m = ogReuseMap.get(host);
   if (!m) { m = new Map(); ogReuseMap.set(host, m); if (ogReuseMap.size > 60) ogReuseMap.delete(ogReuseMap.keys().next().value); }
   let s = m.get(imgUrl);
@@ -1633,7 +1642,7 @@ async function thumbFromHtml(rawHtml, article) {
   // body scan dibatasi ke container artikel (rdArticleCandidates[0] = paling presisi)
   // dan dipotong sebelum seksi "berita terkait" — menghilangkan thumbnail related/news lain
   let bodySrc = rdArticleCandidates(html)[0] || html;
-  bodySrc = rdStripJunkContainers(bodySrc);   // buang author box/related/widget sebelum scan gambar body
+  bodySrc = rdStripCardLinks(rdStripJunkContainers(bodySrc), article);   // buang author box/related/widget sebelum scan gambar body
   const relAt = bodySrc.search(/baca juga|berita terkait|artikel terkait|lihat juga|bacaan|recommended|baca selengkapnya/i);
   if (relAt > 1500) bodySrc = bodySrc.slice(0, relAt);
   const { meta, body } = sourceImages(html, article, bodySrc);
@@ -1643,7 +1652,7 @@ async function thumbFromHtml(rawHtml, article) {
     const dim = await probeImage(img, article).catch(() => null);
     return dim ? { img, w: dim.w, h: dim.h, src: article, score: imageScore(c, dim) } : null;
   };
-  const passes = p => p && p.w >= 600 && ogReuse(host, p.img, article) < 2;
+  const passes = p => p && p.w >= 600 && ogReuse(host, p.img, article) < 1;
   // hero = urutan prioritas dokumen (ld+json → og → meta), bukan score tertinggi:
   // thumbnail harus konsisten dengan gambar yang sama yang dipakai reader
   const seenU = new Set();
@@ -1661,7 +1670,7 @@ async function thumbFromHtml(rawHtml, article) {
   if (!best) {
     const bs = await Promise.all(body.filter(c => !seenU.has(c.url)).slice(0, 8).map(probe));
     best = bs.filter(Boolean).sort((a, b) => b.score - a.score)
-      .find(p => p.w >= 600 && ogReuse(host, p.img, article) < 2) || null;
+      .find(p => p.w >= 600 && ogReuse(host, p.img, article) < 1) || null;
   }
   const v = best ? { img: best.img, w: best.w, h: best.h, src: article } : { img: '', src: article };
   return v;
@@ -1908,7 +1917,7 @@ const cctvCatalog = () => memo('cctvcat', 300000, async () => {
 /* ---------- READ: ekstrak teks halaman buat panel baca (bukan iframe) ---------- */
 const ENT = { amp:'&', lt:'<', gt:'>', quot:'"', apos:"'", nbsp:' ', hellip:'…', mdash:'—', ndash:'–',
   lsquo:'‘', rsquo:'’', ldquo:'“', rdquo:'”', laquo:'«', raquo:'»', bull:'•', middot:'·', copy:'©', reg:'®',
-  trade:'™', deg:'°', times:'×', divide:'÷', euro:'€', pound:'£', yen:'¥', sect:'§', para:'¶' };
+  trade:'™', ntilde:'ñ', Ntilde:'Ñ', eacute:'é', Eacute:'É', egrave:'è', agrave:'à', aacute:'á', iacute:'í', oacute:'ó', uacute:'ú', uuml:'ü', ouml:'ö', auml:'ä', ccedil:'ç', acirc:'â', ecirc:'ê', ocirc:'ô', icirc:'î', ucirc:'û', szlig:'ß', oslash:'ø', aring:'å', aelig:'æ', iexcl:'¡', iquest:'¿', plusmn:'±', frac12:'½', laquo2:'«', shy:'', ensp:' ', emsp:' ', thinsp:' ', zwnj:'', zwj:'', deg:'°', times:'×', divide:'÷', euro:'€', pound:'£', yen:'¥', sect:'§', para:'¶' };
 const rdChr = n => { try { return Number.isFinite(n) && n >= 0 && n <= 0x10ffff ? String.fromCodePoint(n) : ''; } catch (e) { return ''; } };
 const rdUnent = s => String(s == null ? '' : s)
   .replace(/&#x([0-9a-f]+);/gi, (m, h) => rdChr(parseInt(h, 16)))
@@ -2013,8 +2022,8 @@ const RD_IMG_JUNK = /logo|icon|sprite|avatar|badge|placeholder|blank|pixel|space
 // blacklist URL gambar sampah (audit 12 feed): badge app-store, icon sosmed, tracker/pixel,
 // aset UI publisher, thumbnail youtube, foto wartawan — berlaku untuk hero (addCandidate)
 // maupun gambar body (pickImg), satu sumber kebenaran
-const RD_JUNK_URL = /appstore|playstore|googleplay|gettheapp|framebarasset|partials\/|widgets-nocache|analytics_page_request|inpicture|wartawan|scorecard|criteo|doubleclick|googlesyndication|adservice|hotjar|facebook\.net|img\.youtube\.com|(^|\/)ic_[a-z0-9]|en-flag|id-flag|thumb_|\/mini\/|\/small\/|\/img\/site\/|foot[-_ ]?network|foto[-_/]bank|fotobank/i;
-const RD_JUNK_BASE = /^(ig|fb|twitter|x|tiktok|instagram|youtube|wa|whatsapp|linkedin|googleplay|appstore|playstore|en-flag|id-flag)([-_. ]|$)/i;
+const RD_JUNK_URL = /appstore|playstore|googleplay|gettheapp|framebarasset|asset-template|(?:^|\/)slide[-_]|assets_frontend\/images|\/assets\/(?:img|images)\/(?:ui|icons?|buttons?|social)|share[-_ ]?preview|social[-_ ]?(?:share|card)|og[-_]?(?:default|image)\b|partials\/|widgets-nocache|analytics_page_request|inpicture|wartawan|scorecard|criteo|doubleclick|googlesyndication|adservice|hotjar|facebook\.net|img\.youtube\.com|(^|\/)ic_[a-z0-9]|en-flag|id-flag|thumb_|\/mini\/|\/small\/|\/img\/site\/|foot[-_ ]?network|foto[-_/]bank(?!\/originals)|fotobank/i;
+const RD_JUNK_BASE = /^(google|gnews|googlenews|telegram|threads|bluesky|pinterest|line|ig|fb|twitter|x|tiktok|instagram|youtube|wa|whatsapp|linkedin|googleplay|appstore|playstore|en-flag|id-flag)([-_. ]|$)/i;
 function rdJunkUrl(u) {
   const path = String(u).split('?')[0];
   if (RD_JUNK_URL.test(path)) return true;
@@ -2022,14 +2031,105 @@ function rdJunkUrl(u) {
 }
 // container DOM yang isinya bukan konten artikel: reaksi, author box, foto wartawan,
 // section related/baca-juga — dibuang sebelum scan gambar maupun paragraf
-const RD_BAD_BOX = /reaction|reactions|rating|emoticon|emoji|vote|poll|like-box|dislike|social-share|article-tools|post-tools|share-tools|komentar|comment-box|author[-_ ]?(box|img|image|photo|profile|info|bio)|wartawan|penulis|byline|redaksi|profile[-_ ]?(box|img|image)|related|baca[-_ ]?juga|terkait|recommend|most[-_ ]?read|injected|sidebar/i;
+const RD_BAD_BOX = /reaction|reactions|rating|emoticon|emoji|vote|poll|like-box|dislike|social-share|article-tools|post-tools|share-tools|komentar|comment-box|author[-_ ]?(box|img|image|photo|profile|info|bio)|wartawan|penulis|byline|redaksi|profile[-_ ]?(box|img|image)|related|baca[-_ ]?juga|terkait|recommend|most[-_ ]?read|injected|sidebar|widget|latest[-_ ]?(?:news|post)|popular|trending|terbaru|berita[-_ ]?lain|lainnya|more[-_ ]?(?:news|stor)|also[-_ ]?read|you[-_ ]?may|jnews_|td-related|jeg_(?:block|sidebar)|advert|iklan|banner|ticker|breaking[-_ ]?news|see[-_ ]?also|summary[-_ ]?article|read-page--summary|inbetween|banner_article_slide/i;
 function rdStripJunkContainers(s) {
   const re = new RegExp('<(div|span|p|section|ul|ol|table|figure)\\b[^>]*(?:class|id)=["\'][^"\']*(?:' + RD_BAD_BOX.source + ')[^"\']*["\'][^>]*>[\\s\\S]*?<\\/\\1\\s*>|<(div|span|p|section|ul|ol|table|figure)\\b[^>]*(?:class|id)=["\'][^"\']*(?:' + RD_BAD_BOX.source + ')[^"\']*["\'][^>]*\\/>', 'gi');
   let prev, i = 0;
   do { prev = s; s = s.replace(re, ' '); } while (s !== prev && ++i < 3);
   return s;
 }
-const rdImgKey = u => String(u).split('?')[0].replace(/-\d+x\d+(?=\.\w+$)/, '').replace(/\.\w+$/, '').toLowerCase();
+const rdImgKey = u => {
+  const p = String(u).split('?')[0].split('#')[0].toLowerCase().replace(/\.\w{2,5}$/, '');
+  const base = (p.split('/').pop() || '').replace(/[-_]\d{2,4}x\d{2,4}$/, '').replace(/[-_]169$/, '').replace(/[-_](?:small|medium|large|thumb|thumbnail|original|full)$/, '');
+  return base.length >= 8 && /[a-z]/.test(base + 'a') && !/^(?:image|photo|foto|img|picture|default|thumb|cover|poster|index)\d*$/.test(base) ? base : p.replace(/\/(?:thumb|fill|resize|crop|cache)?\/?\d{2,4}(?:x|\/)\d{2,4}\//g, '/');   // nama file cukup unik → abaikan host/CDN/ukuran
+};
+// petunjuk ukuran dari URL: thumb/24x24, 450x280, /fill/450/280/, ?w=100 → true bila jelas terlalu kecil buat foto berita
+function rdSmallHint(u) {
+  const x = String(u);
+  for (const m of x.split('?')[0].matchAll(/(?:^|[\/_=.-])(\d{2,4})x(\d{2,4})(?=[\/_.-]|$)/g)) if (+m[1] < 400 || +m[2] < 200) return true;
+  const f = x.match(/\/(?:fill|fit|resize|crop|w)\/(\d{2,4})\/(\d{2,4})\//i); if (f && (+f[1] < 400 || +f[2] < 200)) return true;
+  const q = x.match(/[?&](?:w|width|size)=(\d{2,4})(?=&|$)/i); if (q && +q[1] < 400) return true;
+  return false;
+}
+const rdProbeCache = new Map();
+async function rdProbeFull(u, referer) {
+  if (rdProbeCache.has(u)) return rdProbeCache.get(u);
+  let out = null;
+  try {
+    const r = await get(u, { headers: { accept: 'image/avif,image/webp,image/apng,image/*,*/*;q=0.8', ...(referer ? { referer } : {}) } }, 8000);
+    if (r.ok && /^image\//i.test(r.headers.get('content-type') || '')) {
+      const buf = Buffer.from(await r.arrayBuffer());
+      const dim = imageSize(buf.subarray(0, 4e6));
+      if (dim && dim.w > 0 && dim.h > 0) out = { w: dim.w, h: dim.h, bytes: buf.length, hash: require('crypto').createHash('sha1').update(buf).digest('hex') };
+    }
+  } catch (e) {}
+  rdProbeCache.set(u, out);
+  if (rdProbeCache.size > 400) rdProbeCache.delete(rdProbeCache.keys().next().value);
+  return out;
+}
+const rdYtTitleCache = new Map();
+async function rdYtTitle(id) {
+  if (rdYtTitleCache.has(id)) return rdYtTitleCache.get(id);
+  let t = null;
+  try { const r = await get('https://www.youtube.com/oembed?format=json&url=' + encodeURIComponent('https://www.youtube.com/watch?v=' + id), {}, 6000); if (r.ok) { const j = await r.json(); t = String(j.title || '') + ' ' + String(j.author_name || ''); } } catch (e) {}
+  rdYtTitleCache.set(id, t); if (rdYtTitleCache.size > 300) rdYtTitleCache.delete(rdYtTitleCache.keys().next().value);
+  return t;
+}
+// video harus bersangkutan: file langsung menang atas iframe player situs yang sama; YouTube dicek judulnya vs isi artikel
+async function rdVideoGate(d) {
+  const tokOf = x => [...new Set(String(x || '').toLowerCase().replace(/[^a-z0-9\u00c0-\u024f ]+/g, ' ').split(/\s+/).filter(w => w.length >= 4 && !RD_STOP.has(w)))];
+  const ctx = ' ' + tokOf([d.title, d.desc, ...(d.paras || []).slice(0, 8)].join(' ')).join(' ') + ' ';
+  const vids = [...(d.videos || [])];
+  const hasFile = (blocks) => vids.concat((blocks || []).filter(b => b.k === 'v' && b.v).map(b => b.v)).some(v => v && v.kind === 'video');
+  const verdict = new Map();
+  const all = vids.concat((d.blocks || []).filter(b => b.k === 'v' && b.v).map(b => b.v));
+  await Promise.all(all.map(async v => {
+    if (!v || verdict.has(v.url)) return;
+    const yid = rdYT(v.url) && (v.url.match(/embed\/([\w-]{6,15})/) || [])[1];
+    if (yid) {
+      const t = await rdYtTitle(yid);
+      if (t) { const yt = tokOf(t); if (yt.length >= 2 && !yt.some(w => ctx.includes(' ' + w))) { verdict.set(v.url, false); return; } }
+    }
+    if (v.kind === 'iframe' && !yid && hasFile(d.blocks)) { verdict.set(v.url, false); return; }   // embed player situs + file langsung = video sama dua kali
+    verdict.set(v.url, true);
+  }));
+  const ok = v => !v || verdict.get(v.url) !== false;
+  d.videos = (d.videos || []).filter(ok);
+  d.blocks = (d.blocks || []).filter(b => b.k !== 'v' || ok(b.v));
+  return d;
+}
+// gerbang terakhir SEMUA media reader: ukuran asli, ikon/avatar, duplikat (konten sama walau URL/CDN beda)
+async function rdFinalGate(d, article) {
+  const slots = [];   // {get,drop,kind}
+  if (d.img) slots.push({ url: d.img, hero: true });
+  (d.blocks || []).forEach((b, i) => { if (b.k === 'i' && b.img) slots.push({ url: b.img.url, idx: i }); });
+  const res = await Promise.all(slots.slice(0, 10).map(async sl => {
+    if (rdSmallHint(sl.url) || rdJunkUrl(sl.url)) return { sl, bad: true };
+    const pr = await rdProbeFull(sl.url, article);
+    if (!pr) return { sl, bad: !sl.hero };                  // gambar tak bisa dimuat server → buang (hero dibiarkan, browser yang coba)
+    const ar = pr.w / pr.h;
+    if (pr.w < 400 || pr.h < 200 || pr.bytes < 6000) return { sl, bad: true };
+    if (!sl.hero && (ar > 3.2 || ar < 0.4)) return { sl, bad: true };
+    return { sl, pr };
+  }));
+  const seenH = new Set(), seenK = new Set(), dropIdx = new Set();
+  let hero = d.img;
+  for (const r of res) {                                    // hero lebih dulu (urutan slots)
+    const { sl } = r;
+    let bad = r.bad;
+    if (!bad) {
+      const k = rdImgKey(sl.url);
+      if ((r.pr && seenH.has(r.pr.hash)) || seenK.has(k)) bad = true;
+      else { if (r.pr) seenH.add(r.pr.hash); seenK.add(k); }
+    }
+    if (bad) { if (sl.hero) hero = ''; else dropIdx.add(sl.idx); }
+  }
+  d.img = hero || '';
+  if (dropIdx.size) d.blocks = d.blocks.filter((b, i) => !dropIdx.has(i));
+  // sisa blok gambar di luar 10 teratas: buang (batas keras)
+  { let n = 0; d.blocks = (d.blocks || []).filter(b => b.k !== 'i' || ++n <= 8); }
+  return d;
+}
 const rdAbs = (u, base) => { if (!u) return ''; try { u = new URL(u, base).href; } catch (e) { return ''; } return /^https?:/i.test(u) ? u : ''; };
 const rdYT = u => { const m = String(u).match(/(?:youtube\.com\/(?:embed|shorts)\/|youtu\.be\/|youtube-nocookie\.com\/(?:embed|shorts)\/)([A-Za-z0-9_-]{6,15})/i); return m ? 'https://www.youtube.com/embed/' + m[1] : ''; };
 function rdVideoEl(tag, finalURL) {
@@ -2047,6 +2147,102 @@ function rdVideoEl(tag, finalURL) {
   if (!u) return null;
   return { url: u, kind: 'video', poster: rdAbs((tag.match(/\bposter=["']([^"']+)/i) || [])[1], finalURL) };
 }
+// boilerplate/CTA publisher yang bukan isi berita
+const RD_BOILER = /baca berita terkini|berita terkini dan terpercaya|dapatkan (?:berita|update|info)|untuk mendapatkan berita|follow (?:channel|akun|kami)|ikuti (?:kami|saluran|channel|akun)|gabung (?:di )?(?:channel|grup|saluran)|lorem ipsum|all rights reserved|hak cipta|download aplikasi|unduh aplikasi|informasi seputar .{0,60}(?:bisa|dapat) diakses|bergabunglah|klik (?:di sini|link)|whatsapp channel|google news|dilarang (?:keras )?(?:mengambil|menyalin|mengutip|mengcopy)|crawling|pengindeksan otomatis|download sekarang|menyajikan berita terhangat|tinggalkan komentar|^©|^copyright|unduh .{0,30}app|install aplikasi|dapatkan notifikasi|aktifkan notifikasi|laporkan (?:iklan|konten)|unblock notifications|real[- ]time updates|know more|sign up for|subscribe to|sponsored|advertisement|sumber (?:utama|pilihan|terpercaya) di google|preferred source|tambahkan .{0,40}sumber|tas darurat.{0,3}ada apa|isi komentar|tanggung jawab (?:pengguna|penulis komentar)|promo rp|jajan pakai|diskon hingga|beli sekarang|daftar sekarang|^(?:sumber|source)\s*:|^(?:editor|penulis|reporter|redaktur|kontributor)\s*:/i;
+// paragraf berupa caption foto / kredit / domain telanjang / sampah percent-encoding
+const rdCaptionish = t => t.length < 220 && (/^[A-Z][A-Z0-9 ,'.&-]{5,45}\s[-–:]\s/.test(t) || /\([^()]*(?:\/|commons|photo|credit|foto)[^()]*\)\.?$/i.test(t) && t.length < 180 || /^(?:ilustrasi|foto ilustrasi|foto|dok\.?|dokumentasi|gambar|suasana|caption)\b/i.test(t) || /\((?:foto|antara|dok|sumber|istimewa|reuters|afp|ap|getty)[^)]*\)?\.?$/i.test(t) || /^[\w.-]+\.[a-z]{2,}(?:\/\S*)?…?$/i.test(t));
+const rdGarbage = t => (t.match(/%[0-9A-F]{2}/gi) || []).length >= 3 || /^(?:https?:\/\/|www\.)\S+$/i.test(t) || (t.match(/[\\{}<>|]/g) || []).length > 6;
+// penanda akhir artikel: semua setelahnya = footer/related/rekomendasi
+const RD_END = /^(?:baca (?:juga|berita|selengkapnya)|simak (?:juga|berita)|berita (?:terkait|lainnya|terpopuler|populer|rekomendasi)|artikel (?:terkait|lainnya|populer)|terpopuler|rekomendasi(?: untuk anda)?|tag:|topik:|related (?:news|articles?|posts?)|read (?:more|also)|you (?:may|might) (?:also )?like|karin adalah|apresiasi spesial|gabung membership|kamu bisa bertanya tentang|kontribusi (?:ini|yang) |tambahkan .{0,40}(?:sebagai|jadi) sumber|syarat dan ketentuan|disclaimer\b)/i;
+// judul berita lain yang sedang tampil di wire — kalau muncul sebagai "paragraf" = widget related
+function rdWireImg(url) {
+  for (const [k, c] of cache) {
+    if (!k.startsWith('n:') || !c || !c.v || !Array.isArray(c.v.items)) continue;
+    for (const i of c.v.items) { if (!i.img) continue; if (i.url === url) return i.img; const g = gnCache.get(i.url); if (g && g.url === url) return i.img; }
+  }
+  return '';
+}
+function rdWireTitles() {
+  const set = new Set();
+  for (const [k, c] of cache) {
+    if (!k.startsWith('n:') || !c || !c.v || !Array.isArray(c.v.items)) continue;
+    for (const i of c.v.items) { const n = String(i.title || '').toLowerCase().replace(/\W+/g, ' ').trim(); if (n.length > 25) set.add(n); }
+  }
+  return set;
+}
+// relevansi: isi harus nyambung dengan judul. Beda total (widget partner/artikel lain) = ditolak.
+const RD_STOP = new Set('yang dan untuk dengan dari pada dalam akan atau juga tidak ini itu oleh para telah sudah bisa saat usai jadi lebih hingga serta kata kini ada sebagai antara bagi agar kembali ungkap soal terkait'.split(' '));
+function rdOnTopic(title, desc, paras) {
+  const toks = s => String(s || '').toLowerCase().replace(/[^a-z0-9\u00c0-\u024f ]+/g, ' ').split(/\s+/).filter(w => w.length >= 4 && !RD_STOP.has(w));
+  const tt = [...new Set(toks(title))];
+  if (tt.length < 2 || !paras.length) return true;
+  const body = ' ' + toks(paras.slice(0, 12).join(' ') + ' ' + (desc || '')).join(' ') + ' ';
+  const hit = tt.filter(w => body.includes(' ' + w) ).length;
+  return hit >= Math.min(2, tt.length) && hit / tt.length >= 0.2;
+}
+// blok (p/li/h/div terdalam) yang hampir seluruhnya <a> pendek = judul link berita lain / menu, bukan paragraf
+function rdStripLinkBlocks(s) {
+  s = s.replace(/<(h[1-6]|span|strong|b|p|em|i|label)\b[^>]*>\s*(?:baca|simak|lihat|baca juga|simak juga|lihat juga|selengkapnya|berita terkait)\s*:?\s*<\/\1\s*>/gi, ' ');
+  const re = /<(p|li|h[1-6]|div|span|td)\b[^>]*>((?:(?!<\/?(?:p|li|div|ul|ol|h[1-6]|section|article|table|tr)\b)[\s\S])*?)<\/\1\s*>/gi;
+  return s.replace(re, (m, t, inner) => {
+    if (!/<a\b/i.test(inner)) return m;
+    const plain = inner.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+    if (!plain || plain.length > 240) return m;
+    let linked = 0;
+    for (const a of inner.matchAll(/<a\b[^>]*>([\s\S]*?)<\/a\s*>/gi)) linked += a[1].replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().length;
+    return linked / plain.length >= 0.8 ? ' ' : m;
+  });
+}
+// kartu berita lain: <a href=halaman-lain> berisi <img> + judul/teks. Foto di dalamnya BUKAN foto artikel ini.
+function rdStripCardLinks(s, base) {
+  let basePath = ''; try { basePath = new URL(base).pathname; } catch (e) {}
+  return String(s).replace(/<a\b([^>]*)>([\s\S]*?)<\/a\s*>/gi, (m, at, inner) => {
+    if (!/<img\b/i.test(inner)) return m;
+    const href = (at.match(/href=["']([^"']+)/i) || [])[1] || '';
+    if (/\.(jpe?g|png|webp|gif|avif)(\?|#|$)/i.test(href) || !href || href[0] === '#') return m;   // link ke gambar besar = foto artikel
+    const txt = inner.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+    if (/<h[1-6]\b/i.test(inner) || txt.length > 25) return ' ';                             // kartu: gambar + judul
+    try { const h = new URL(href, base); if (h.pathname.length > 12 && h.pathname !== basePath) return ' '; } catch (e) {}   // thumbnail yang mengarah ke artikel lain
+    return m;
+  });
+}
+// kalimat berformat judul berita: Title Case, tanpa tanda baca akhir, pendek
+const rdHeadlineish = t => {
+  if (t.length > 160 || /[.!?"”')]$/.test(t) || /^[\d\-–•*·]/.test(t)) return false;
+  const w = t.split(/\s+/).filter(x => /[A-Za-z]/.test(x));
+  if (w.length < 4) return false;
+  return w.filter(x => /^[A-Z0-9“"(]/.test(x)).length / w.length >= 0.6;
+};
+// bersihkan noise setelah blok terbentuk
+function rdPruneNoise(blocks, title) {
+  const wire = rdWireTitles(), me = String(title || '').toLowerCase().replace(/\W+/g, ' ').trim();
+  const nrm = t => t.toLowerCase().replace(/\W+/g, ' ').trim();
+  let out = [];
+  for (const b of blocks) {
+    if (b.k !== 'p') { out.push(b); continue; }
+    if (RD_END.test(b.t) && out.filter(x => x.k === 'p').length >= 2) break;
+    if (RD_BOILER.test(b.t) && b.t.length < 260) continue;
+    if (rdCaptionish(b.t) || rdGarbage(b.t)) continue;
+    const n = nrm(b.t);
+    if (me.length > 25 && n.includes(me) && n.length < me.length + 40) continue;   // judul/breadcrumb
+    if (n !== me && n.length > 25) { let hit = false; for (const w of wire) { if (n === w || (n.includes(w) && n.length < w.length + 25)) { hit = true; break; } } if (hit) continue; }
+    out.push(b);
+  }
+  // pull-quote terpotong yang kemudian muncul utuh = duplikat
+  { const ps = out.filter(x => x.k === 'p').map(x => x.t);
+    out = out.filter(b => { if (b.k !== 'p' || !/(?:…|\.\.\.)$/.test(b.t)) return true; const head = b.t.replace(/(?:…|\.\.\.)$/, '').trim().toLowerCase(); return !(head.length > 20 && ps.some(o => o !== b.t && o.toLowerCase().includes(head))); }); }
+  // run >=2 paragraf berformat judul berurutan = daftar related
+  const keep = new Array(out.length).fill(true);
+  for (let i = 0; i < out.length;) {
+    if (out[i].k === 'p' && rdHeadlineish(out[i].t)) {
+      let j = i; while (j < out.length && (out[j].k !== 'p' || rdHeadlineish(out[j].t))) j++;
+      const run = out.slice(i, j).filter(x => x.k === 'p').length;
+      if (run >= 2) for (let q = i; q < j; q++) if (out[q].k === 'p') keep[q] = false;
+      i = j;
+    } else i++;
+  }
+  return out.filter((_, i) => keep[i]);
+}
 // blok terurut: paragraf + slot video pada posisi aslinya di artikel.
 // menangani <p> maupun artikel div+<br> (mis. sindonews) — bukan cuma tag <p>.
 function rdBlocks(html, finalURL) {
@@ -2054,6 +2250,7 @@ function rdBlocks(html, finalURL) {
   let s = String(html)
     .replace(/<!--[\s\S]*?-->/g, ' ')
     .replace(/<(script|style|noscript|svg|form|nav|header|footer|aside|button|select|template)\b[^>]*>[\s\S]*?<\/\1>/gi, ' ');
+  s = rdStripJunkContainers(s);   // sidebar/related/widget dibuang dulu, supaya video & gambar mereka tak ikut
   s = s.replace(/<iframe\b[^>]*>[\s\S]*?<\/iframe\s*>|<video\b[^>]*>[\s\S]*?<\/video\s*>/gi, m => {
     if (vids.length >= 4) return ' ';
     const v = rdVideoEl(m, finalURL);
@@ -2065,6 +2262,8 @@ function rdBlocks(html, finalURL) {
   });
   // buang container reaksi/author-box/related-widget sebelum scan gambar — isinya bukan konten artikel
   s = rdStripJunkContainers(s);
+  s = rdStripCardLinks(s, finalURL);
+  s = rdStripLinkBlocks(s);
   // gambar dalam badan artikel: simpan di posisi aslinya (figure+figcaption atau <img> lepas)
   const imgs = [], iseen = new Set();
   const pickImg = tag => {
@@ -2077,8 +2276,8 @@ function rdBlocks(html, finalURL) {
     u = rdAbs(u, finalURL);
     if (!u || /^data:/i.test(u)) return null;
     if (u.split('?')[0] === String(finalURL).split('?')[0]) return null;   // lazy-load placeholder = URL artikel itu sendiri
-    if (RD_IMG_JUNK.test(u) || rdJunkUrl(u) || /\.(svg|gif|ico|cur)(\?|#|$)/i.test(u)) return null;
-    const sm = u.match(/(?:^|[\/=_.-])(\d{3,4})[x\/](\d{3,4})(?=[\/_?.&#]|$)/);   // render-size di URL: 300/169, 350x233, w=100
+    if (RD_IMG_JUNK.test(u) || rdJunkUrl(u) || rdSmallHint(u) || /\.(svg|gif|ico|cur)(\?|#|$)/i.test(u)) return null;
+    const sm = u.match(/(?:^|[\/=_.-])(\d{2,4})[x\/](\d{2,4})(?=[\/_?.&#]|$)/);   // render-size di URL: 300/169, 350x233, w=100
     if (sm && +sm[1] < 600) return null;   // thumbnail related/preview, bukan foto artikel
     if (/(\/|_)(banner|promo|iklan|widget|sidebar|stripbanner|avatar|logo|emoji|emoticon|reaction|rating|vote|poll|tracking|pixel|spacer|blank|1x1)(\/|[-_.]|$)/i.test(u.split('?')[0])) return null;
     const w = parseInt(attr('width')) || 0, h = parseInt(attr('height')) || 0;
@@ -2104,7 +2303,15 @@ function rdBlocks(html, finalURL) {
     return addImg(t[0], cap.replace(/<[^>]+>/g, ' '));
   });
   s = s.replace(/<img\b[^>]*>/gi, m => addImg(m, ''));
-  for (const seg of rdClean(s).split('\n')) {
+  s = s.replace(/<a\b[^>]*>([\s\S]*?)<\/a\s*>/gi, (m, t) => '\u0001' + t.replace(/<[^>]+>/g, ' ') + '\u0002');   // tandai teks link
+  for (let seg of rdClean(s).split('\n')) {
+    if (seg.indexOf('\u0001') >= 0) {      // segmen yang hampir seluruhnya link = judul berita lain / CTA / kartu related.
+      // marker @@RD ikut dihitung sebagai "plain" — buang dulu supaya kartu <a><img>judul</a> tidak lolos
+      let linked = 0; for (const lm of seg.matchAll(/\u0001([^\u0001\u0002]*)\u0002/g)) linked += lm[1].replace(/@@RD[VI]\d+@@/g, ' ').trim().length;
+      const plain = seg.replace(/@@RD[VI]\d+@@/g, ' ').replace(/[\u0001\u0002]/g, '').replace(/\s+/g, ' ').trim();
+      if (plain && plain.length <= 600 && linked / plain.length >= 0.8) continue;   // seluruh segmen dibuang — judul DAN medianya (kartu related)
+    }
+    seg = seg.replace(/[\u0001\u0002]/g, '');
     const parts = seg.split(/@@RD([VI])(\d+)@@/);
     for (let i = 0; i < parts.length; i++) {
       const mod = i % 3;
@@ -2122,7 +2329,7 @@ function rdBlocks(html, finalURL) {
   }
   return { blocks, paras, videos: vids };
 }
-function rdVideos(html, finalURL) {
+function rdVideos(html, finalURL, dom = true, title = '') {
   const out = [], seen = new Set();
   const abs = (u) => rdAbs(u, finalURL);
   const add = (u, kind, poster) => {
@@ -2142,14 +2349,14 @@ function rdVideos(html, finalURL) {
   }
   const tplayer = abs(meta['twitter:player'] || '');
   if (tplayer && VID_IFRAME.test(tplayer)) add(tplayer, 'iframe');
-  for (const m of html.matchAll(/<video\b[^>]*>([\s\S]*?)<\/video>/gi)) {
+  for (const m of (dom ? html.matchAll(/<video\b[^>]*>([\s\S]*?)<\/video>/gi) : [])) {
     const tag = m[0];
     const src = (tag.match(/\bsrc=["']([^"']+)/i) || [])[1]
       || (m[1].match(/<source\b[^>]*\bsrc=["']([^"']+)/i) || [])[1];
     const poster = (tag.match(/\bposter=["']([^"']+)/i) || [])[1];
     add(src, 'video', poster);
   }
-  for (const m of html.matchAll(/<iframe\b[^>]*src=["']([^"']+)["']/gi)) {
+  for (const m of (dom ? html.matchAll(/<iframe\b[^>]*src=["']([^"']+)["']/gi) : [])) {
     const u = abs(m[1]);
     const yt = u.match(/(?:youtube\.com\/(?:embed|shorts)\/|youtu\.be\/|youtube-nocookie\.com\/(?:embed|shorts)\/)([A-Za-z0-9_-]{6,15})/i);
     if (yt) { add('https://www.youtube.com/embed/' + yt[1], 'iframe'); continue; }
@@ -2158,6 +2365,7 @@ function rdVideos(html, finalURL) {
   for (const n of rdLd(html)) {
     if (!/video/i.test(String(n['@type'] || ''))) continue;
     for (const v of (Array.isArray(n) ? n : [n])) {
+      if (title && (v.name || v.description) && !rdOnTopic(title, '', [String(v.name || '') + ' ' + String(v.description || '')])) continue;   // video milik artikel lain
       const u = abs(v.contentUrl || v.embedUrl || '');
       if (u) add(u, mediaKind(u), v.thumbnailUrl);
     }
@@ -2175,8 +2383,12 @@ async function rdHydrateVideos(d, article) {
       if (!r.ok) continue;
       const ct = r.headers.get('content-type') || '';
       if (!/text\/html|application\//i.test(ct)) { resolved.push({ url: p.url, kind: VID_FILE.test(p.url) ? 'video' : 'probe', poster: p.poster }); continue; }
-      const inner = rdVideos(await r.text(), p.url);
-      const good = inner.find(v => v.kind === 'video') || inner.find(v => v.kind === 'iframe');
+      const innerHtml = await r.text();
+      const im = rdMeta(innerHtml), iTitle = rdInline(im['og:title'] || im.title || '');
+      const inner = rdVideos(innerHtml, p.url, true, d.title || '');
+      let good = inner.find(v => v.kind === 'video') || inner.find(v => v.kind === 'iframe');
+      // halaman embed milik video lain: og:title-nya tidak nyambung judul artikel → buang
+      if (good && d.title && iTitle.length > 8 && !rdOnTopic(d.title, '', [iTitle])) good = null;
       if (good) resolved.push(good);
     } catch (e) {}
   }
@@ -2186,7 +2398,7 @@ async function rdHydrateVideos(d, article) {
 }
 // container body artikel: <article> atau elemen ber-class/id khas konten,
 // dengan pencocokan tag seimbang (bukan regex non-greedy yang terpotong nested div)
-const RD_CONT_RE = /<(article|div|section|main)\b[^>]*(?:class|id)=["'][^"']*(?:detail-desc|article-content|article-body|content-detail|detail-content|post-content|entry-content|berita-content|field-name-body|txt-berita|detail_body|news-content|content-body|post-body|article__body)[^"']*["'][^>]*>/i;
+const RD_CONT_RE = /<(article|div|section|main)\b[^>]*(?:class|id)=["'][^"']*(?:detail-desc|article-content|article-body|content-detail|detail-content|post-content|entry-content|berita-content|field-name-body|txt-berita|detail_body|news-content|content-body|post-body|article__body|detail__body-text|itp_bodycontent|detail__body|txt-article|side-article|detail-text|article-content-body|max-card__image)[^"']*["'][^>]*>/i;
 // kandidat container body artikel, urut prioritas: class/id spesifik → <article> → full page.
 // class/id dulu karena <article> bisa membungkus "berita terkait" di luar body.
 function rdArticleCandidates(html) {
@@ -2223,7 +2435,7 @@ function rdExtract(html, finalURL) {
   const desc = meta['og:description'] || meta['twitter:description'] || meta.description || '';
   let img = meta['og:image'] || meta['og:image:secure_url'] || meta['twitter:image'] || '';
   if (img) { try { img = new URL(img, finalURL).href; } catch (e) { img = ''; } }
-  if (!/^https?:/i.test(img)) img = '';
+  if (!/^https?:/i.test(img) || rdJunkUrl(img) || /(logo|favicon|sprite|placeholder|default[-_]|no[-_]?image|avatar|icon)[^/]*\.(png|jpe?g|webp|ico|svg)$/i.test(img.split('?')[0]) || /\.(svg|gif|ico)(\?|$)/i.test(img)) img = '';
   const byline = meta.author || meta['article:author'] || rdName(art.author) || '';
   const time = meta['article:published_time'] || meta['datepublished'] || art.datePublished || '';
   let blk = null;
@@ -2233,6 +2445,8 @@ function rdExtract(html, finalURL) {
     if (b.paras.length >= 3) break;                    // kandidat pertama yang cukup kaya menang
   }
   if (!blk) blk = rdBlocks(html, finalURL);
+  blk.blocks = rdPruneNoise(blk.blocks, title);
+  blk.paras = blk.blocks.filter(b => b.k === 'p').map(b => b.t);
   let paras = blk.paras;
   if (paras.length < 2 && typeof art.articleBody === 'string') {
     paras = art.articleBody.split(/\n{2,}|(?<=[.!?])\s+(?=[A-Z])/).map(rdInline).filter(t => t.length >= 50).slice(0, 45);
@@ -2267,7 +2481,7 @@ function rdExtract(html, finalURL) {
     if (b.k === 'p') { if (btotal + b.t.length > 18000) continue; btotal += b.t.length; }
     finBlocks.push(b);
   }
-  const allV = rdVideos(html, finalURL);
+  const allV = rdVideos(html, finalURL, false, title);
   const vkey = v => String(v.url).split('?')[0];
   const pkeys = new Set(blk.videos.map(vkey));
   const videos = [...blk.videos, ...allV.filter(v => !pkeys.has(vkey(v)))].slice(0, 4);
@@ -2295,8 +2509,17 @@ function rdJinaMd(text, url) {
     const tm = t.match(/^title:\s*(.+)/i);
     if (tm) { if (!title) title = tm[1].trim(); continue; }
     if (/^url source:/i.test(t)) continue;
-    if (t.startsWith('#')) { if (!title) title = t.replace(/^#+\s*/, '').trim(); continue; }
+    if (t.startsWith('#')) {
+      const hd = t.replace(/^#+\s*/, '').trim();
+      if (!title) title = hd;
+      else if (paras.length >= 2 && /terpopuler|terkait|baca juga|rekomendasi|berita lain|terbaru|trending|populer|lainnya|related|more (?:news|stories)|latest|you may|komentar|comments?/i.test(hd)) break;   // semua setelah heading ini = widget/footer
+      continue;
+    }
+    if (/^\[!\[/.test(t) || /^\[\s*\]\(/.test(t)) continue;   // kartu gambar+link
     if (/^!\[/.test(t) || /^```/.test(t) || /^>/.test(t) || /^[-*]\s/.test(t) || /^\d+\.\s/.test(t)) continue;
+    const noImg = t.replace(/!\[[^\]]*\]\([^)]*\)/g, '');
+    let linkLen = 0; for (const lm of noImg.matchAll(/\[([^\]]*)\]\([^)]*\)/g)) linkLen += lm[1].length;
+    if (linkLen / Math.max(1, noImg.replace(/\[([^\]]*)\]\([^)]*\)/g, '$1').length) >= 0.7) continue;   // baris isinya link doang
     const clean = t
       .replace(/!\[[^\]]*\]\([^)]*\)/g, '')
       .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
@@ -2309,6 +2532,7 @@ function rdJinaMd(text, url) {
     seen.add(k); paras.push(clean);
     if (paras.length >= 45) break;
   }
+  { const kept = rdPruneNoise(paras.map(t => ({ k: 'p', t })), title).map(b => b.t); paras.length = 0; paras.push(...kept); }
   return { ok: true, url, final: url, title: title || rdHost(url) || 'Tanpa judul',
     site: rdHost(url), byline: '', time: '', img: '', desc: '', paras, thin: paras.length < 2, via: 'reader' };
 }
@@ -2337,7 +2561,9 @@ function rdAssembleBlocks(d) {
     if (seenM.has(key)) continue; seenM.add(key);
     media.push({ b, k: -1 });
   }
-  const ps = blocks.filter(b => b.k === 'p');
+  const capKey = t => t.toLowerCase().replace(/\W+/g, ' ').trim().slice(0, 80);
+  const capSet = new Set(media.filter(x => x.b.k === 'i' && x.b.img.cap).map(x => capKey(x.b.img.cap)));
+  const ps = blocks.filter(b => b.k === 'p' && !capSet.has(capKey(b.t)));
   const n = ps.length, m = media.length;
   if (!m) { d.blocks = ps; return d; }
   if (n === 0) { d.blocks = media.filter(x => x.b.k === 'v').map(x => x.b); return d; }   // gambar tanpa teks = sampah (thumbnail/related), video tetap
@@ -2360,10 +2586,9 @@ function rdAssembleBlocks(d) {
 }
 async function rdFinish(d, url, html) {
   d = await rdHydrateVideos(d, url);
-  d = rdAssembleBlocks(d);
   // hero disamakan dengan pipeline thumb() news wire — og:image mentah sering logo/aset situs.
   // html sudah di-fetch rdRead → pakai thumbFromHtml (zero fetch tambahan). Tanpa html → thumb() fallback.
-  // Hasil ikut di-cache supaya wire lead tidak fetch ulang.
+  // Hasil ikut di-cache supaya wire lead tidak fetch ulang. Hero harus final SEBELUM rdAssembleBlocks (dedupe hero vs body).
   if (html !== null && !/youtube\.com|youtu\.be/i.test(url)) {
     try {
       const t = html ? await thumbFromHtml(html, url) : await thumb(url);
@@ -2374,6 +2599,11 @@ async function rdFinish(d, url, html) {
       }
     } catch (e) {}
   }
+  if (!d.img) { const wi = rdWireImg(url) || (d.url && rdWireImg(d.url)); if (wi) d.img = wi; }   // gambar RSS ikut gerbang yang sama (ukuran, ikon, duplikat)
+  try { d = await rdFinalGate(d, url); } catch (e) {}
+  try { d = await rdVideoGate(d); } catch (e) {}
+  if (!d.img) { const fi = (d.blocks || []).find(b => b.k === 'i' && b.img); if (fi) { d.img = fi.img.url; d.blocks = d.blocks.filter(b => b !== fi); } }   // tanpa og:image → foto badan pertama
+  d = rdAssembleBlocks(d);
   return d;
 }
 const ytIdOf = raw => { try { const u = new URL(raw); const h = u.hostname.replace(/^(www|m|music)\./, '');
@@ -2406,6 +2636,7 @@ async function rdRead(raw) {
     const tryHtml = (html, url) => {
       const d = rdExtract(html, url);
       const blocked = BLOCKED_RE.test(d.title + ' ' + (d.desc || '') + ' ' + html.slice(0, 30000));
+      if (!blocked && !rdOnTopic(d.title, d.desc, d.paras)) { lastErr = new Error('isi tidak nyambung dengan judul'); return null; }
       // halaman JS-rendered: teks tipis tapi meta (og:image/og:video) tetap bernilai → simpan untuk fallback & merge
       if (!blocked && metaScore(d) > (metaD ? metaScore(metaD) : -1)) metaD = d;
       return (d.paras.length < 2 || blocked) ? null : d;
@@ -2431,7 +2662,7 @@ async function rdRead(raw) {
         const txt = await r.text();
         if (txt && txt.length > 200) {
           const d = rdJinaMd(txt, target);
-          if (d.paras.length >= 2 && !BLOCKED_RE.test(d.title + ' ' + txt.slice(0, 3000))) {
+          if (d.paras.length >= 2 && !BLOCKED_RE.test(d.title + ' ' + txt.slice(0, 3000)) && rdOnTopic(d.title, '', d.paras)) {
             if (metaD) {                                   // timpa field kosong dengan meta dari fetch langsung
               if (!d.img && metaD.img) d.img = metaD.img;
               if (!d.videos || !d.videos.length) d.videos = metaD.videos || [];
@@ -2597,6 +2828,11 @@ http.createServer(async (req, res) => {
     if (u.pathname === '/api/ping') return json({ ok: true, x: xHas() });
     if (u.pathname === '/api/news') {
       const srcs = await news();
+      { // gambar yang sama dipakai >1 headline berbeda = aset situs/placeholder → kosongkan semua
+        const cnt = new Map();
+        for (const s of srcs) for (const i of s.items) if (i.img) { const k = rdImgKey(i.img); if (!cnt.has(k)) cnt.set(k, new Set()); cnt.get(k).add(i.url); }
+        for (const s of srcs) for (const i of s.items) if (i.img && cnt.get(rdImgKey(i.img)).size > 1) i.img = '';
+      }
       return json({ sources: srcs.map(s => ({ ...s, items: s.items.map(i => {
         const cat = catOf(i.title) || feedCatOf(s.id);
         return { ...i, cat, label: cat ? catMeta(cat).label : '' };

@@ -4,7 +4,8 @@
   "private": true,
   "description": "SITREP OSINT console — news wire, social monitor, incident globe, market, live TV",
   "scripts": {
-    "start": "bash start.sh"
+    "start": "bash start.sh",
+    "audit:media": "node scripts/media-audit.js"
   },
   "engines": {
     "node": ">=18"

@@ -5,6 +5,7 @@
      IMG-JUNK     gambar hero/body cocok pola ikon/emoji/avatar/logo/badge/ads
      IMG-SMALL    ukuran di URL < 600px (thumbnail related)
      IMG-OTHER    gambar hero/body sama dengan gambar artikel LAIN di feed (related/sidebar)
+     IMG-DUP      gambar sama (nama file) lebih dari sekali dalam satu artikel
      IMG-DUP-HOST gambar hero sama di >1 artikel satu sumber (aset situs)
      IMG-NONE     tidak ada hero sama sekali
      TXT-RELATED  paragraf mirip judul artikel lain di feed / diawali "baca juga" dst
@@ -17,7 +18,7 @@ const opt = (k, d) => { const i = args.indexOf('--' + k); return i >= 0 ? args[i
 const BASE = opt('base', 'http://localhost:8787'), N = +opt('n', 3), ONLY = (opt('src', '') || '').split(',').filter(Boolean), OUT = opt('json', '');
 
 const JUNK = /logo|icon|sprite|avatar|badge|placeholder|blank|pixel|spacer|advert|\/ads?\/|banner|emoji|emoticon|reaction|button|share|gravatar|favicon|wartawan|appstore|playstore|(^|\/)(ig|fb|tw|wa)[-_.]/i;
-const SMALL = /(?:^|[\/=_.-])(\d{2,4})[x\/](\d{2,4})(?=[\/_?.&#]|$)/;
+const SMALL = /(?:^|[\/=_.-])(\d{2,4})x(\d{2,4})(?=[\/_?.&#-]|$)/;
 const BOILER = /cookie|berlangganan|langganan|hak cipta|copyright|ikuti kami|follow us|subscribe|newsletter|baca juga|simak juga|lihat juga|berita terkait|artikel terkait|iklan|advertisement/i;
 const norm = s => String(s || '').toLowerCase().replace(/\W+/g, ' ').trim();
 const imgKey = u => String(u).split('?')[0].replace(/-\d+x\d+(?=\.\w+$)/, '').toLowerCase();
@@ -44,7 +45,7 @@ async function pool(items, n, fn) {
   for (const s of feed.sources) {
     if (ONLY.length && !ONLY.includes(s.id)) continue;
     // GNEWS: sampel lebih sedikit (semua lewat decode GN yang sama)
-    const take = /^GNEWS/.test(s.id) ? Math.min(2, N) : N;
+    const take = /^GNEWS/.test(s.id) && !args.includes('--gn-full') ? Math.min(2, N) : N;
     for (const it of s.items.slice(0, take)) jobs.push({ src: s.id, it });
   }
   console.log(`Audit ${jobs.length} artikel dari ${new Set(jobs.map(x => x.src)).size} sumber...\n`);
@@ -57,14 +58,16 @@ async function pool(items, n, fn) {
     const imgs = [];
     if (d.img) imgs.push({ where: 'hero', url: d.img });
     for (const b of d.blocks || []) if (b.k === 'i' && b.img) imgs.push({ where: 'body', url: b.img.url });
-    if (!d.img) flags.push('IMG-NONE');
+    if (!d.img && !it.img) flags.push('IMG-NONE');
     for (const im of imgs) {
       const p = im.url.split('?')[0];
       if (JUNK.test(p)) flags.push('IMG-JUNK'), notes.push(`${im.where} junk: ${im.url}`);
-      const sm = p.match(SMALL); if (sm && +sm[1] < 600 && im.where === 'body') flags.push('IMG-SMALL'), notes.push(`${im.where} kecil: ${im.url}`);
+      const sm = p.match(SMALL); if (sm && +sm[1] < 400) flags.push('IMG-SMALL'), notes.push(`${im.where} kecil: ${im.url}`);
       const owners = feedImgs.get(imgKey(im.url));
       if (owners && [...owners].some(u => u !== self && u !== d.final)) flags.push('IMG-OTHER'), notes.push(`${im.where} milik artikel lain: ${im.url}`);
     }
+    { const seen = new Map(); for (const im of imgs) { const k = (im.url.split('?')[0].split('/').pop() || '').replace(/\.\w+$/, '').replace(/[-_]\d{2,4}x\d{2,4}$/, '').toLowerCase(); if (k.length < 8) continue; if (seen.has(k)) flags.push('IMG-DUP'), notes.push('gambar ganda: ' + im.url); seen.set(k, 1); } }
+    for (const v of d.videos || []) notes.push('video(' + v.kind + '): ' + String(v.url).slice(0, 110));
     const mine = norm(d.title);
     const paras = (d.blocks || []).filter(b => b.k === 'p').map(b => b.t);
     for (const t of paras) {
@@ -76,7 +79,7 @@ async function pool(items, n, fn) {
       if (t.length < 200 && BOILER.test(t)) { flags.push('TXT-BOILER'); notes.push('boiler: ' + t.slice(0, 90)); }
     }
     if (d.thin || paras.length < 2) flags.push('TXT-THIN');
-    return { src, url: it.url, title: it.title, via: d.via || 'html', hero: d.img || '', nImg: imgs.length - (d.img ? 1 : 0), nVid: (d.videos || []).length, nPara: paras.length, flags: [...new Set(flags)], notes: notes.slice(0, 6) };
+    return { src, url: it.url, title: it.title, via: d.via || 'html', hero: d.img || '', nImg: imgs.length - (d.img ? 1 : 0), nVid: (d.videos || []).length, nPara: paras.length, flags: [...new Set(flags)], notes: notes.slice(0, 8) };
   });
 
   // IMG-DUP-HOST: hero sama di banyak artikel satu sumber
