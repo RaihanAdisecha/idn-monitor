@@ -1198,9 +1198,15 @@ a{color:inherit;text-decoration:none;text-underline-offset:2px}
 
 /* ============================================================ RESPONSIVE */
 @media (max-width:1180px){
-  .console{grid-template-columns:1fr 1fr;grid-template-rows:auto minmax(0,1fr)}
-  .pane.mkt{grid-column:1/-1}
-  .console>.pane:last-child{grid-column:1/-1}
+  /* tablet/layar sedang: 2 kolom, penempatan eksplisit — tanpa ini market (full-width
+     row 1) bertumpuk dengan situasi (col 1, row 1/3) dan social/news/cctv tumpah ke
+     implicit rows yang berantakan */
+  .console{grid-template-columns:1fr 1fr;grid-template-rows:auto minmax(0,1fr) minmax(0,1fr)}
+  .console>.pane:first-child{grid-column:1;grid-row:2}
+  .pane.mkt{grid-column:1/-1;grid-row:1}
+  .console>.pane:nth-child(3){grid-column:2;grid-row:2}
+  .console>.pane:nth-child(4){grid-column:1;grid-row:3}
+  .console>.pane:last-child{grid-column:2;grid-row:3}
   .pane{min-height:0}
   .mapwrap{width:100%;border-left:0;box-shadow:none}
 }
@@ -1472,6 +1478,7 @@ a{color:inherit;text-decoration:none;text-underline-offset:2px}
   <section class="pane" aria-label="Social live">
     <div class="ph">
       <span class="ph-k">03</span>
+      <h2 class="ph-t">Social</h2>
       <div class="soc-tabs" role="tablist" aria-label="Sumber sosial">
         <button class="soc-tab" id="tab-x" type="button" role="tab" aria-selected="true" aria-controls="pane-x" data-tab="x">
           <svg class="ic" aria-hidden="true"><use href="#i-x"></use></svg>Tweets <b id="xcount">—</b>
@@ -1708,6 +1715,17 @@ const EMOJI_RE = /[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\u{2B00}-\u{2BFF}\u{FE0F}
 const deEmoji = s => String(s == null ? '' : s).replace(EMOJI_RE, '').replace(/[ \t]{2,}/g, ' ').trim();
 const ic = (n, cls) => `<svg class="ic${cls ? ' ' + cls : ''}" aria-hidden="true"><use href="#i-${n}"></use></svg>`;
 const debounce = (fn, ms) => { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; };
+// guard in-flight: poller interval + trigger manual nggak boleh menumpuk fetch yang sama
+const once = fn => { let busy = false; return (...a) => {
+  if (busy) return Promise.resolve();
+  busy = true;
+  return Promise.resolve().then(() => fn(...a)).finally(() => { busy = false; });
+}; };
+// Puller berat dipakai interval + trigger manual. Function declaration hoist, jadi
+// dibungkus di sini — sebelum setInterval pertama sempat menangkap referensi mentah.
+for (const n of ['pullSituation','pullStocks','pullIncidents','pullFlights','pullShips','pullTransit',
+  'pullDisaster','pullWeather','pullWind','pullAlerts','pullTomTomIncidents','pullAlive','pullCctv','pullBreaking'])
+  window[n] = once(window[n]);
 const num = n => { n = +n || 0;
   return n >= 1e6 ? (n/1e6).toFixed(1).replace('.0','') + 'M'
        : n >= 1e3 ? (n/1e3).toFixed(1).replace('.0','') + 'K' : String(n); };
@@ -3164,7 +3182,13 @@ function setSocTab(t){
   if (t === 'threads' && !tPosts.length) pullThreads();
 }
 $$('.soc-tab').forEach(b => {
-  b.addEventListener('click', () => setSocTab(b.dataset.tab));
+  b.addEventListener('click', () => {
+    // di <=820px pane collapse: tap tab saat tertutup harus membuka pane,
+    // kalau tidak tab terlihat "mati" dan social tampak tidak pernah muncul
+    const pane = b.closest('.pane');
+    if (pane && !pane.classList.contains('open')) pane.classList.add('open');
+    setSocTab(b.dataset.tab);
+  });
   b.addEventListener('keydown', e => {
     if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
     e.preventDefault();
@@ -4727,7 +4751,7 @@ function radarLayerFor(i){
     const f = radarFrames[i];
     if (!f) return null;
     radarLayerCache[i] = L.tileLayer(radarHost + f.path + '/256/{z}/{x}/{y}/2/1_1.png', {
-      opacity: .55, zIndex: 6, maxZoom: 10, attribution: 'RainViewer'
+      opacity: .55, zIndex: 6, maxZoom: 7, maxNativeZoom: 7, attribution: 'RainViewer'
     });
   }
   return radarLayerCache[i];
@@ -5365,7 +5389,12 @@ async function pullX(){
   }
 }
 
-let busy = false;
+let busy = false, bgPending = 0, lastSyncAt = 0;
+const paintSync = () => {
+  const el = $('#lastsync');
+  if (el) el.textContent = 'sync ' + (lastSyncAt ? wibTime(lastSyncAt) : '—') + ' WIB' + (bgPending ? ' · ' + bgPending + ' latar' : '');
+};
+const trackBg = p => { bgPending++; const d = () => { bgPending--; paintSync(); }; Promise.resolve(p).then(d, d); };
 async function refreshAll(manual){
   if (busy) return;
   busy = true;
@@ -5373,15 +5402,15 @@ async function refreshAll(manual){
   try {
     // fire-and-forget duluan: incidents/globe tidak boleh nunggu pipeline news selesai —
     // server-side incidents() dan /api/news share memo feed yang sama, jadi paralel tanpa fetch ganda
-    pullX();
-    pullThreads();
-    pullIncidents();
-    pullAlive();
-    pullCctv();
+    trackBg(pullX());
+    trackBg(pullThreads());
+    trackBg(pullIncidents());
+    trackBg(pullAlive());
+    trackBg(pullCctv());
     await Promise.all([pullMedia(), pullSituation(), pullStocks()]);
     P.forEach((p, c) => { if (p.dead) { p.dead = false; p.tries = 0; badge(c, 'wait', 'Antre'); } });
     pump();
-    $('#lastsync').textContent = 'sync ' + wibTime(Date.now()) + ' WIB';
+    lastSyncAt = Date.now(); paintSync();   // label jujur: inti sync; sumber latar dilaporkan terpisah
   } finally {
     busy = false;
     remain = CYCLE; paintCountdown();
@@ -5853,6 +5882,10 @@ $$('.pane').forEach(p => {
 if (matchMedia('(max-width: 820px)').matches) {
   const first = $('.pane');
   if (first) first.classList.add('open');
+  // Social ikut expanded default — pane ini headline feed, dan header-nya
+  // tidak punya label lain selain nomor + tabs
+  const soc = $('.pane[aria-label="Social live"]');
+  if (soc) soc.classList.add('open');
   // "Detail situasi" dibiarkan expanded default — user collapse manual kalau mau
 }
 
