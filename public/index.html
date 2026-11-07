@@ -935,15 +935,48 @@ a{color:inherit;text-decoration:none;text-underline-offset:2px}
 .tv-f{
   position:absolute;left:0;right:0;bottom:0;z-index:3;height:30px;
   display:flex;align-items:center;padding-right:18px;
-  background:linear-gradient(rgba(4,4,4,0),rgba(4,4,4,.82));
-  border-top:1px solid rgba(255,255,255,.05);
+  background:linear-gradient(rgba(4,4,4,0),rgba(4,4,4,.88));
+  border-top:1px solid rgba(255,255,255,.07);
   transition:opacity .25s,transform .25s;
 }
 .tvwrap.idle .tv-f{opacity:0;transform:translateY(8px);pointer-events:none}
-.tv-nav{width:28px;height:26px;display:grid;place-items:center;color:var(--text3)}
-.tv-nav:hover{background:var(--layer2);color:var(--text)}
-.tv-nav .ic{width:10px;height:10px}
-.tv-idx{padding:0 7px;font:500 8.5px/1 var(--mono);letter-spacing:.1em;color:var(--text3);font-variant-numeric:tabular-nums}
+.tv-ch-btn{
+  display:inline-flex;align-items:center;gap:5px;height:22px;padding:0 8px;margin-left:6px;
+  background:rgba(26,26,30,.88);border:1px solid rgba(255,255,255,.14);border-radius:3px;
+  color:var(--text2);font:500 8.5px/1 var(--mono);letter-spacing:.08em;text-transform:uppercase;
+  cursor:pointer;transition:all .15s;
+}
+.tv-ch-btn:hover{background:var(--layer2);color:var(--text);border-color:var(--text3)}
+.tv-ch-btn[aria-expanded="true"]{background:rgba(255,255,255,.15);color:var(--accent);border-color:var(--accent)}
+.tv-ch-btn .ic{width:11px;height:11px;flex:none}
+.tv-ch-caret{width:8px;height:8px;transition:transform .2s;color:var(--text3)}
+.tv-ch-btn[aria-expanded="true"] .tv-ch-caret{transform:rotate(180deg);color:var(--accent)}
+#tv-ch-label{max-width:145px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tv-menu{
+  position:absolute;left:6px;right:6px;bottom:34px;z-index:20;
+  max-height:220px;overflow-y:auto;overflow-x:hidden;
+  background:rgba(10,12,16,.96);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
+  border:1px solid var(--border2);border-radius:4px;box-shadow:0 14px 40px rgba(0,0,0,.85);
+  padding:4px;display:flex;flex-direction:column;gap:1px;scrollbar-width:thin;
+}
+.tv-menu[hidden]{display:none}
+.tv-menu::-webkit-scrollbar{width:4px}
+.tv-menu::-webkit-scrollbar-thumb{background:#333;border-radius:2px}
+.tv-menu-sec{font:600 7px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--text3);padding:6px 6px 3px;display:flex;align-items:center;gap:6px;border-bottom:1px solid rgba(255,255,255,.05);margin-bottom:2px}
+.tv-menu-sec:not(:first-child){margin-top:4px}
+.tv-opt{
+  display:flex;align-items:center;gap:6px;width:100%;height:24px;padding:0 6px;
+  border:none;background:transparent;color:var(--text2);border-radius:3px;
+  font:400 9px/1 var(--mono);letter-spacing:.03em;cursor:pointer;text-align:left;
+  transition:background .1s,color .1s;
+}
+.tv-opt:hover{background:rgba(255,255,255,.08);color:var(--text)}
+.tv-opt.active{background:rgba(255,255,255,.12);color:var(--text);font-weight:600}
+.tv-opt-dot{width:4px;height:4px;border-radius:50%;background:transparent;flex:none}
+.tv-opt.active .tv-opt-dot{background:var(--ok);box-shadow:0 0 6px var(--ok)}
+.tv-opt-name{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tv-opt-badge{font:600 7px/1 var(--mono);letter-spacing:.08em;padding:1px 4px;border-radius:2px;background:rgba(255,255,255,.06);color:var(--text3);flex:none}
+.tv-opt.active .tv-opt-badge{background:rgba(0,230,118,.15);color:var(--ok)}
 .tv-src{
   margin-left:auto;padding:0 7px;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
   font:400 8px/1 var(--mono);letter-spacing:.07em;text-transform:uppercase;color:var(--text3);
@@ -1182,6 +1215,7 @@ a{color:inherit;text-decoration:none;text-underline-offset:2px}
   <symbol id="i-grip" viewBox="0 0 16 16"><path d="M13.8 8.8 7.2 15.4"/><path d="M13.8 4.4 4.4 13.8"/><path d="M13.8 .6 1 13.4"/></symbol>
   <symbol id="i-chev-l" viewBox="0 0 16 16"><path d="M10 2.8 4.8 8 10 13.2"/></symbol>
   <symbol id="i-chev-r" viewBox="0 0 16 16"><path d="M6 2.8 11.2 8 6 13.2"/></symbol>
+  <symbol id="i-chev-d" viewBox="0 0 16 16"><path d="M2.8 6 8 11.2 13.2 6"/></symbol>
   <symbol id="i-vol" viewBox="0 0 16 16"><path d="M2.6 6.1h2.7L8.9 3.2v9.6L5.3 9.9H2.6z"/><path d="M11.2 5.9a3 3 0 0 1 0 4.2"/><path d="M13.1 4.2a5.4 5.4 0 0 1 0 7.6"/></symbol>
   <symbol id="i-volx" viewBox="0 0 16 16"><path d="M2.6 6.1h2.7L8.9 3.2v9.6L5.3 9.9H2.6z"/><path d="M11.3 6.1 14.4 9.9"/><path d="M14.4 6.1 11.3 9.9"/></symbol>
   <symbol id="i-heart" viewBox="0 0 16 16"><path d="M8 13.9S2.1 10.3 2.1 6.6A3.1 3.1 0 0 1 8 4.7a3.1 3.1 0 0 1 5.9 1.9c0 3.7-5.9 7.3-5.9 7.3Z"/></symbol>
@@ -1461,18 +1495,17 @@ a{color:inherit;text-decoration:none;text-underline-offset:2px}
     </div>
   </div>
   <div class="tv-f">
-    <button class="tv-nav" id="tv-prev" type="button" aria-label="Channel sebelumnya">
-      <svg class="ic" aria-hidden="true"><use href="#i-chev-l"></use></svg>
-    </button>
-    <span class="tv-idx" id="tv-idx">01/06</span>
-    <button class="tv-nav" id="tv-next" type="button" aria-label="Channel berikutnya">
-      <svg class="ic" aria-hidden="true"><use href="#i-chev-r"></use></svg>
+    <button class="tv-ch-btn" id="tv-ch-btn" type="button" aria-expanded="false" aria-controls="tv-menu" aria-label="Daftar channel TV" title="Pilih Channel">
+      <svg class="ic" aria-hidden="true"><use href="#i-tv"></use></svg>
+      <span id="tv-ch-label">Channels</span>
+      <svg class="ic tv-ch-caret" aria-hidden="true"><use href="#i-chev-d"></use></svg>
     </button>
     <span class="tv-src" id="tv-src">hls</span>
     <button class="tv-mute" id="tv-mute" type="button" aria-pressed="true" aria-label="Suara">
       <svg class="ic" aria-hidden="true"><use href="#i-volx"></use></svg>
     </button>
   </div>
+  <div class="tv-menu" id="tv-menu" hidden role="dialog" aria-label="Pilih Channel"></div>
   <span class="tv-grip" id="tv-grip" role="separator" aria-orientation="horizontal" tabindex="0"
     aria-label="Ubah ukuran panel TV" title="Seret untuk mengubah ukuran · klik dua kali untuk reset">
     <svg class="ic" aria-hidden="true"><use href="#i-grip"></use></svg>
@@ -4402,33 +4435,88 @@ setInterval(() => { if (mapOpen && layerOn.cuaca) pullWeather(); }, 600000);
    LIVE TV — panel mengambang, drag lintas tepi, snap, ganti kanal
    ============================================================ */
 const TV_CH = [
-  { n:'Metro TV',       s:'https://edge.medcom.id/live-edge/smil:metro.smil/playlist.m3u8', src:'medcom',
+  // NASIONAL (INDONESIA)
+  { n:'Metro TV',           grp:'Nasional (ID)',       badge:'ID', s:'https://edge.medcom.id/live-edge/smil:metro.smil/playlist.m3u8', src:'medcom',
     pg:'https://www.youtube.com/channel/UCkbPntO_8G2BF2HmLcrsZXA/live' },
-  { n:'CNN Indonesia',  s:'https://video.detik.com/livecnn/smil:cnntv.smil/playlist.m3u8', src:'detik',
+  { n:'CNN Indonesia',      grp:'Nasional (ID)',       badge:'ID', s:'https://video.detik.com/livecnn/smil:cnntv.smil/playlist.m3u8', src:'detik',
     pg:'https://www.cnnindonesia.com/tv' },
-  { n:'CNBC Indonesia', s:'https://video.detik.com/livecnbc/smil:cnbctv.smil/playlist.m3u8', src:'detik',
+  { n:'CNBC Indonesia',     grp:'Nasional (ID)',       badge:'ID', s:'https://video.detik.com/livecnbc/smil:cnbctv.smil/playlist.m3u8', src:'detik',
     pg:'https://www.cnbcindonesia.com/tv' },
-  { n:'TVRI Nasional',  s:'https://ott-balancer.tvri.go.id/live/eds/Nasional/hls/Nasional.m3u8', src:'tvri',
+  { n:'TVRI Nasional',      grp:'Nasional (ID)',       badge:'ID', s:'https://ott-balancer.tvri.go.id/live/eds/Nasional/hls/Nasional.m3u8', src:'tvri',
     pg:'https://tvri.go.id/live' },
-  { n:'TVRI Jakarta',   s:'https://ott-balancer.tvri.go.id/live/eds/DKI/hls/DKI.m3u8', src:'tvri',
+  { n:'TVRI Jakarta',       grp:'Nasional (ID)',       badge:'DKI',s:'https://ott-balancer.tvri.go.id/live/eds/DKI/hls/DKI.m3u8', src:'tvri',
     pg:'https://tvri.go.id/live' },
-  { n:'BTV',            s:'https://lnd0t3b922.tenbytecdn.com/ta-sg1/90369cf5-6ac2-411d-b3d0-15fae10a2e2c/master.m3u8', src:'tenbyte',
-    pg:'https://www.beritasatu.com/beritasatu-live-streaming' }
+  { n:'BTV',                grp:'Nasional (ID)',       badge:'ID', s:'https://lnd0t3b922.tenbytecdn.com/ta-sg1/90369cf5-6ac2-411d-b3d0-15fae10a2e2c/master.m3u8', src:'tenbyte',
+    pg:'https://www.beritasatu.com/beritasatu-live-streaming' },
+  { n:'Nusantara TV',       grp:'Nasional (ID)',       badge:'ID', s:'https://nusantaratv.siar.us/nusantaratv/live/playlist.m3u8', src:'siar.us',
+    pg:'https://nusantaratv.com/live' },
+
+  // INTERNASIONAL / GEOPOLITIK
+  { n:'Al Jazeera English', grp:'Internasional (Global)', badge:'QA', s:'https://live-hls-web-aje-fa.thehlive.com/AJE/index.m3u8', src:'thehlive',
+    pg:'https://www.aljazeera.com/live' },
+  { n:'DW English',         grp:'Internasional (Global)', badge:'DE', s:'https://dwamdstream102.akamaized.net/hls/live/2015525/dwstream102/master.m3u8', src:'dw',
+    pg:'https://www.dw.com/en/live-tv/s-100830' },
+  { n:'Bloomberg TV',       grp:'Internasional (Global)', badge:'US', s:'https://www.bloomberg.com/media-manifest/streams/us.m3u8', src:'bloomberg',
+    pg:'https://www.bloomberg.com/live/us' },
+  { n:'France 24 English',  grp:'Internasional (Global)', badge:'FR', s:'https://live.france24.com/hls/live/2037218/F24_EN_HI_HLS/master_2300.m3u8', src:'france24',
+    pg:'https://www.france24.com/en/live' },
+  { n:'CNA (Channel NewsAsia)',grp:'Internasional (Global)',badge:'SG',s:'https://d2e1asnsl7br7b.cloudfront.net/7782e205e72f43aeb4a48ec97f66ebbe/index.m3u8', src:'cna',
+    pg:'https://www.channelnewsasia.com/watch-live' },
+  { n:'NHK World-Japan',    grp:'Internasional (Global)', badge:'JP', s:'https://masterpl.hls.nhkworld.jp/hls/w/live/smarttv.m3u8', src:'nhk',
+    pg:'https://www3.nhk.or.jp/nhkworld/en/live/' },
+  { n:'TRT World',          grp:'Internasional (Global)', badge:'TR', s:'https://tv-trtworld.medya.trt.com.tr/master.m3u8', src:'trt',
+    pg:'https://www.trtworld.com/live' }
 ];
 let tvOn = false, tvIx = 0, tvHls = null, tvDrag = null, tvRz = null, tvIdleT = null, tvPx = false, tvTry = 0, tvRetryT = null;
+
+function renderTvMenu(){
+  const menu = $('#tv-menu');
+  if (!menu) return;
+  let curGrp = '', h = '';
+  TV_CH.forEach((c, idx) => {
+    if (c.grp !== curGrp) {
+      curGrp = c.grp;
+      h += `<div class="tv-menu-sec"><span>${esc(curGrp)}</span></div>`;
+    }
+    const act = idx === tvIx ? ' active' : '';
+    h += `<button class="tv-opt${act}" type="button" data-idx="${idx}">
+      <span class="tv-opt-dot"></span>
+      <span class="tv-opt-name">${esc(c.n)}</span>
+      <span class="tv-opt-badge">${esc(c.badge || 'LIVE')}</span>
+    </button>`;
+  });
+  menu.innerHTML = h;
+}
+
+function tvToggleMenu(force){
+  const menu = $('#tv-menu'), btn = $('#tv-ch-btn');
+  if (!menu || !btn) return;
+  const open = typeof force === 'boolean' ? force : menu.hidden;
+  menu.hidden = !open;
+  btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+  if (open) {
+    tvWake();
+    const act = menu.querySelector('.tv-opt.active');
+    if (act) act.scrollIntoView({ block: 'nearest' });
+  }
+}
 
 function tvPaint(){
   const c = TV_CH[tvIx];
   $('#tv-name').textContent = c.n;
-  $('#tv-idx').textContent = String(tvIx + 1).padStart(2, '0') + '/' + String(TV_CH.length).padStart(2, '0');
+  const lbl = $('#tv-ch-label');
+  if (lbl) lbl.textContent = c.n;
   $('#tv-src').textContent = c.src;
   $('#tv-link').href = c.pg;
   $('#tv-msg-s').textContent = c.n;
+  $$('.tv-opt').forEach((btn, idx) => {
+    btn.classList.toggle('active', idx === tvIx);
+  });
 }
 function tvFail(msg){
   $('#tv-body').dataset.state = 'fail';
-  $('#tv-msg-t').textContent = 'Siaran tidak tersedia';
-  $('#tv-msg-s').textContent = msg || 'sumber tidak merespons';
+  $('#tv-msg-t').textContent = 'CHANNEL OFFLINE';
+  $('#tv-msg-s').textContent = (msg ? msg + ' · ' : '') + 'auto-retry 90s';
 }
 function tvStop(){
   const v = $('#tv-video');
@@ -4540,6 +4628,7 @@ function tvOpen(){
 function tvClose(){
   if (!tvOn) return;
   tvOn = false;
+  tvToggleMenu(false);
   clearTimeout(tvIdleT);
   clearTimeout(tvRetryT); tvRetryT = null;
   tvStop();
@@ -4551,8 +4640,33 @@ function tvClose(){
 }
 $('#btn-tv').addEventListener('click', () => { if (tvOn) tvClose(); else tvOpen(); });
 $('#tv-close').addEventListener('click', tvClose);
-$('#tv-prev').addEventListener('click', () => tvStep(-1));
-$('#tv-next').addEventListener('click', () => tvStep(1));
+$('#tv-ch-btn').addEventListener('click', e => {
+  e.stopPropagation();
+  tvToggleMenu();
+});
+$('#tv-menu').addEventListener('click', e => {
+  const opt = e.target.closest('.tv-opt');
+  if (!opt) return;
+  e.stopPropagation();
+  const idx = parseInt(opt.dataset.idx, 10);
+  if (Number.isFinite(idx) && idx >= 0 && idx < TV_CH.length) {
+    tvIx = idx;
+    tvPx = false; tvTry = 0;
+    tvToggleMenu(false);
+    if (tvOn) tvPlay(); else tvPaint();
+  }
+});
+document.addEventListener('click', e => {
+  if (!e.target.closest('#tvwrap')) {
+    tvToggleMenu(false);
+  }
+});
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') {
+    const m = $('#tv-menu');
+    if (m && !m.hidden) tvToggleMenu(false);
+  }
+});
 $('#tv-mute').addEventListener('click', () => tvMute($('#tv-mute').getAttribute('aria-pressed') !== 'true'));
 
 const tvH = $('#tv-drag');
@@ -4620,6 +4734,11 @@ function tvArmIdle(){
   clearTimeout(tvIdleT);
   tvIdleT = setTimeout(function tick(){
     if (!tvOn) return;
+    const m = $('#tv-menu');
+    if (m && !m.hidden) {
+      tvIdleT = setTimeout(tick, 1000);
+      return;
+    }
     if (tvWrap.matches(':hover') || tvWrap.contains(document.activeElement)) {
       tvIdleT = setTimeout(tick, 800);
       return;
