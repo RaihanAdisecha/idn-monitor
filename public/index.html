@@ -2651,10 +2651,13 @@ async function xLazy(q){
   } catch (e) {}
 }
 function qchipsHtml(queries, trending, active){
-  const hot = [...new Set(trending || [])];
-  const rest = (queries || []).filter(q => !hot.includes(q));
+  const norm = s => String(s).toLowerCase();
+  const tr = [...new Set((trending || []).map(norm))];
+  const all = [...new Set(queries || [])];
+  const isHot = q => { const n = norm(q); return tr.some(t => t === n || n.includes(t) || t.includes(n)); };
+  const hot = all.filter(isHot).sort((a, b) => (tr.includes(norm(b)) ? 1 : 0) - (tr.includes(norm(a)) ? 1 : 0)), rest = all.filter(q => !isHot(q));
   const chip = q =>
-    `<button class="qc${hot.includes(q) ? ' hot' : ''}" type="button" data-q="${esc(q)}" aria-pressed="${q === active}"${hot.includes(q) ? ' title="Trending hari ini"' : ''}>${hot.includes(q) ? '<b class="qa">↑</b> ' : ''}${esc(q)}</button>`;
+    `<button class="qc${isHot(q) ? ' hot' : ''}" type="button" data-q="${esc(q)}" aria-pressed="${q === active}"${isHot(q) ? ' title="Trending hari ini"' : ''}>${isHot(q) ? '<b class="qa">↑</b> ' : ''}${esc(q)}</button>`;
   return `<button class="qc" type="button" data-q="" aria-pressed="${active === ''}">Semua</button>` +
     (hot.length ? '<i class="qc-sep" aria-hidden="true"></i>' + hot.map(chip).join('') : '') +
     (rest.length ? '<i class="qc-sep" aria-hidden="true"></i>' + rest.map(chip).join('') : '');
@@ -4513,6 +4516,7 @@ function tvPaint(){
     btn.classList.toggle('active', idx === tvIx);
   });
 }
+renderTvMenu();
 function tvFail(msg){
   $('#tv-body').dataset.state = 'fail';
   $('#tv-msg-t').textContent = 'CHANNEL OFFLINE';
@@ -4615,6 +4619,7 @@ function tvOpen(){
   if (tvOn) return;
   const w = $('#tvwrap');
   tvOn = true;
+  renderTvMenu();
   w.classList.add('on');
   w.setAttribute('aria-hidden', 'false');
   $('#btn-tv').setAttribute('aria-expanded', 'true');

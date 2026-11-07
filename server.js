@@ -372,7 +372,6 @@ const trendingQueries = () => memo('trending', 10 * 60e3, async () => {
       if (k.length > 10 && !seenT.has(k)) { seenT.add(k); titles.push(it.title); }
     }
     if (titles.length < 40) return [];
-    const staticQs = (X.queries || []).concat(TH_QUERIES || []).map(q => String(q).toLowerCase());
     const score = new Map();
     for (const t of titles) {
       const inc = GEO_INC_RE.test(t) ? 1 : 0, seen = new Set();
@@ -392,7 +391,6 @@ const trendingQueries = () => memo('trending', 10 * 60e3, async () => {
       const need = single ? 5 : 3;
       if (n < need) continue;
       if (single && ctx < 2) continue;   // kata tunggal wajib muncul di konteks insiden ≥2 judul
-      if (staticQs.some(q => q.includes(ph) || ph.includes(q))) continue;
       out.push(ph);
       if (out.length >= 8) break;
     }
@@ -401,7 +399,8 @@ const trendingQueries = () => memo('trending', 10 * 60e3, async () => {
 });
 const xposts = () => memo('x', 90000, async () => {
   const tr = (await trendingQueries()).slice(0, 6);
-  const queries = (X.queries || []).concat(tr);
+  const base = (X.queries || []).map(q => String(q).toLowerCase());
+  const queries = (X.queries || []).concat(tr.filter(t => !base.includes(String(t).toLowerCase())));
   if (!xHas()) return { ok: false, err: 'auth_token / ct0 belum diisi di config.json', posts: [], queries, trending: tr };
   const all = new Map(), errs = [];
   // paralel per 5 query: sinkron tetap cepat, satu query gagal tidak menjatuhkan yang lain
@@ -462,7 +461,8 @@ const threads = () => memo('threads', 240000, async () => {
   if (!PY_BIN) throw new Error('Python tidak ditemukan. Jalankan: python3 -m venv .venv && .venv/bin/pip install curl_cffi');
   // Threads worker sequential per query (timeout 200s total) → jatah adaptif lebih kecil
   const tr = (await trendingQueries()).slice(0, 3);
-  const queries = TH_QUERIES.concat(tr);
+  const baseT = TH_QUERIES.map(q => String(q).toLowerCase());
+  const queries = TH_QUERIES.concat(tr.filter(t => !baseT.includes(String(t).toLowerCase())));
   const raw = await new Promise((resolve, reject) => {
     execFile(PY_BIN, [path.join(__dirname, 'vendor', 'threads_worker.py'), JSON.stringify(queries)],
       { timeout: 200000, maxBuffer: 12 << 20 },
