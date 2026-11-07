@@ -1769,30 +1769,38 @@ function tickFly(now){
 }
 const seenIds = new Set();
 const itemIdOf = p => p.url || ((p.title || '') + '|' + (p.src || ''));
+const focusQueue = [];        // item fresh yang belum sempat diumumkan — tidak ditelan, diuras satu per evaluasi
+let lastAutoFocus = 0;
+const FOCUS_COOLDOWN = 90000; // anti-yank: globe tidak boleh dansa tiap cycle
 function maybeFocusFresh(){
   const now = Date.now();
-  // Gempa/gunung api ikut kandidat fokus & toast seperti insiden lain.
-  // Urutan prioritas: insiden (PULSE) di atas gempa/gunung (DIS_PULSE) saat keduanya fresh,
-  // supaya update insiden baru tidak terganggu gempa/gunung yang kebetulan fresh.
+  // Bencana didahulukan: gempa BMKG & gunung MAGMA adalah event, bukan noise wire.
+  // Window eligibility pakai umur data: insiden 6 jam; gempa 24 jam (BMKG hanya terbitkan
+  // gempa hari ini — quake lama yang baru pertama terlihat tetap layak announce);
+  // volcano tetap 6 jam supaya status Siaga yang tidak berubah (ts=midnight) tidak eligible.
   const isDisaster = p => p.sub === 'gempa' || p.sub === 'volcano';
+  const winOf = p => p.sub === 'gempa' ? 24 * 3600e3 : 6 * 3600e3;
   const items = (PULSE || []).concat(DIS_PULSE || []).filter(p =>
     !p.fixed && typeof p.la === 'number' && typeof p.lo === 'number' &&
     p.la > -12 && p.la < 8 && p.lo > 92 && p.lo < 145 &&   // bbox Indonesia — titik 0,0/luar negeri tidak pernah difokus
-    p.ts && now - (p.ts || 0) < 6 * 3600e3);
-  if (!items.length) return;
-  // Tandai semua item yang sekarang terlihat, supaya fly-to hanya untuk yang benar-benar baru.
-  const freshOnes = [];
+    p.ts && now - (p.ts || 0) < winOf(p));
+  // enqueue item yang belum pernah terlihat; queue di-prune thd item yang hilang dari feed
+  const liveIds = new Set();
   for (const p of items) {
     const id = itemIdOf(p);
     if (!id) continue;
-    if (!seenIds.has(id)) freshOnes.push(p);
+    liveIds.add(id);
+    if (!seenIds.has(id) && !focusQueue.some(q => itemIdOf(q) === id)) focusQueue.push(p);
     seenIds.add(id);
   }
+  for (let i = focusQueue.length - 1; i >= 0; i--) if (!liveIds.has(itemIdOf(focusQueue[i]))) focusQueue.splice(i, 1);
   if (seenIds.size > 800) { seenIds.clear(); for (const p of items) seenIds.add(itemIdOf(p)); }
-  if (!freshOnes.length) return;
+  if (!focusQueue.length) return;
   if (performance.now() - lastGestEnd < 25000) return;   // jangan rebut globe dari user
-  freshOnes.sort((a, b) => (isDisaster(a) - isDisaster(b)) || (b.ts || 0) - (a.ts || 0));
-  const t = freshOnes[0];
+  if (now - lastAutoFocus < FOCUS_COOLDOWN) return;       // throttle: satu fokus per 90 detik
+  focusQueue.sort((a, b) => (isDisaster(b) - isDisaster(a)) || ((b.mag || 0) - (a.mag || 0)) || (b.ts || 0) - (a.ts || 0));
+  const t = focusQueue.shift();
+  lastAutoFocus = now;
   flyTo(t.la, t.lo, Math.max(view.zoom, 5));
   setLinkItem(t);
   showSitAlert(t);
@@ -4430,6 +4438,7 @@ async function pullDisaster(){
       gempa: dp.filter(p => p.sub === 'gempa').length,
       gunung: dp.filter(p => p.sub === 'volcano').length });
     try { drawGlobe(performance.now()); } catch (e) {}
+    maybeFocusFresh();   // gempa/gunung dievaluasi langsung — tidak menunggu cycle incidents
     // Layer peta independen — render marker hanya kalau toggle nyala & peta kebuka
     if (map) {
       if (layerOn.gempa) {
