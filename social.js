@@ -9,6 +9,20 @@
 // metafora / idiom: "kebakaran jenggot", "banjir orderan", dst. Post begini bukan kejadian.
 const SOC_NOISE_RE = /(kebakaran jenggot|banjir (order|orderan|diskon|promo|pujian|notif|notifikasi|air mata|komen|komentar|dm|like|followers?|rezeki|cuan|berkah|hadiah|bonus|kado|tawaran|pesanan|chat|ucapan)|(hati|dada|semangat|jiwa|emosi|cemburu|amarah)[^.\n]{0,12}terbakar|terbakar (semangat|emosi|cemburu|amarah|api asmara|rindu)|tenggelam dalam|hanyut dalam|terjun (bebas )?(ke dunia|ke politik|payung)|gempa (hati|rasa|jantung)|meledak(-ledak)? (emosi|tawa|tangis))/i;
 
+// spam/farming/phishing: engagement-bait & jualan, bukan konten kejadian.
+// pola: "Vote for X", rantai "Follow A. Follow B.", "DM untuk order", "link di bio", hashtag stuffing.
+const SOC_SPAM_RE = /(vote for|follow\s+[\w.@-]+\s*[+.&]?\s*follow|like\s*(dan|&|\+)\s*(follow|rt)|rt\s*(dan|&|\+)\s*follow|dm\s+(untuk|di|ke)\s*(order|harga|promo|info|respon|detail|ticket|tiket)|link\s+(di|ada di)\s+bio|cek\s+(link\s+)?di\s+bio|order\s+(via|melalui|di)\s+(wa|dm|wa\.me))/i;
+const socHashCount = t => (String(t).match(/#[\p{L}\p{N}_]+/gu) || []).length;
+// aksara non-Latin (Hangul, Thai, CJK, Kiril, Arab, Devanagari) dominan = konten luar negeri
+// yang tidak tertangkap nama-negara Latin — misal spam tiket Korea full Hangul
+const SOC_NONLATIN_RE = /[\u0E00-\u0E7F\u0E80-\u0EFF\u3040-\u30FF\u3400-\u4DBF\u4E00-\u9FFF\uAC00-\uD7AF\u0400-\u04FF\u0600-\u06FF\u0900-\u097F\u10A0-\u10FF]/g;
+function socNonLatin(t) {
+  const s = String(t || '');
+  const nl = (s.match(SOC_NONLATIN_RE) || []).length;
+  const lat = (s.match(/[A-Za-zÀ-ɏ]/g) || []).length;
+  return nl >= 20 && nl > lat;
+}
+
 // kata negara asing: membuang "penembakan di Texas", "gempa Jepang" dst. KECUALI ada petunjuk lokal Indonesia.
 const SOC_FOREIGN_RE = /\b(amerika|texas|california|new york|brasil|brazil|filipina|thailand|malaysia|korea|jepang|tiongkok|china|inggris|prancis|perancis|jerman|australia|india|pakistan|iran|israel|palestina|ukraina|rusia|gaza|turki|meksiko|kanada|nigeria|afrika|trump)\b/i;
 const SOC_LOCAL_RE = /(indonesia|\bwni\b|jakarta|jabar|jateng|jatim|jawa|sumatera|sumatra|kalimantan|sulawesi|papua|bali\b|aceh|riau|banten|bekasi|bogor|depok|tangerang|bandung|surabaya|medan|makassar|semarang|yogya|bpbd|bnpb|bmkg|polres|polda|polsek|kodim|damkar|pemkot|pemkab|kabupaten|provinsi|prabowo|gibran|\bdpr\b|dprd|kapolri|polri)/i;
@@ -24,11 +38,14 @@ const SOC_TOPICS = [
     th: ['unjuk rasa', 'demo mahasiswa'] },
   { id: 'kebakaran', local: true,
     pos: /(kebakaran|terbakar|kobaran api|si jago merah|dilalap api|ludes dilalap)/i,
-    neg: /(kebakaran (hutan|lahan)|karhutla)/i,   // hutan/lahan masuk topik sendiri
+    neg: /(kebakaran (hutan|lahan)|karhutla|kebakaran (harga|promo|diskon|obral|sale|murah|gila|meriah|jagoan|gaib|mangling|total)|harga (kebakaran|panas|terbakar))/i,   // hutan/lahan masuk topik sendiri; "kebakaran harga" = slang sale
     x: ['(kebakaran OR "si jago merah" OR "ludes terbakar" OR damkar) -filter:replies'],
     th: ['kebakaran'] },
   { id: 'karhutla', local: true,
     pos: /(karhutla|kebakaran (hutan|lahan)|titik panas|hotspot|kabut asap)/i,
+    // "titik panas" juga dipakai wabah/kesehatan — wajib konteks kebakaran lahan
+    strong: /(karhutla|kebakaran (hutan|lahan)|kabut asap|hotspot)/i,
+    ctx: /(hutan|lahan|karhutla|asap|kebakaran|riau|sumatera|kalimantan|papua|jambi|sumsel)/i,
     x: ['(karhutla OR "kebakaran hutan" OR "kebakaran lahan" OR "kabut asap") -filter:replies'],
     th: ['karhutla'] },
   { id: 'banjir', local: true,
@@ -41,10 +58,13 @@ const SOC_TOPICS = [
     th: ['gempa'] },
   { id: 'kecelakaan', local: true,
     pos: /(kecelakaan|tabrakan|tabrak lari|kapal (tenggelam|karam)|pesawat jatuh|bus terguling|truk terguling|kereta anjlok|ledakan)/i,
+    // "ledakan"/"tabrakan" sering kiasan: ledakan penduduk, tabrakan pendapat
+    neg: /(ledakan (penduduk|jumlah|kasus|order|orders|promo|penjualan|chat|emoji|tawa|tangis|debat|lagu|musik|harga|bonus|like|komentar|followers?|data|traffic|trafik)|tabrakan (pendapat|argumen|prinsip|debat|pemikiran))/i,
     x: ['(kecelakaan OR "tabrak lari" OR "bus terguling" OR "kapal tenggelam" OR ledakan) -filter:replies'],
     th: ['kecelakaan'] },
   { id: 'penembakan', local: true,
     pos: /(penembakan|ditembak|baku tembak|tertembak)/i,
+    neg: /(ditembak (hati|cinta|asmara|batin|panah|tatapan))/i,   // kiasan asmara/cinta
     x: ['(penembakan OR ditembak OR "baku tembak") -filter:replies'],
     th: ['penembakan'] },
   { id: 'pencurian', local: true,
@@ -70,6 +90,10 @@ const SOC_TOPICS = [
     th: ['ihsg'] },
   { id: 'listrik padam',
     pos: /(listrik padam|padam listrik|pemadaman listrik|mati listrik|blackout|byarpet)/i,
+    // "blackout" sendirian terlalu longgar: dipakai kampanye K-pop (#Blackoutforboom),
+    // EDM, dan spam tiket — wajib konteks utilitas/Indonesia
+    strong: /(listrik padam|padam listrik|pemadaman listrik|mati listrik|byarpet)/i,
+    ctx: /(listrik|pln|pemadaman|padam|mati|gelap|indonesia|jakarta|\bjkt\b|jabar|jateng|jatim|sumatera|kalimantan|sulawesi|papua|bali\b|aceh|riau|banten|bekasi|bogor|depok|tangerang|bandung|surabaya|medan|makassar|semarang|yogya|denpasar|bpbd|bnpb|pemkot|pemkab)/i,
     x: ['("listrik padam" OR "mati listrik" OR "pemadaman listrik" OR blackout) -filter:replies'],
     th: ['listrik padam'] },
   { id: 'wabah',
@@ -98,8 +122,8 @@ for (const t of SOC_TOPICS) t.adhoc = false;
 /* ---------- klasifikasi: teks -> topics[] ---------- */
 function socTopics(text, extra) {
   const t = String(text || '');
-  if (!t || SOC_NOISE_RE.test(t)) return [];
-  const foreign = SOC_FOREIGN_RE.test(t) && !SOC_LOCAL_RE.test(t);
+  if (!t || SOC_NOISE_RE.test(t) || SOC_SPAM_RE.test(t) || socHashCount(t) >= 10) return [];
+  const foreign = (SOC_FOREIGN_RE.test(t) || socNonLatin(t)) && !SOC_LOCAL_RE.test(t);
   const out = [];
   for (const tp of extra && extra.length ? SOC_TOPICS.concat(extra) : SOC_TOPICS) {
     if (!tp.pos.test(t)) continue;
