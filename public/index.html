@@ -1985,7 +1985,7 @@ const seenWasEmpty = seenIds.size === 0;   // sesi baru: backlog awal ditandai s
 const bootUntil = seenWasEmpty ? Date.now() + 150e3 : 0;   // suppress backlog hanya ~150 dtk pertama setelah load
 const focusHoldUntil = Date.now() + 20000;   // 20 dtk pertama: antrian diisi tapi globe tidak langsung terbang
 const saveSeen = () => { try { sessionStorage.setItem(SEEN_KEY, JSON.stringify([...seenIds].slice(-3000))); } catch (e) {} };
-const itemIdOf = p => p.url || ((p.title || '') + '|' + (p.src || ''));
+const itemIdOf = p => p.eid || p.url || ((p.title || '') + '|' + (p.src || ''));   // eid = id event stabil dari server — url bisa ganti saat artikel baru masuk
 const focusQueue = [];        // item fresh yang belum sempat diumumkan — tidak ditelan, diuras satu per evaluasi
 let lastAutoFocus = 0, lastRotFocus = 0, focusedHome = true;
 const rotSeen = new Map();   // id → ts toast rotasi terakhir — anti spam item yang sama
@@ -2105,7 +2105,7 @@ function showSitAlert(p){
   el.innerHTML = `<div class="sa-box" style="--sa-c:${color}">
     <div class="sa-tm"><b>${p.ts ? esc(wibTime(p.ts)) : '--:--'}</b><div class="sa-low">${ago ? `<span class="sa-ago">${esc(ago)}</span>` : ''}<span class="sa-cd" aria-hidden="true">${Array.from({ length: 10 }, (_, i) => `<i style="--n:${i}"></i>`).join('')}</span></div></div>
     <div>
-      <span class="sa-k2" style="color:${color}">${esc(p.label || CAT_LABEL[cat])}${p.name ? ' · ' + esc(p.name) : ''}</span>
+      <span class="sa-k2" style="color:${color}">${esc(p.label || CAT_LABEL[cat])}${p.name ? ' · ' + esc(p.name) : ''}${p.n > 1 ? ` <span style="opacity:.55">×${p.n} sumber</span>` : ''}</span>
       <div class="sa-t">${esc(deEmoji(p.title || ''))}</div>
       <div class="sa-ft"><span class="sa-m">${esc(p.src || '')}</span><span class="sa-go">Buka reader ↗</span></div>
     </div>
@@ -3397,7 +3397,8 @@ function mergedMedia(){
   _mmCache = all.filter(h => {
     if (h.ts && now - h.ts > 24 * 3600e3) return false;
     const k = nkey(h.title); if (seen.has(k)) return false; seen.add(k); return true;
-  }).sort((a, b) => b.ts - a.ts);
+  }).map(h => h.ts && h.ts > now + 5 * 60e3 ? { ...h, ts: now } : h)   // clock skew publisher: ts depan tidak boleh selamanya di atas
+    .sort((a, b) => b.ts - a.ts);
   _mmSig = sig;
   return _mmCache;
 }
@@ -3506,17 +3507,22 @@ function newsHtml(h, full){
 }
 const dayKey = ts => ts ? new Date(ts).toLocaleDateString('id-ID',
   { timeZone:'Asia/Jakarta', day:'2-digit', month:'short', year:'numeric' }) : '';
-function renderNews(){
-  const items = mergedMedia().map(h => {
-    let title = cleanTitle(h.title);
-    const pub = tkPub(h.pub);   // buang ekor "- NamaSitus" yang mengulang publisher
-    if (pub) {
-      const pk = pub.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      let q;
-      do { q = title; title = title.replace(new RegExp('\\s*[-–—]\\s*' + pk + '\\s*$', 'i'), '').trim(); } while (title !== q);
-    }
-    return { ...h, title, cat: h.assessment ? h.cat : catOfTitle(title) };
-  });
+// ekor "- NamaSitus" yang mengulang publisher — dipakai renderNews & markFresh
+// supaya kunci freshNews cocok dengan judul yang tampil
+const stripPubTail = (title, pub) => {
+  if (!pub) return title;
+  const pk = pub.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  let q;
+  do { q = title; title = title.replace(new RegExp('\\s*[-–—]\\s*' + pk + '\\s*$', 'i'), '').trim(); } while (title !== q);
+  return title;
+};
+// dedup pass-1 (Jaccard 0.72) + pass-2 (union-find per kategori) itu O(n²) atas
+// ~1500 item — jangan ulang tiap renderNews (tiap ketikan filter). Hasil murni
+// fungsi dari _mmCache → cache per identitas array mergedMedia.
+let _nwDedup = null;   // { src: _mmCache, list }
+function dedupWire(mapped){
+  if (_nwDedup && _nwDedup.src === _mmCache) return _nwDedup.list;
+  const items = mapped.slice();
   // collapse near-dupe lintas-outlet: cerita sama judul mirip → satu kartu + badge jumlah sumber.
   // ambang 0.72 ketat — artikel beda dari pub sama dengan judul beda tidak akan kegabung.
   {
@@ -3572,6 +3578,15 @@ function renderNews(){
     out.sort((a, b) => (b.ts || 0) - (a.ts || 0));
     items.length = 0; items.push(...out);
   }
+  _nwDedup = { src: _mmCache, list: items };
+  return items;
+}
+function renderNews(){
+  const mapped = mergedMedia().map(h => {
+    const title = stripPubTail(cleanTitle(h.title), tkPub(h.pub));
+    return { ...h, title, cat: h.assessment ? h.cat : catOfTitle(title) };
+  });
+  const items = dedupWire(mapped);
   const q = ($('#fq').value || '').toLowerCase();
   const list = items.filter(h => (!onlyTopic || topicOK(h)) && (catFilter === 'semua' || h.cat === catFilter) &&
     (!q || (h.title + ' ' + h.src + ' ' + (h.pub || '')).toLowerCase().includes(q)));
@@ -5824,7 +5839,8 @@ async function pullMedia(){
   renderNews();
 }
 function markFresh(){
-  const titles = new Set(mergedMedia().map(h => cleanTitle(h.title)));
+  // kunci harus sama dengan judul final di newsHtml (cleanTitle + strip ekor pub)
+  const titles = new Set(mergedMedia().map(h => stripPubTail(cleanTitle(h.title), tkPub(h.pub))));
   freshNews = new Set();
   if (!firstPull) titles.forEach(t => { if (!seenNews.has(t)) freshNews.add(t); });
   seenNews = titles;

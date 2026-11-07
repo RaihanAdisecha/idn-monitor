@@ -480,9 +480,11 @@ function bottomCursor(j) {
   return c;
 }
 const xSem = makeSem(4);   // maks 4 SearchTimeline paralel — lazy & sweep berbagi slot yang sama
-async function xSearchGo(q, cursor) {
+async function xSearchGo(q, cursor, winH) {
   const id = await xQueryId();
-  const vars = { rawQuery: q + ' since_time:' + Math.floor((Date.now() - 46 * 3600e3) / 1000), count: 20, querySource: 'typed_query', product: 'Latest' };
+  // winH: jendela since_time dalam jam; <=0 = tanpa filter waktu (dipakai conversation_id)
+  const win = winH == null ? 46 : winH;
+  const vars = { rawQuery: q + (win > 0 ? ' since_time:' + Math.floor((Date.now() - win * 3600e3) / 1000) : ''), count: 20, querySource: 'typed_query', product: 'Latest' };
   if (cursor) vars.cursor = cursor;   // halaman berikut: rawQuery wajib tetap ada, kalau tidak 422
   const url = `https://api.x.com/graphql/${id}/SearchTimeline`;
   const r = await get(url, { method: 'POST', headers: { 'content-type': 'application/json',
@@ -507,7 +509,7 @@ async function xSearchGo(q, cursor) {
   if (j.errors && j.errors.length && !out.size) throw new Error(JSON.stringify(j.errors).slice(0, 200));
   return { posts: [...out.values()].map(p => ({ ...p, q })), cursor: bottomCursor(j) };
 }
-const xSearch = (q, cursor) => xSem(() => xSearchGo(q, cursor));
+const xSearch = (q, cursor, winH) => xSem(() => xSearchGo(q, cursor, winH));
 /* ---------- query adaptif: frasa yang sedang naik dari headline ---------- */
 const TSTOP = new Set(('yang dan di ke dari untuk pada dengan adalah ini itu ada tidak akan juga telah sudah bisa lebih sangat para dia kami kita mereka sebuah seorang suatu saat ketika setelah sebelum hingga oleh karena maka jika hari minggu senin selasa rabu kamis jumat sabtu minggu januari februari maret april mei juni juli agustus september oktober november desember breaking news terbaru update foto video live hasil wib wit daring online pemerintah menteri presiden indonesia daerah warga polisi damkar bpbd dishub pasar korban evakuasi massa jumlah ribu juta ratusan ribuan jutaan miliar triliun total resmi viral heboh terduga diduga kini paling orang persen masyarakat pihak oknum pelaku tersangka ibu bapak kali pemkot polda polres kejaksaan kemensos kemenkeu kemendagri').split(' '));
 const TBLK = new Set(('detik cnn tempo liputan6 republika tribun cnbc antara jawapos okezone kumparan suara merdeka sindonews jpnn tvri inews media news kompas viva metrotvnews rmol infopublik jabarprov korankaltim tvone merahputih poskota beritasatu gridoto wowkeren bola bolaoverza mediaindonesia faktualnews berita foto video gallery wawancara investigasi khusus daerah nasional internasional ekonomi hiburan selebriti olahraga dishub cumplik').split(' '));
@@ -794,23 +796,30 @@ function xTree(rootId, flat) {
   const sort = a => { a.sort((x, y) => (x.ts || 0) - (y.ts || 0)); a.forEach(x => sort(x.kids)); };
   sort(roots);
   let n = 0;
-  const trim = a => a.filter(x => { if (n++ > 40) return false; x.kids = trim(x.kids); return true; });
+  const trim = a => a.filter(x => { if (n++ > 80) return false; x.kids = trim(x.kids); return true; });
   return trim(roots);
 }
 const xThread = (id) => memo('xth:' + id, 300000, async () => {
   let post = null, err = '';
   try { post = await synTweet(id); } catch (e) { err = e.message; }
-  let flat = [];
-  try { flat = (await xSearch('conversation_id:' + id)).posts; } catch (e) { err = err || e.message; }
+  let flat = [], cursor = '', pages = 0;
+  try {   // conversation_id: paginate sampai 3 halaman / 60 post, jendela 7 hari
+    for (;;) {
+      const r = await xSearch('conversation_id:' + id, cursor, 0);   // tanpa since_time: rawQuery stabil antar-halaman + balasan tua ikut
+      flat.push(...r.posts); cursor = r.cursor; pages++;
+      if (!cursor || pages >= 3 || flat.length >= 60) break;
+    }
+  } catch (e) { err = err || e.message; }
   if (!post && !flat.length) throw new Error(err || 'post tidak ditemukan');
   if (!post && flat.length) {
     const f = flat.find(p => p.id === id) || flat[0];
     post = { ...f, replies: f.replies || flat.length };
   }
+  const seenId = new Set(); flat = flat.filter(p => p.id && !seenId.has(p.id) && seenId.add(p.id));
   // Nested replies point at parents the search page did not return. Pull those
   // few parents so the tree can actually nest instead of flattening everything.
   const known = new Set(flat.map(p => p.id));
-  const missing = [...new Set(flat.map(p => p.parent).filter(pid => pid && pid !== id && !known.has(pid)))].slice(0, 8);
+  const missing = [...new Set(flat.map(p => p.parent).filter(pid => pid && pid !== id && !known.has(pid)))].slice(0, 12);
   if (missing.length) {
     const got = await Promise.allSettled(missing.map(pid => synTweet(pid)));
     for (const r of got) if (r.status === 'fulfilled' && r.value) flat.push({ ...r.value, parent: id });
@@ -877,7 +886,64 @@ const incidents = () => memo('incidents', 55000, async () => {
     }
   }
   out.sort((a, b) => b.ts - a.ts);
-  const items = out.slice(0, 400);
+  /* Event-level merge: peristiwa yang sama (kategori + tempat + token langka
+     bersama) → SATU pin. Tanpa ini 5 outlet memberitakan kebakaran yang sama
+     jadi 5 titik di koordinat sama. eid stabil lintas refresh (sticky via
+     prev-cache) supaya client tidak toast dobel saat representative berganti. */
+  const EV_GENERIC = new Set([...TSTOP,
+    'kebakaran','banjir','gempa','guncang','kecelakaan','tabrak','tawuran','longsor',
+    'demo','unjuk','rasa','massa','damkar','pemadam','waspada','peringatan','tertimpa',
+    'menimpa','luka','tewas','meninggal','korban','evakuasi','ditangkap','terbakar',
+    'meluas','amblas','rob','genangan','macet','terpampang','terkunci','terdampak']);
+  const evHash = s => { let h = 5381; for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) >>> 0; return h.toString(36); };
+  const evRare = (title, pk) => {
+    const pt = new Set(pk.split(' '));
+    return new Set(breakNorm(title).split(' ').filter(w => w.length >= 5 && !EV_GENERIC.has(w) && !pt.has(w)));
+  };
+  const prevPins = ((((cache.get('incidents') || {}).v) || {}).items) || [];
+  const prevByKey = new Map();   // kind|placeKey → [prev pin ber-eid]
+  for (const pp of prevPins) {
+    if (!pp || !pp.eid || pp.kind === 'node' || typeof pp.name !== 'string') continue;
+    const k = pp.kind + '|' + GEO.norm(pp.name);
+    if (!prevByKey.has(k)) prevByKey.set(k, []);
+    prevByKey.get(k).push(pp);
+  }
+  const evGroups = new Map();
+  for (const p of out) {
+    const pk = GEO.norm(p.name);
+    const key = p.kind + '|' + pk;
+    if (!evGroups.has(key)) evGroups.set(key, []);
+    evGroups.get(key).push({ p, rs: evRare(p.title, pk) });
+  }
+  const merged = [];
+  for (const [key, members0] of evGroups) {
+    const [cat, pk] = key.split('|');
+    const parent = members0.map((_, i) => i);
+    const find = i => parent[i] === i ? i : (parent[i] = find(parent[i]));
+    for (let i = 0; i < members0.length; i++) for (let j = i + 1; j < members0.length; j++) {
+      if ([...members0[i].rs].some(t => members0[j].rs.has(t))) { const a = find(i), b = find(j); if (a !== b) parent[a] = b; }
+    }
+    const cls = new Map();
+    members0.forEach((m, i) => { const r = find(i); if (!cls.has(r)) cls.set(r, []); cls.get(r).push(m); });
+    for (const members of cls.values()) {
+      members.sort((a, b) => (b.p.ts || 0) - (a.p.ts || 0));
+      const rep = members[0].p;
+      const rareU = new Set(); members.forEach(m => m.rs.forEach(t => rareU.add(t)));
+      let eid = '';
+      if (rep.multi && rep.url) eid = 'u' + evHash(rep.url);   // multi-kota: semantik lama (satu artikel = satu event)
+      else {
+        for (const pp of (prevByKey.get(key) || [])) {
+          const pr = evRare(pp.title, pk);
+          if ([...rareU].some(t => pr.has(t))) { eid = pp.eid; break; }
+        }
+        if (!eid) eid = 'e' + evHash(cat + '|' + pk + '|' + [...rareU].sort().join(','));
+      }
+      const item = { ...rep, eid };
+      if (members.length > 1) item.n = members.length;
+      merged.push(item);
+    }
+  }
+  const items = merged.slice(0, 400);
   for (const p of GEO.NODES) {
     items.push({ name: p.name, la: p.la, lo: p.lo, prov: p.prov, prec: 'kab', kind: 'node', label: 'Node',
       title: 'Node pemantauan · ' + p.name, src: 'NODE', url: '', ts: now, weight: 0.16, fixed: true });

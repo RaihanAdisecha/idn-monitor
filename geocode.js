@@ -111,6 +111,148 @@ LM('dpr', 'DPR / MPR Senayan', -6.2185, 106.8002, /(?:^| )(?:(?:gedung|depan|kom
 LM('monas', 'Monas', -6.1754, 106.8272, /(?:^| )(?:monas|patung kuda|medan merdeka|lapangan banteng|bundaran hi)(?= |$)/);
 POI.push({ re: /(?:^| )pelaga(?= |$)/, e: { id: 'pelaga', level: 'poi', name: 'Pelaga, Badung', la: -8.36, lo: 115.35, prov: 'Bali', prec: 'poi' } });
 
+/* POI kawasan kota & landmark: nama daerah yang sering muncul di berita tapi tidak
+   ada di gazetteer kab/kota (Gambir, Tanah Abang, Cikini, dst). coords dari OSM/Nominatim.
+   cue:true = wajib didahului penanda lokatif — untuk nama yang juga kata umum
+   (karet, srengseng, sukun, blimbing, mlati, pancoran, kembangan, halim).
+   special: 'genteng'/'candi'/'makasar' terlalu ambigu → wajib konteks kota tetangga. */
+const CITY = [];
+const CUE_PRE = '(?:di|ke|dari|warga|sekitar|area|kecamatan|kec|pemkot|dishub|polres|truk|bus|angkot|mahasiswa)';
+const cpoi = (id, name, la, lo, prov, keys, cue) => {
+  // cue:true → lookbehind: match mulai di NAMA (bukan kata cue), supaya preceding-token
+  // tetap penanda lokatif dan bonus cue di loop POI tetap dihitung
+  const pre = cue ? '(?<=(?:^| )' + CUE_PRE + ' )' : '';
+  for (const k of keys) {
+    const esc = k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    CITY.push({ re: new RegExp('(?:^| )' + pre + esc + '(?= |$)'), e: { id, level: 'poi', name, la, lo, prov, prec: 'poi' } });
+  }
+};
+/* ---- DKI Jakarta ---- */
+const J = 'DKI Jakarta';
+cpoi('gambir', 'Gambir', -6.1767, 106.8306, J, ['gambir', 'stasiun gambir']);
+cpoi('tanah-abang', 'Pasar Tanah Abang', -6.2063, 106.8178, J, ['pasar tanah abang']);
+cpoi('tanah-abang-kec', 'Tanah Abang', -6.1857, 106.8109, J, ['tanah abang']);
+cpoi('cikini', 'Cikini', -6.1985, 106.8413, J, ['cikini']);
+cpoi('senen', 'Senen', -6.1744, 106.8446, J, ['senen', 'pasar senen']);
+cpoi('kemayoran', 'Kemayoran', -6.1617, 106.8414, J, ['kemayoran']);
+cpoi('halim', 'Halim Perdanakusuma', -6.2656, 106.8936, J, ['halim perdanakusuma', 'bandara halim'], true);
+CITY.push({ re: new RegExp('(?:^| )(?<=(?:^| )' + CUE_PRE + ' )halim(?= |$)'), e: { id: 'halim', level: 'poi', name: 'Halim Perdanakusuma', la: -6.2656, lo: 106.8936, prov: J, prec: 'poi' } });
+cpoi('tanjung-priok', 'Tanjung Priok', -6.1289, 106.8708, J, ['tanjung priok']);
+cpoi('pluit', 'Pluit', -6.1150, 106.7874, J, ['pluit']);
+cpoi('kalideres', 'Kalideres', -6.1370, 106.7016, J, ['kalideres']);
+cpoi('gbk', 'GBK', -6.2186, 106.8036, J, ['gelora bung karno', 'gbk']);
+cpoi('taman-mini', 'Taman Mini', -6.3026, 106.8953, J, ['taman mini']);
+cpoi('mangga-besar', 'Mangga Besar', -6.1498, 106.8270, J, ['mangga besar']);
+cpoi('matraman', 'Matraman', -6.2126, 106.8598, J, ['matraman']);
+cpoi('menteng', 'Menteng', -6.1950, 106.8322, J, ['menteng']);
+cpoi('tebet', 'Tebet', -6.2264, 106.8584, J, ['tebet']);
+cpoi('pancoran', 'Pancoran', -6.2581, 106.8427, J, ['pancoran'], true);
+cpoi('kebayoran', 'Kebayoran', -6.2372, 106.7825, J, ['kebayoran']);
+cpoi('ciracas', 'Ciracas', -6.3296, 106.8766, J, ['ciracas']);
+cpoi('duren-sawit', 'Duren Sawit', -6.2341, 106.9192, J, ['duren sawit']);
+cpoi('jagakarsa', 'Jagakarsa', -6.3301, 106.8222, J, ['jagakarsa']);
+cpoi('pondok-gede', 'Pondok Gede', -6.2896, 106.8959, J, ['pondok gede']);
+cpoi('sawah-besar', 'Sawah Besar', -6.1607, 106.8277, J, ['sawah besar']);
+cpoi('johar-baru', 'Johar Baru', -6.1831, 106.8553, J, ['johar baru']);
+cpoi('gunung-sahari', 'Gunung Sahari', -6.1368, 106.8324, J, ['gunung sahari']);
+cpoi('koja', 'Koja', -6.1208, 106.9074, J, ['koja']);
+cpoi('penjaringan', 'Penjaringan', -6.1173, 106.7674, J, ['penjaringan']);
+cpoi('ancol', 'Ancol', -6.1281, 106.8451, J, ['ancol']);
+cpoi('kelapa-gading', 'Kelapa Gading', -6.1599, 106.9025, J, ['kelapa gading']);
+cpoi('cengkareng', 'Cengkareng', -6.1529, 106.7447, J, ['cengkareng']);
+cpoi('tomang', 'Tomang', -6.1716, 106.7969, J, ['tomang']);
+cpoi('grogol', 'Grogol', -6.1620, 106.7896, J, ['grogol']);
+cpoi('palmerah', 'Palmerah', -6.2079, 106.7972, J, ['palmerah']);
+cpoi('karet', 'Karet', -6.2135, 106.8271, J, ['karet'], true);
+cpoi('mampang', 'Mampang', -6.2362, 106.8198, J, ['mampang']);
+cpoi('kramat-jati', 'Kramat Jati', -6.2749, 106.8625, J, ['kramat jati']);
+cpoi('balekambang', 'Balekambang', -6.2807, 106.8521, J, ['balekambang']);
+cpoi('bendungan-hilir', 'Bendungan Hilir', -6.2150, 106.8179, J, ['bendungan hilir']);
+cpoi('pasar-minggu', 'Pasar Minggu', -6.2833, 106.8449, J, ['pasar minggu']);
+cpoi('kembangan', 'Kembangan', -6.1914, 106.7406, J, ['kembangan'], true);
+cpoi('pondok-labu', 'Pondok Labu', -6.3088, 106.7979, J, ['pondok labu']);
+cpoi('lubang-buaya', 'Lubang Buaya', -6.2929, 106.9031, J, ['lubang buaya']);
+cpoi('jatinegara', 'Jatinegara', -6.2149, 106.8703, J, ['jatinegara']);
+cpoi('pulo-gadung', 'Pulo Gadung', -6.1911, 106.8906, J, ['pulo gadung']);
+cpoi('cipayung', 'Cipayung', -6.3294, 106.9037, J, ['cipayung']);
+cpoi('klender', 'Klender', -6.2133, 106.8994, J, ['klender']);
+cpoi('cakung', 'Cakung', -6.2191, 106.9525, J, ['cakung']);
+cpoi('pasar-rebo', 'Pasar Rebo', -6.3250, 106.8534, J, ['pasar rebo']);
+cpoi('kalibata', 'Kalibata', -6.2624, 106.8403, J, ['kalibata']);
+cpoi('lebak-bulus', 'Lebak Bulus', -6.3017, 106.7797, J, ['lebak bulus']);
+cpoi('pesanggrahan', 'Pesanggrahan', -6.2555, 106.7631, J, ['pesanggrahan']);
+cpoi('tanjung-barat', 'Tanjung Barat', -6.3080, 106.8389, J, ['tanjung barat']);
+cpoi('srengseng', 'Srengseng', -6.2065, 106.7541, J, ['srengseng'], true);
+cpoi('sukapura', 'Sukapura', -6.1476, 106.9304, J, ['sukapura']);
+// Makasar (Jakarta): rawan salah-baca sbg Makassar → wajib konteks Jakarta
+CITY.push({ re: /(?:^| )(?:kecamatan |kec |di |ke )?makasar(?= jakarta| dki)(?= |$)/, e: { id: 'makasar', level: 'poi', name: 'Makasar, Jakarta', la: -6.2696, lo: 106.8887, prov: J, prec: 'poi' } });
+CITY.push({ re: /(?:^| )(?:jakarta|dki)(?: [a-z]+){0,4} makasar(?= |$)/, e: { id: 'makasar', level: 'poi', name: 'Makasar, Jakarta', la: -6.2696, lo: 106.8887, prov: J, prec: 'poi' } });
+/* ---- kota besar lain ---- */
+cpoi('ciputat', 'Ciputat', -6.3111, 106.7184, 'Banten', ['ciputat']);
+cpoi('stasiun-tugu', 'Stasiun Tugu, Yogyakarta', -7.7897, 110.3632, 'DI Yogyakarta', ['stasiun tugu']);
+cpoi('sardjito', 'RSUP Dr Sardjito', -7.7689, 110.3725, 'DI Yogyakarta', ['rsup dr sardjito', 'sardjito']);
+cpoi('mantrijeron', 'Mantrijeron', -7.8181, 110.3597, 'DI Yogyakarta', ['mantrijeron']);
+cpoi('gondokusuman', 'Gondokusuman', -7.7867, 110.3810, 'DI Yogyakarta', ['gondokusuman']);
+cpoi('umbulharjo', 'Umbulharjo', -7.8144, 110.3874, 'DI Yogyakarta', ['umbulharjo']);
+cpoi('mlati', 'Mlati', -7.8013, 110.3647, 'DI Yogyakarta', ['mlati'], true);
+cpoi('bandung-kota', 'Bandung Kota', -6.9143, 107.6021, 'Jawa Barat', ['bandung kota']);
+cpoi('dago', 'Dago', -6.8750, 107.6160, 'Jawa Barat', ['dago']);
+cpoi('cihampelas', 'Cihampelas', -6.8989, 107.6043, 'Jawa Barat', ['cihampelas']);
+cpoi('gedung-sate', 'Gedung Sate', -6.9025, 107.6188, 'Jawa Barat', ['gedung sate']);
+cpoi('wonokromo', 'Wonokromo', -7.3021, 112.7392, 'Jawa Timur', ['wonokromo']);
+cpoi('rungkut', 'Rungkut', -7.3197, 112.7905, 'Jawa Timur', ['rungkut']);
+cpoi('mulyorejo', 'Mulyorejo', -7.2680, 112.7935, 'Jawa Timur', ['mulyorejo']);
+cpoi('gunungsari', 'Gunungsari', -7.2998, 112.7149, 'Jawa Timur', ['gunungsari']);
+cpoi('sukolilo', 'Sukolilo', -7.2930, 112.7864, 'Jawa Timur', ['sukolilo']);
+cpoi('siwalankerto', 'Siwalankerto', -7.3356, 112.7360, 'Jawa Timur', ['siwalankerto']);
+cpoi('tandes', 'Tandes', -7.2551, 112.6740, 'Jawa Timur', ['tandes']);
+cpoi('kenjeran', 'Kenjeran', -7.2202, 112.7716, 'Jawa Timur', ['kenjeran']);
+cpoi('pasar-turi', 'Stasiun Pasar Turi', -7.2483, 112.7311, 'Jawa Timur', ['stasiun pasar turi']);
+cpoi('juanda', 'Bandara Juanda', -7.3735, 112.7857, 'Jawa Timur', ['bandara juanda', 'juanda']);
+cpoi('medan-kota', 'Medan Kota', 3.5730, 98.6889, 'Sumatera Utara', ['medan kota']);
+cpoi('glugur', 'Glugur', 3.6099, 98.6749, 'Sumatera Utara', ['glugur']);
+cpoi('polonia', 'Polonia', 3.5596, 98.6659, 'Sumatera Utara', ['polonia']);
+cpoi('helvetia', 'Helvetia', 3.6070, 98.6305, 'Sumatera Utara', ['helvetia']);
+cpoi('perumnas', 'Perumnas', 3.6952, 98.6873, 'Sumatera Utara', ['perumnas']);
+cpoi('tamalanrea', 'Tamalanrea', -5.1105, 119.4695, 'Sulawesi Selatan', ['tamalanrea']);
+cpoi('mariso', 'Mariso', -5.1553, 119.4069, 'Sulawesi Selatan', ['mariso']);
+cpoi('tamalate', 'Tamalate', -5.1930, 119.3862, 'Sulawesi Selatan', ['tamalate']);
+cpoi('panakkukang', 'Panakkukang', -5.1437, 119.4536, 'Sulawesi Selatan', ['panakkukang']);
+cpoi('simpang-lima', 'Simpang Lima', -6.9893, 110.4236, 'Jawa Tengah', ['simpang lima']);
+cpoi('banyumanik', 'Banyumanik', -7.0607, 110.4189, 'Jawa Tengah', ['banyumanik']);
+cpoi('pedurungan', 'Pedurungan', -7.0012, 110.4761, 'Jawa Tengah', ['pedurungan']);
+cpoi('genuk', 'Genuk', -6.9614, 110.4784, 'Jawa Tengah', ['genuk']);
+cpoi('tembalang', 'Tembalang', -7.0601, 110.4466, 'Jawa Tengah', ['tembalang']);
+cpoi('pasar-kliwon', 'Pasar Kliwon', -7.5836, 110.8286, 'Jawa Tengah', ['pasar kliwon']);
+cpoi('jebres', 'Jebres', -7.5587, 110.8407, 'Jawa Tengah', ['jebres']);
+cpoi('laweyan', 'Laweyan', -7.5700, 110.7969, 'Jawa Tengah', ['laweyan']);
+cpoi('klojen', 'Klojen', -7.9771, 112.6340, 'Jawa Timur', ['klojen']);
+cpoi('lowokwaru', 'Lowokwaru', -7.9563, 112.6324, 'Jawa Timur', ['lowokwaru']);
+cpoi('sukun', 'Sukun', -7.9934, 112.6199, 'Jawa Timur', ['sukun'], true);
+cpoi('blimbing', 'Blimbing', -7.9399, 112.6449, 'Jawa Timur', ['blimbing'], true);
+cpoi('denpasar-barat', 'Denpasar Barat', -8.6609, 115.1961, 'Bali', ['denpasar barat']);
+cpoi('denpasar-timur', 'Denpasar Timur', -8.6332, 115.2449, 'Bali', ['denpasar timur']);
+cpoi('panjer', 'Panjer', -8.6842, 115.2271, 'Bali', ['panjer']);
+cpoi('sanur', 'Sanur', -8.6946, 115.2606, 'Bali', ['sanur']);
+cpoi('balikpapan-kota', 'Balikpapan Kota', -1.2671, 116.8230, 'Kalimantan Timur', ['balikpapan kota']);
+cpoi('balikpapan-utara', 'Balikpapan Utara', -1.1536, 116.8828, 'Kalimantan Timur', ['balikpapan utara']);
+cpoi('sepinggan', 'Sepinggan', -1.2431, 116.9201, 'Kalimantan Timur', ['sepinggan']);
+cpoi('ilir-timur', 'Ilir Timur', -2.9762, 104.7419, 'Sumatera Selatan', ['ilir timur']);
+cpoi('seberang-ulu', 'Seberang Ulu', -3.0245, 104.7800, 'Sumatera Selatan', ['seberang ulu']);
+cpoi('kertapati', 'Kertapati', -3.0169, 104.7511, 'Sumatera Selatan', ['kertapati']);
+cpoi('plaju', 'Plaju', -3.0104, 104.8215, 'Sumatera Selatan', ['plaju']);
+cpoi('soekarno-hatta', 'Bandara Soekarno-Hatta', -6.1274, 106.6522, 'Banten', ['soekarno hatta', 'bandara soekarno hatta']);
+cpoi('ngurah-rai', 'Bandara Ngurah Rai', -8.7420, 115.1637, 'Bali', ['ngurah rai', 'bandara ngurah rai']);
+// 'genteng' (Genteng, Surabaya) & 'candi' (Candi, Semarang): kata umum → wajib tetangga kota
+const cityE = (id, name, la, lo, prov) => ({ id, level: 'poi', name, la, lo, prov, prec: 'poi' });
+CITY.push({ re: /(?:^| )(?:di|ke|kecamatan|kec) genteng(?= surabaya)(?= |$)/, e: cityE('genteng', 'Genteng, Surabaya', -7.2585, 112.7443, 'Jawa Timur') });
+CITY.push({ re: /(?:^| )genteng(?= surabaya)(?= |$)/, e: cityE('genteng', 'Genteng, Surabaya', -7.2585, 112.7443, 'Jawa Timur') });
+CITY.push({ re: /(?:^| )surabaya(?: [a-z]+){0,4} genteng(?= |$)/, e: cityE('genteng', 'Genteng, Surabaya', -7.2585, 112.7443, 'Jawa Timur') });
+CITY.push({ re: /(?:^| )(?:di|ke|kecamatan|kec) candi(?= (?:kota |kabupaten )?semarang)(?= |$)/, e: cityE('candi', 'Candi, Semarang', -7.0107, 110.4290, 'Jawa Tengah') });
+CITY.push({ re: /(?:^| )candi(?= (?:kota |kabupaten )?semarang)(?= |$)/, e: cityE('candi', 'Candi, Semarang', -7.0107, 110.4290, 'Jawa Tengah') });
+CITY.push({ re: /(?:^| )semarang(?: [a-z]+){0,4} candi(?= |$)/, e: cityE('candi', 'Candi, Semarang', -7.0107, 110.4290, 'Jawa Tengah') });
+for (const c of CITY) POI.push(c);
+
 /* Kecamatan unik: hanya sah dengan penanda "kecamatan/kec" (nama kecamatan sering kata umum) */
 const KEC_LOOSE = new Set(['di', 'ke', 'warga', 'wilayah', 'desa']);
 const KEC_STOP = new Set(['kampung baru', 'pasar baru', 'tanjung raya', 'sungai raya', 'bukit raya', 'kota baru', 'pulau besar', 'air besar', 'indonesia raya', 'jalan raya', 'cipta karya', 'karya jaya', 'sumber jaya', 'harapan jaya', 'makmur jaya', 'mandiri jaya']);
@@ -121,7 +263,16 @@ function locate(title) {
   if (!text || NOT_PLACE.test(text)) return null;
   const tk = text.split(' ');
   const cands = [];
-  for (const { re, e } of POI) { const m = re.exec(' ' + text); if (m) cands.push({ e, pos: m.index, cue: e.id[0] === 'V' ? 1 : 0, score: LEVEL.poi }); }   // gunung api disebut = lokasi kejadian, mengalahkan kab tempat abu terpantau
+  for (const { re, e } of POI) {
+    const m = re.exec(' ' + text); if (!m) continue;
+    // bonus cue dari token sebelum match — setara dengan loop idx di bawah,
+    // supaya POI tidak kalah tipis dari kab+cue (mis. 'kembangan' = ibukota alias Jakarta Barat)
+    let pc = 0;
+    const before = (' ' + text).slice(0, m.index).trim().split(' ').pop() || '';
+    if (CUE_IN.has(before) || before === 'di') pc += 1.5;
+    if (PREFIX_KAB.has(before) || PREFIX_KOTA.has(before) || PREFIX_PROV.has(before)) pc += 0.5;
+    cands.push({ e, pos: m.index, cue: pc + (e.id[0] === 'V' ? 1 : 0), score: LEVEL.poi });   // gunung api disebut = lokasi kejadian, mengalahkan kab tempat abu terpantau
+  }
 
   const matched = [];  // untuk kec → butuh tahu kab/prov lain di judul
   const used = new Array(tk.length).fill(false);
