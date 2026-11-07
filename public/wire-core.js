@@ -15,19 +15,27 @@
 
   /* filter umur + buang tanggal tidak valid/masa depan + urutkan terbaru dulu,
      BARU dedup judul. Urutan ini penting: dedup setelah sort membuat copy
-     terbaru yang menang, bukan copy dari sumber yang kebetulan diproses duluan. */
+     terbaru yang menang posisinya, bukan copy dari sumber yang kebetulan
+     diproses duluan. Kalau judul kembar, record yang SURVIVES tetap yang
+     terbaru, tapi field desc+pub+src+img diadopsi dari copy dengan desc
+     terpanjang — deskripsi longgar menang, badge tetap konsisten dengan
+     record sumbernya. */
   function prepare(all, now) {
-    const seen = new Set();
-    return (all || [])
+    const out = [];
+    const idx = new Map();   // nkey -> posisi di out
+    (all || [])
       .filter(h => h && typeof h.ts === 'number' && h.ts > 0)
       .filter(h => now - h.ts <= H24 && h.ts <= now + FUTURE_SKEW_MS)
       .sort((a, b) => (b.ts || 0) - (a.ts || 0))
-      .filter(h => {
+      .forEach(h => {
         const k = nkey(h.title);
-        if (seen.has(k)) return false;
-        seen.add(k);
-        return true;
+        const i = idx.get(k);
+        if (i === undefined) { idx.set(k, out.length); out.push(h); return; }
+        if ((h.desc || '').length > (out[i].desc || '').length) {
+          out[i] = { ...out[i], desc: h.desc, pub: h.pub, src: h.src, img: h.img };
+        }
       });
+    return out;
   }
 
   /* Lead sticky hanya selama masih ada di list DAN belum tertinggal lebih dari

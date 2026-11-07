@@ -693,9 +693,17 @@ a{color:inherit;text-decoration:none;text-underline-offset:2px}
 }
 .nw:hover h3{color:var(--text)}
 .nw-ex{
-  margin-top:6px;font:400 10px/1.4 var(--sans);color:var(--text3);
-  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  margin-top:6px;font:400 10px/1.5 var(--sans);color:var(--text3);
+  display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;
 }
+/* skeleton desc per kartu — shimmer sama dengan .nw-sk-line, ukuran menyesuaikan baris.
+   PENTING: jangan pakai class .nw-ex/.lead-ex di skeleton — observer desc enrich
+   me-skip kartu yang sudah punya class itu, jadi skeleton akan membunuh fetch-nya sendiri */
+.nw-ex-sk{margin-top:6px}
+.nw-ex-sk .nw-sk-line{height:7px;margin:4px 0}
+.nw-ex-sk .nw-sk-line:last-child{width:76%}
+.lead-ex-sk{margin-top:9px}
+.lead-ex-sk .nw-sk-line{height:10px;margin:5px 0}
 .nw .new{display:inline-block;margin-left:5px;padding:2px 3px;background:var(--accent);color:#fff;font:600 8px/1 var(--mono);letter-spacing:.07em;vertical-align:1px}
 .nw .dup-n{display:inline-block;margin-left:5px;padding:2px 3px;background:var(--layer2);border:1px solid var(--border2);color:var(--text3);font:600 8px/1 var(--mono);letter-spacing:.05em;vertical-align:1px;cursor:help}
 .nw-day{
@@ -3654,7 +3662,9 @@ function parseRss(xmlText, srcId){
     const link  = (it.querySelector('link') || {}).textContent || '';
     const date  = (it.querySelector('pubDate') || {}).textContent || '';
     const src   = (it.querySelector('source') || {}).textContent || '';
-    if (title && link && !NEWS_BANNED.test(title + ' ' + link + ' ' + src)) out.push({ src:srcId, title:title.trim(), url:link.trim(), ts: date ? Date.parse(date) : 0 });
+    const desc  = (it.querySelector('description') || {}).textContent || '';
+    if (title && link && !NEWS_BANNED.test(title + ' ' + link + ' ' + src))
+      out.push({ src:srcId, pub:src.trim() || undefined, title:title.trim(), url:link.trim(), desc:cleanDesc(desc), ts: date ? Date.parse(date) : 0 });
   });
   return out;
 }
@@ -3704,7 +3714,7 @@ function leadHtml(h, imageUrl = '', isLatest = true){
     ${imageUrl ? `<div class="lead-img"><img src="${esc(imageUrl)}" alt="" loading="eager" decoding="async" referrerpolicy="no-referrer" onerror="this.parentNode.remove()"></div>` : ''}
     <div class="lead-t"><span class="lead-cat">${CAT_LABEL[cat]}</span><span class="lead-live">${isLatest ? 'Terbaru' : 'Sorotan'}</span><span class="lead-meta-r"><span class="lead-by">${esc(h.pub || h.src)}</span><time>${esc(h.ts ? wibTime(h.ts) : '')} WIB</time></span></div>
     <h3>${esc(deEmoji(h.title))}</h3>
-    ${h.desc && h.desc.length > 25 ? `<p class="lead-ex">${esc(deEmoji(h.desc))}</p>` : ''}
+    ${h.desc && h.desc.length > 25 ? `<p class="lead-ex">${esc(deEmoji(h.desc))}</p>` : descPending(h.url) ? `<p class="lead-ex-sk nw-ex-sk" aria-hidden="true"><span class="nw-sk-line"></span><span class="nw-sk-line"></span><span class="nw-sk-line"></span></p>` : ''}
   </a>`;
 }
 const leadSkeletonHtml = () => `<div class="lead lead-skeleton" aria-hidden="true">
@@ -3782,6 +3792,7 @@ async function renderLead(h, isLatest = true){
   // Tampilkan lead setelah salah satu gambar berhasil dimuat. Tanpa gambar valid, tampilkan teks.
   $('#lead').innerHTML = leadHtml(h, imageUrl, isLatest);
   $('#lead').setAttribute('aria-busy', 'false');
+  bindDescObserver();   // lead dirender async — observe kartu .lead yang baru terpasang
 }
 function newsHtml(h, full){
   const isNew = freshNews.has(h.title);
@@ -3790,7 +3801,7 @@ function newsHtml(h, full){
     <div class="nw-top"><span class="nw-cat">${CAT_LABEL[cat]}</span><time>${esc(h.ts ? wibTime(h.ts) : '')}</time></div>
     <div class="nw-src">${esc(tkPub(h.pub) || h.src)}${isNew ? '<span class="new">Baru</span>' : ''}${h.n > 1 ? `<span class="dup-n" title="${esc([...h.srcs].filter(Boolean).join(', '))}">×${h.n} artikel</span>` : ''}</div>
     <h3>${esc(deEmoji(h.title))}</h3>
-    ${h.desc && h.desc.length > 25 ? `<p class="nw-ex">${esc(deEmoji(h.desc))}</p>` : ''}
+    ${h.desc && h.desc.length > 25 ? `<p class="nw-ex">${esc(deEmoji(h.desc))}</p>` : descPending(h.url) ? `<p class="nw-ex-sk" aria-hidden="true"><span class="nw-sk-line"></span><span class="nw-sk-line"></span></p>` : ''}
   </a>`;
 }
 const dayKey = ts => ts ? new Date(ts).toLocaleDateString('id-ID',
@@ -3804,6 +3815,43 @@ const stripPubTail = (title, pub) => {
   do { q = title; title = title.replace(new RegExp('\\s*[-–—]\\s*' + pk + '\\s*$', 'i'), '').trim(); } while (title !== q);
   return title;
 };
+// bersih-bersih desc sisi klien — jaring pengaman untuk fallback RSS & popup
+// insiden; server-side cleaning tetap sumber utama. Konservatif: hanya potong
+// ekor/artefak, tidak menyentuh isi kalimat.
+const NEWS_SRC_RE = /(kompas|detik\w*|tempo|liputan6|republika|tribun\w*|cnbc\w*|antara\w*|voi\.?id|sindonews|okezone|jawapos|merdeka\.com|bisnis\.com|kontan|inews|suara\.com|merahputih|katadata|markeyeers|metrotv\w*|tvonenews|grid\.id|wowkeren|hotliputan6|wolipop|cewekbanget|female daily|poskota|bali ?post|balipost|\bjabar\b|\bjogja\b|espos|malang post|suara merdeka|pikiran-rakyat|bola\.com|jalantikus|kumparan|beritasatu|rmol|hops\.id|mediaindonesia|media indonesia|\brri\b|tagar|cnn indonesia|cnnindonesia|viva|\bmoney\.kompas\b|finance detik)/i;
+const DESC_DOMAIN_RE = /\S*\.(com|co\.id|co\.uk|or\.id|go\.id|ac\.id|sch\.id|net|org|tv|info|media|news|id)\b/i;
+function cleanDesc(d){
+  let t = String(d || '')
+    .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, ' $1 ')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/gi, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#0*39;|&#x27;/gi, "'")
+    .replace(/\s+/g, ' ').trim();
+  if (!t) return '';
+  // potong "baca selengkapnya"-style onward
+  const cut = t.search(/\b(baca selengkapnya|selengkapnya di|baca juga|kunjungi (?:kami|situs|website)|klik di sini|baca:)\b/i);
+  if (cut > 0) t = t.slice(0, cut).replace(/\s+$/, '');
+  // label sumber inline: "Sumber: kompas.com" dst.
+  t = t.replace(/\s+sumber\s*(?:[:：]|[-–—]{1,2})\s*[^.,;!)\]\-–—]{0,60}/gi, ' ');
+  // buang ekor publisher ("- Kompas.com", "| tribunnews", "Sumber: X") — max 4x,
+  // hanya kalau kandidat ekor cocok domain/nama media; tidak sentuh kalimat
+  for (let i = 0; i < 4; i++) {
+    const q = t;
+    t = t.replace(/(?:\s*(?:\.{3}|…))+\s*$/, '');
+    const mm = t.match(/\s*(?:[-–—|•·]|\bsumber\s*[:：\-–—]?)\s*(\S{1,80})\s*$/i);
+    const cand = mm || t.match(/\s*(\S{1,80})\s*$/);
+    // token telanjang tanpa separator hanya dipotong kalau bentuk domain;
+    // dengan separator cukup cocok nama media
+    if (cand && (DESC_DOMAIN_RE.test(cand[1]) || (mm && NEWS_SRC_RE.test(cand[1])))) {
+      t = t.slice(0, t.length - cand[0].length).trim();
+      continue;
+    }
+    break;
+  }
+  // dateline kapital di awal ("JAKARTA - ") — sekali saja
+  t = t.replace(/^[A-Z][A-Z0-9 .&']{2,50}\s*[-–—]+\s*/, '');
+  return t.replace(/[\s\-–—|•·]+$/, '').replace(/\s+/g, ' ').trim();
+}
 // dedup pass-1 (Jaccard 0.72) + pass-2 (union-find per kategori) itu O(n²) atas
 // ~1500 item — jangan ulang tiap renderNews (tiap ketikan filter). Hasil murni
 // fungsi dari _mmCache → cache per identitas array mergedMedia.
@@ -3820,7 +3868,15 @@ function dedupWire(mapped){
     for (const h of items) {
       const sig = toks(h.title);
       const hit = sigs.find(s => jac(s.set, sig) > 0.72);
-      if (hit) { hit.rec.n++; hit.rec.srcs.add(h.pub || h.src || ''); hit.rec.ts = Math.max(hit.rec.ts || 0, h.ts || 0); continue; }
+      if (hit) {
+        hit.rec.n++; hit.rec.srcs.add(h.pub || h.src || ''); hit.rec.ts = Math.max(hit.rec.ts || 0, h.ts || 0);
+        // desc terpanjang menang — pub/src/img diadopsi bareng supaya badge konsisten
+        if ((h.desc || '').length > (hit.rec.desc || '').length) {
+          hit.rec.desc = h.desc; hit.rec.pub = h.pub; hit.rec.src = h.src;
+          hit.rec.img = h.img || hit.rec.img;
+        }
+        continue;
+      }
       const rec = { ...h, n: 1, srcs: new Set([h.pub || h.src || '']) };
       sigs.push({ set: sig, rec }); collapsed.push(rec);
     }
@@ -3858,7 +3914,9 @@ function dedupWire(mapped){
       for (const g of groups.values()) {
         if (g.length === 1) { out.push(g[0]); continue; }
         g.sort((a, b) => (b.ts || 0) - (a.ts || 0));
-        out.push({ ...g[0], n: g.reduce((s, x) => s + (x.n || 1), 0),
+        // base = copy dengan desc terpanjang; seri → yang terbaru (sort di atas)
+        const base = g.reduce((a, b) => ((b.desc || '').length > (a.desc || '').length ? b : a), g[0]);
+        out.push({ ...base, n: g.reduce((s, x) => s + (x.n || 1), 0),
           srcs: new Set(g.flatMap(x => [...(x.srcs || [x.pub || x.src || ''])])),
           ts: Math.max(...g.map(x => x.ts || 0)) });
       }
@@ -3872,7 +3930,7 @@ function dedupWire(mapped){
 function renderNews(){
   const mapped = mergedMedia().map(h => {
     const title = stripPubTail(cleanTitle(h.title), tkPub(h.pub));
-    const m = { ...h, title };
+    const m = { ...h, title, desc: cleanDesc(h.desc) || descGot.get(h.url) || '' };
     m.cat = newsCatOf(m);   // versi assessment dicek di helper — judul sudah clean untuk fallback
     return m;
   });
@@ -3916,29 +3974,201 @@ function renderNews(){
   }
   $('#f-news').textContent = items.length;
   updateFoot();
+  queueDescEnrich();
 }
 let newsList = [], curLead = null, curLeadScope = '';
+// Incremental render: dulunya slice(0,79) hard cap — item ke-80+ (mayoritas
+// sumber, termasuk GN/JPNN yang desc-nya kosong dan kalah dedup) tidak pernah
+// tampil. Sekarang batch 80 + sentinel IntersectionObserver; parity
+// full-width dihitung terhadap SELURUH list supaya akhir segmen ganjil benar.
+let nwState = null;
+const NW_BATCH = 80;
 function renderNlist(){
   const list = newsList, leadPick = curLead;
   if (!list || !list.length || !leadPick) return;
-  const nwItems = list.filter(h => h.url !== leadPick.url).slice(0, 79);
-  // segmen = runtunan item sebelum .nw-day berikutnya; hitung positional supaya parity benar
-  // walau urutan hari berselang-seling. Item terakhir segmen ganjil → full width.
+  if (nwState && nwState.list === list && nwState.leadUrl === leadPick.url) return;   // data sama → DOM sudah benar, jangan rebuild (jaga scroll & state append)
+  const all = list.filter(h => h.url !== leadPick.url);
   const rows = []; let lastDay = dayKey(list[0] && list[0].ts), seg = 0;
-  for (const h of nwItems) {
+  for (const h of all) {
     const d = dayKey(h.ts);
     const head = d && d !== lastDay;
     if (head) { seg++; lastDay = d; }
     else lastDay = d || lastDay;
     rows.push({ h, d, head, seg });
   }
-  const segTotal = {}, segSeen = {};
+  const segTotal = {};
   for (const r of rows) segTotal[r.seg] = (segTotal[r.seg] || 0) + 1;
-  $('#nlist').innerHTML = rows.map(r => {
-    segSeen[r.seg] = (segSeen[r.seg] || 0) + 1;
-    const full = segSeen[r.seg] === segTotal[r.seg] && segTotal[r.seg] % 2 === 1;
-    return (r.head ? `<div class="nw-day">${esc(r.d)}</div>` : '') + newsHtml(r.h, full);
-  }).join('');
+  nwState = { list, leadUrl: leadPick.url, rows, segTotal, segSeen: {}, shown: 0 };
+  // rebuild innerHTML me-reset scroll — simpan & pulihkan supaya re-render
+  // (tiap batch desc enrich) tidak melempar user balik ke atas
+  const sc = $('#nlist').closest('.pb') || document.scrollingElement;
+  const st = sc ? sc.scrollTop : 0;
+  $('#nlist').innerHTML = '';
+  nwAppend();
+  if (sc) sc.scrollTop = st;
+}
+function nwAppend(){
+  const st = nwState, box = $('#nlist');
+  if (!st || !box) return;
+  const end = Math.min(st.rows.length, st.shown + NW_BATCH);
+  let html = '';
+  for (let i = st.shown; i < end; i++) {
+    const r = st.rows[i];
+    st.segSeen[r.seg] = (st.segSeen[r.seg] || 0) + 1;
+    const full = st.segSeen[r.seg] === st.segTotal[r.seg] && st.segTotal[r.seg] % 2 === 1;
+    html += (r.head ? `<div class="nw-day">${esc(r.d)}</div>` : '') + newsHtml(r.h, full);
+  }
+  st.shown = end;
+  const old = box.querySelector('#nw-sentinel'); if (old) old.remove();
+  box.insertAdjacentHTML('beforeend', html);
+  if (st.shown < st.rows.length) {
+    box.insertAdjacentHTML('beforeend', '<div id="nw-sentinel" style="height:1px"></div>');
+    const s = box.querySelector('#nw-sentinel');
+    if (s && 'IntersectionObserver' in window) {
+      const io = new IntersectionObserver(es => { if (es[0].isIntersecting) { io.disconnect(); nwAppend(); } }, { rootMargin: '800px' });
+      io.observe(s);
+    } else { st.shown = st.rows.length; nwAppend(); }   // fallback tanpa IO: render semua
+  }
+  queueDescEnrich();   // kartu baru perlu di-observe untuk desc enrich
+}
+/* ============================================================
+   DESC ENRICH · kartu tanpa deskripsi → POST /api/desc (batch 8)
+   - descTried: url yang sudah dikirim TIDAK pernah diulang (sukses/gagal)
+   - descGot: url → desc bersih, dipakai ulang saat _mmCache rebuild
+   - IntersectionObserver: kartu .nw/.lead yang masuk viewport di-enqueue,
+     jadi user yang scroll ke bawah tetap dapat desc (dulu mentok 12
+     kandidat teratas newsList). Fallback scan newsList tetap jalan untuk
+     viewport awal / browser tanpa IO.
+   - maks 200 URL per page-load (user-driven: hanya kartu terlihat yang
+     di-fetch; scroll seluruh list ≈ 900 fetch tetap di bawah bound server
+     250ms serial), 16 kandidat per siklus, debounce 1.5s
+   ============================================================ */
+const descTried = new Set();    // url → sudah pernah dicoba — anti-loop
+const descGot = new Map();      // url → desc hasil fetch
+const descDead = new Set();     // url → server jawab tanpa desc — terminal, skeleton tidak boleh muter selamanya
+// pending = kartu GN yang desc-nya belum ada DAN masih mungkin di-fetch.
+// descTried tidak disertakan: selama fetch berjalan url sudah di-tried tapi
+// skeleton tetap harus tampil. descTried.size < DESC_MAX: cap habis = sisa
+// kartu tidak akan pernah di-fetch → jangan skeleton selamanya.
+const descPending = u => typeof u === 'string' && DESC_URL_RE.test(u)
+  && !descGot.has(u) && !descDead.has(u) && descTried.size < DESC_MAX;
+const DESC_MAX = 200, DESC_TOP = 16, DESC_BATCH = 8;
+// hanya link Google News — direct-feed desc tipis sudah dinilai feedtext,
+// fetch og:desc untuknya boros (QC spec)
+const DESC_URL_RE = /^https?:\/\/(?:[^/@]*@)?(?:[a-z0-9-]+\.)*news\.google\.com\//i;
+let descBusy = false, descTimer = 0;
+const descQueue = [], descQueued = new Set(), descWatched = new Set();
+let descIO = null;
+// eligible = url GN yang belum pernah dicoba dan belum dapat desc.
+// Kartu yang desc-nya sudah dirender feed (>25 → .nw-ex/.lead-ex) di-skip
+// terpisah oleh observer supaya tidak buang slot.
+const descEligible = u => typeof u === 'string' && DESC_URL_RE.test(u)
+  && !descGot.has(u) && !descTried.has(u);
+async function postJson(url, body, ms){
+  const c = new AbortController(), t = setTimeout(() => c.abort(), ms || 20000);
+  try {
+    const r = await fetch(url, { method:'POST', cache:'no-store', signal:c.signal,
+      headers: { 'content-type':'application/json', ...apiHeaders(url) }, body: JSON.stringify(body) });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    return await r.json();
+  } finally { clearTimeout(t); }
+}
+// (Re)bind observer setelah tiap renderNews/renderLead — innerHTML menghapus
+// node lama, jadi semua target lama di-unobserve lalu kartu eligible yang baru
+// di-observe ulang. root=null (viewport): intersection tetap benar karena
+// ancestor .pb yang overflow-y:auto ikut meng-clip rect.
+function bindDescObserver(){
+  const box = $('#nlist');
+  if (!box || !('IntersectionObserver' in window)) return;
+  if (!descIO) descIO = new IntersectionObserver(es => {
+    for (const e of es) {
+      if (!e.isIntersecting) continue;
+      const a = e.target;
+      descIO.unobserve(a); descWatched.delete(a);   // sekali per node — anti spam;
+      // node hasil rebuild akan di-observe ulang oleh bindDescObserver berikutnya
+      const u = a.getAttribute && a.getAttribute('href');
+      if (!descEligible(u) || descQueued.has(u) || a.querySelector('.nw-ex, .lead-ex')) continue;
+      descQueued.add(u); descQueue.push(u);
+      queueDescEnrich();
+    }
+  }, { threshold: 0.1, rootMargin: '160px 0px' });   // mulai fetch sedikit sebelum kartu terlihat
+  for (const el of descWatched) descIO.unobserve(el);
+  descWatched.clear();
+  for (const a of box.querySelectorAll('a.nw')) {
+    const u = a.getAttribute('href');
+    if (!descEligible(u) || descQueued.has(u) || a.querySelector('.nw-ex')) continue;
+    descIO.observe(a); descWatched.add(a);
+  }
+  // lead card dirender async oleh renderLead — skeleton-nya bukan <a> jadi aman;
+  // bindDescObserver dipanggil lagi di akhir renderLead begitu kartu asli terpasang
+  const lead = $('#lead .lead'), lu = lead && lead.getAttribute('href');
+  if (lead && descEligible(lu) && !descQueued.has(lu) && !lead.querySelector('.lead-ex')) {
+    descIO.observe(lead); descWatched.add(lead);
+  }
+}
+function queueDescEnrich(){
+  bindDescObserver();
+  clearTimeout(descTimer);
+  descTimer = setTimeout(runDescEnrich, 1500);
+}
+function runDescEnrich(){
+  descTimer = 0;
+  if (API == null || document.hidden || descBusy) return;
+  if (descTried.size >= DESC_MAX) { descQueue.length = 0; descQueued.clear(); return; }
+  // kandidat: url dari observer dulu (kartu yang user benar-benar lihat),
+  // lalu fallback scan newsList urutan display — jaring untuk viewport awal
+  // dan browser tanpa IntersectionObserver
+  const urls = [], seen = new Set();
+  const push = u => {
+    if (urls.length >= DESC_TOP || descTried.size + urls.length >= DESC_MAX) return;
+    if (seen.has(u) || !descEligible(u)) return;
+    seen.add(u); urls.push(u);
+  };
+  while (descQueue.length && urls.length < DESC_TOP) push(descQueue.shift());
+  for (const h of newsList || []) {
+    if (urls.length >= DESC_TOP || descTried.size + urls.length >= DESC_MAX) break;
+    if (h && h.desc && h.desc.length > 25) continue;
+    push(h && h.url);
+  }
+  if (!urls.length) return;
+  urls.forEach(u => descTried.add(u));   // tandai SEBELUM fetch — gagal pun tidak diulang
+  descBusy = true;
+  const batches = [];
+  for (let i = 0; i < urls.length; i += DESC_BATCH) batches.push(urls.slice(i, i + DESC_BATCH));
+  Promise.all(batches.map(b => postJson(API + '/api/desc', { urls: b }, 25000)
+      .then(d => ({ b, d })).catch(() => ({ b, d: null }))))
+    .then(rs => {
+      let changed = false;
+      const items = (_nwDedup && _nwDedup.list) || [];
+      for (const { b, d } of rs) {
+        if (!d) { b.forEach(u => { descTried.delete(u); descQueued.delete(u); }); continue; }   // network gagal → boleh retry siklus berikut
+        const map = d.ok && d.descs;
+        if (!map) continue;
+        for (const u of Object.keys(map)) {
+          const c = cleanDesc(map[u]);
+          if (!c) { descDead.add(u); continue; }   // terminal kosong — lepas dari antrian skeleton
+          descGot.set(u, c);
+          // item dedup adalah object stabil selama _mmCache sama — mutasi langsung
+          // supaya renderNews berikutnya (cache dedup) langsung memakainya
+          const it = items.find(x => x.url === u);
+          if (it && !(it.desc && it.desc.length > 25)) { it.desc = c; changed = true; }
+        }
+      }
+      if (changed) {
+        renderNews();   // SATU re-render; descTried + descGot mencegah loop
+        // desc lead bisa datang belakangan — sameLead menahan renderLead, jadi
+        // patch skeleton→teks langsung di DOM (tanpa flicker skeleton ulang)
+        const ln = $('#lead .lead'), sk = ln && ln.querySelector('.lead-ex-sk');
+        if (sk && curLead) {
+          const c = descGot.get(curLead.url) || (curLead.desc && curLead.desc.length > 25 ? curLead.desc : '');
+          if (c) sk.outerHTML = `<p class="lead-ex">${esc(deEmoji(c))}</p>`;
+        }
+      }
+    })
+    .finally(() => {
+      descBusy = false;
+      if (descQueue.length) queueDescEnrich();   // sisa antrean observer → siklus berikut
+    });
 }
 function fltPaint(){
   const w = $('#fltwrap'), open = w.classList.contains('open');
@@ -4498,9 +4728,10 @@ const fmtDur = sec => { if (sec == null) return '—'; const m = Math.round(sec 
 
 function mapPopup(it){
   const kc = CAT_COLOR[it.kind] || KIND_COLOR[it.kind] || '';
+  const dsc = cleanDesc(it.desc);   // desc insiden bisa mentah — bersihkan sebelum render
   return `<div class="mp-k"${kc ? ` style="color:${kc}"` : ''}>${esc(it.label || KIND_LABEL[it.kind] || 'Insiden')} · ${esc(it.name)}</div>
     <div class="mp-t">${esc(deEmoji(it.title))}</div>
-    ${it.desc ? `<div class="mp-desc">${esc(deEmoji(it.desc))}</div>` : ''}
+    ${dsc ? `<div class="mp-desc">${esc(deEmoji(dsc))}</div>` : ''}
     <div class="mp-m">${esc(it.src)} · ${esc(wibFull(it.ts))} WIB${precTxt(it) ? '<br>' + esc(precTxt(it)) : ''}</div>
     ${it.url ? `<button type="button" class="mp-src mp-read" data-read="${esc(it.url)}">Baca${ic('out')}</button>` : ''}`;
 }
@@ -5018,7 +5249,7 @@ function ensureMap(){
   checkTomTom();
   paintMap();
 }
-async function pullIncidents(){
+async function pullIncidents(fresh){
   if (mapBusy) return;
   if (API == null) {
     PULSE = [];
@@ -5031,7 +5262,7 @@ async function pullIncidents(){
   }
   mapBusy = true;
   try {
-    const d = await getJson(API + '/api/incidents', 30000);
+    const d = await getJson(API + '/api/incidents' + (fresh ? '?fresh=1' : ''), 30000);
     if (d && d.ok) {
       mapData = d.items || [];
       const GEMPA_SKIP = /aman gempa|tahan gempa|resisten gempa|anti[- ]?gempa|gempa resistant/i;
@@ -5045,7 +5276,7 @@ async function pullIncidents(){
       maybeFocusFresh();
       const nReal = mapData.filter(i => !i.fixed).length;
       $('#geo-count').textContent = nReal + ' titik';
-      $('#map-meta').textContent = nReal + ' titik · ' + (mapData.length - nReal) + ' node · sync ' + wibTime(d.at);
+      $('#map-meta').textContent = nReal + ' titik · ' + (mapData.length - nReal) + ' node · sync ' + wibTime(d.at) + (d.stale ? ' · DATA LAMA' : '');
       wireSrcText = 'wire ' + (d.total || nReal) + (d.raw && d.raw > d.total ? ' · ' + d.raw + ' artikel' : '') + ' · kamera ' + CAMS.length;
       paintMapSrc();
       drawGlobe(performance.now());
@@ -5766,7 +5997,7 @@ async function pullAlerts(){
 }
 
 $('#map-refresh').addEventListener('click', async () => {
-  pullIncidents();
+  pullIncidents(true);
   await checkTomTom();
   if (ttOk) pullTomTomIncidents();
   satModelRunAt = 0; initSatelliteLayers();
@@ -6171,6 +6402,7 @@ async function pullMedia(){
   if (API != null) {
     try {
       const d = await getJson(API + '/api/news', 55000);
+      if (d.classifierVersion && SitrepSignals.adoptClassifierVersion) SitrepSignals.adoptClassifierVersion(d.classifierVersion);   // jangan tunggu /api/situation — feedTopic items drop di window boot
       SRC_IDS = d.sources.map(x => x.id);
       d.sources.forEach(x => {
         if (x.ok) { lastGood.set(x.id, { items:x.items, via:'langsung', at:Date.now() }); srcState.set(x.id, { ok:true, via:'langsung', stale:!!x.stale }); }
@@ -6272,7 +6504,7 @@ async function refreshAll(manual){
     // server-side incidents() dan /api/news share memo feed yang sama, jadi paralel tanpa fetch ganda
     trackBg(pullX());
     trackBg(pullThreads());
-    trackBg(pullIncidents());
+    trackBg(pullIncidents(manual));   // refresh manual = bypass memo server, curigai data beku
     trackBg(pullAlive());
     trackBg(pullCctv());
     await Promise.all([pullMedia(), pullSituation(), pullStocks()]);

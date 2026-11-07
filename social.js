@@ -134,7 +134,10 @@ const SOC_TOPICS = [
   { id: 'kecelakaan', local: true,
     pos: /(kecelakaan|tabrakan|tabrak lari|kapal (tenggelam|karam)|pesawat jatuh|bus terguling|truk terguling|kereta anjlok|ledakan)/i,
     // "ledakan"/"tabrakan" sering kiasan: ledakan penduduk, tabrakan pendapat
-    neg: /(ledakan (penduduk|jumlah|kasus|order|orders|promo|penjualan|chat|emoji|tawa|tangis|debat|lagu|musik|harga|bonus|like|komentar|followers?|data|traffic|trafik)|tabrakan (pendapat|argumen|prinsip|debat|pemikiran|jadwal|acara|event|konser|libur|ujian|meeting|praktik|praktikum)|(jadwal|acara|event|konser|libur|ujian|meeting|praktik)[^.\n]{0,15}tabrakan|kecelakaan (cinta|asmara))/i,
+    // motorsport: "kecelakaan/tabrakan" dalam laporan balap (F1 dll) = insiden lintasan,
+    // bukan kecelakaan publik. Wajib KEDUA sisi dalam klausa yang sama (neg dites per-span):
+    // kata insiden dalam <=200 char dari marker motorsport, dua arah.
+    neg: /(ledakan (penduduk|jumlah|kasus|order|orders|promo|penjualan|chat|emoji|tawa|tangis|debat|lagu|musik|harga|bonus|like|komentar|followers?|data|traffic|trafik)|tabrakan (pendapat|argumen|prinsip|debat|pemikiran|jadwal|acara|event|konser|libur|ujian|meeting|praktik|praktikum)|(jadwal|acara|event|konser|libur|ujian|meeting|praktik)[^.\n]{0,15}tabrakan|kecelakaan (cinta|asmara)|(?<=(?:kecelakaan|tabrakan|tertabrak|tertabrakan|tabrak lari)[^.\n]{0,200})(?:grand\s*prix|grandprix|formula\s*1|\bf1\b|kualifikasi|qualifying|sprint\s+race|pole\s+position|podium|parc\s*ferme|grid\s+(?:start|position)|start\s+grid|safety\s*car|safetycar|red\s+flag|pit\s+(?:stop|lane)|push-?lap|out-?lap|drs\s*zone|ers\s*zone|\bdrs\b|\bers\b|oversteer|understeer|lock-?up|downforce|aerodinamis|steering\s+wheel|cockpit|\bsirkuit\b|scuderia|red\s+bull(?:\s+racing)?|mercedes-amg|aston\s+martin|alpine\s+f1|haas\s+f1|racing\s+bulls|sauber|cadillac\s+f1|\bmclaren\b|balap\s+(?:motor|mobil|formula|f1|grup))|(?:grand\s*prix|grandprix|formula\s*1|\bf1\b|kualifikasi|qualifying|sprint\s+race|pole\s+position|podium|parc\s*ferme|grid\s+(?:start|position)|start\s+grid|safety\s*car|safetycar|red\s+flag|pit\s+(?:stop|lane)|push-?lap|out-?lap|drs\s*zone|ers\s+zone|\bdrs\b|\bers\b|oversteer|understeer|lock-?up|downforce|aerodinamis|steering\s+wheel|cockpit|\bsirkuit\b|scuderia|red\s+bull(?:\s+racing)?|mercedes-amg|aston\s+martin|alpine\s+f1|haas\s+f1|racing\s+bulls|sauber|cadillac\s+f1|\bmclaren\b|balap\s+(?:motor|mobil|formula|f1|grup))(?=[^.\n]{0,200}(?:kecelakaan|tabrakan|tertabrak|tertabrakan|tabrak lari)))/i,
     x: ['(kecelakaan OR "tabrak lari" OR "bus terguling" OR "kapal tenggelam" OR "truk terguling" OR "kereta anjlok" OR "pesawat jatuh" OR "kapal karam" OR tabrakan OR ledakan) -filter:replies'],
     th: ['kecelakaan', 'kecelakaan lalu lintas', 'truk terguling', 'kereta anjlok', 'pesawat jatuh', 'kapal karam', 'tabrakan'] },
   { id: 'penembakan', local: true,
@@ -310,10 +313,20 @@ function socFixEvents(res) {
   }
   return res;
 }
+// Post-level motorsport gate: neg regex di topik kecelakaan hanya per-klausa —
+// laporan balap multi-kalimat ("Rafa mengalami kecelakaan. Safety car keluar.")
+// tetap lolos. >=2 marker balap berbeda di SELURUH teks -> buang topik
+// kecelakaan dari registry untuk post ini.
+const SOC_MOTOR_MARK_RE = /grand\s*prix|grandprix|formula\s*1|\bf1\b|kualifikasi|qualifying|sprint\s+race|pole\s+position|podium|parc\s+ferme|safety\s*car|safetycar|red\s+flag|bendera\s+(?:merah|kuning)|pit\s+(?:stop|lane)|push-?lap|out-?lap|drs\s*zone|ers\s*zone|oversteer|understeer|lock-?up|downforce|aerodinamis|steering\s+wheel|cockpit|\bsirkuit\b|scuderia|red\s+bull(?:\s+racing)?|mercedes-amg|aston\s+martin|alpine\s+f1|haas\s+f1|racing\s+bulls|sauber|cadillac\s+f1|\bmclaren\b|balap\s+(?:motor|mobil|formula|f1|grup)/gi;
+function socIsMotorsport(t) {
+  const m = String(t || '').matchAll(SOC_MOTOR_MARK_RE);
+  return new Set([...m].map(x => x[0].toLowerCase())).size >= 2;
+}
 function socAssess(text, extra) {
   const t = String(text || '');
   const listing = SOC_LISTING_RE.test(t) && SOC_LISTING_DEAL.test(t);
-  return socFixEvents(ASSESS.assess(t, SOC_TOPICS.concat(extra || []), { noise: SOC_NOISE_RE, spam: SOC_SPAM_RE, listing }));
+  const topics = socIsMotorsport(t) ? SOC_TOPICS.filter(tp => tp.id !== 'kecelakaan') : SOC_TOPICS;
+  return socFixEvents(ASSESS.assess(t, topics.concat(extra || []), { noise: SOC_NOISE_RE, spam: SOC_SPAM_RE, listing }));
 }
 function socTopics(text, extra) { return socAssess(text, extra).topics; }
 

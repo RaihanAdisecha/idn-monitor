@@ -2,7 +2,8 @@
 const SOC = require('./social');
 const HISTORY = require('./social-history');
 const ASSESS = require('./assessment');
-const http = require('http'), fs = require('fs'), path = require('path'), dns = require('dns').promises, crypto = require('crypto');
+const FEEDTEXT = require('./feedtext');
+const http = require('http'), fs = require('fs'), path = require('path'), dns = require('dns').promises, crypto = require('crypto'), zlib = require('zlib');
 // muat .env sederhana (satu baris KEY=VALUE) agar TOMTOM_API_KEY bisa dari env
 try {
   const envPath = path.join(__dirname, '.env');
@@ -51,7 +52,7 @@ const NEWS = [
   ['GNEWS · POLITIK', gn('pemilu OR pilkada OR pilpres OR kpu OR perang OR konflik OR "gencatan senjata" OR ultimatum OR kudeta OR invasi OR "partai politik" OR DPR')],
   ['GNEWS · SIBER', gn('ransomware OR "serangan siber" OR phishing OR "bocor data" OR BSSN OR "akun dibajak" OR "dompet kripto" OR exploit OR "zero day" OR deepfake OR "data breach" OR "peretasan"')],
   ['GNEWS · LINGKUNGAN', gn('karhutla OR deforestasi OR "sungai tercemar" OR "sampah plastik" OR longsor OR "tambang ilegal"')],
-].concat((CFG.news_extra || []).map(x => [x.id, x.url]));
+].concat(Array.isArray(CFG.news_extra) ? CFG.news_extra.filter(x => x && typeof x.id === 'string' && typeof x.url === 'string' && x.id && x.url).map(x => [x.id, x.url]) : []);
 
 const cache = new Map();
 /* ---------- history buffer sosial: post lama tetap ada antar-sync & restart ---------- */
@@ -286,6 +287,7 @@ const dec = s => s.replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1').replace(/&lt;/g,
   .replace(/&#x([0-9a-f]+);/gi, (_, n) => { const c = parseInt(n, 16); return c > 0 && c < 0x110000 ? String.fromCodePoint(c) : ''; })
   .replace(/&amp;/g, '&').replace(/<[^>]+>/g, '').trim();
 const tag = (b, n) => { const m = b.match(new RegExp('<' + n + '[^>]*>([\\s\\S]*?)</' + n + '>', 'i')); return m ? dec(m[1]) : ''; };
+const tagRaw = (b, n) => { const m = b.match(new RegExp('<' + n + '[^>]*>([\\s\\S]*?)</' + n + '>', 'i')); return m ? m[1] : ''; };
 function feedImage(b) {
   const u = feedImageRaw(b);
   if (!u) return '';
@@ -305,28 +307,12 @@ function feedImageRaw(b) {
   const img = body && body[1].match(/<img[^>]*src=["']([^"']+)["']/i);
   return img ? dec(img[1]) : '';
 }
-const descOf = b => {
-  let t = dec(tag(b, 'content:encoded') || tag(b, 'description'))
-    .replace(/^[A-Za-z0-9.&' ]{4,60},\s*[A-Z][A-Z0-9 .&']{2,50}\s*--\s*/, '');   // buang dateline "SITUS, KOTA --"
-  // buang kredit foto/ilustrasi & boilerplate yang bukan isi berita
-  t = t
-    .replace(/\((?:[^()]{0,90})\)/g, m => /foto|dok|sumber|istimewa|illustrasi|dokumen|istock|shutterstock|getty/i.test(m) ? ' ' : m)
-    .replace(/\b(?:foto|illustrasi|gambar|video|dokumen)\s*[:.-]\s*(?:oleh\s+)?[^.,;)\]]{0,90}/gi, ' ')
-    .replace(/\bdok\.[^.,;)\]]{0,60}/gi, ' ')
-    .replace(/\bsumber\s*:\s*[^.,;)\]]{0,60}/gi, ' ')
-    .replace(/^[A-Z0-9.&'() ]{2,50}?\s+--\s+/, '')        // sisa "Sumber --" / "BNPB --" di awal
-    .replace(/^[\s.:;,\-–—]+/, '')
-    .replace(/\s+/g, ' ').trim();
-  // buang ')' tanpa pasangan '(' (sisa caption yang terpotong), dan '(' tak tertutup di akhir
-  let depth = 0, out = '';
-  for (const ch of t) {
-    if (ch === '(') depth++;
-    else if (ch === ')') { if (depth > 0) depth--; else continue; }
-    out += ch;
-  }
-  t = out.replace(/\(\s*$/, '').trim();
-  return t.length > 520 ? t.slice(0, 517).replace(/\s+\S*$/, '') + '…' : t;
-};
+const descOf = (b, title) => FEEDTEXT.descFrom({
+  description: tagRaw(b, 'description'),
+  contentEncoded: tagRaw(b, 'content:encoded'),
+  summary: tagRaw(b, 'summary') || tagRaw(b, 'dc:description') || tagRaw(b, 'itunes:summary'),
+  mediaDescription: tagRaw(b, 'media:description'),
+}, title || '');
 // <source> Google News kadang berisi URL (https://www.situs.id/) bukan nama media → jadikan hostname rapi
 const cleanPub = v => {
   v = String(v || '').trim();
@@ -340,12 +326,16 @@ function parseFeed(xml) {
   const out = [];
   for (const m of xml.matchAll(/<item[\s>]([\s\S]*?)<\/item>/gi)) {
     const b = m[1], title = tag(b, 'title'), url = tag(b, 'link') || tag(b, 'guid'), d = tag(b, 'pubDate');
-    if (title && url && !BANNED_SRC.test(b)) out.push({ title, url, ts: d ? Date.parse(d) || 0 : 0, img: feedImage(b), pub: cleanPub(tag(b, 'source')), desc: descOf(b) });
+    const isGN = /^https?:\/\/news\.google\.com\//i.test(url);
+    const bid = title + ' ' + url + ' ' + tag(b, 'source');
+    if (title && url && !BANNED_SRC.test(bid)) out.push({ title, url, ts: d ? Date.parse(d) || 0 : 0, img: feedImage(b), pub: cleanPub(tag(b, 'source')), desc: isGN ? '' : descOf(b, title) });
   }
   for (const m of xml.matchAll(/<entry[\s>]([\s\S]*?)<\/entry>/gi)) {
     const b = m[1], l = b.match(/<link[^>]*href="([^"]+)"/i) || b.match(/<link[^>]*>([^<]+)<\/link>/i), d = tag(b, 'updated') || tag(b, 'published');
-    const t = tag(b, 'title');
-    if (l && t && !BANNED_SRC.test(b)) out.push({ title: t, url: (l[1] || '').trim(), ts: Date.parse(d) || 0 });
+    const t = tag(b, 'title'), url = (l && (l[1] || '').trim()) || '';
+    const isGN2 = /^https?:\/\/news\.google\.com\//i.test(url);
+    const bid = t + ' ' + url;
+    if (l && t && !BANNED_SRC.test(bid)) out.push({ title: t, url, ts: Date.parse(d) || 0, img: feedImage(b), desc: isGN2 ? '' : descOf(b, t) });
   }
   return out;
 }
@@ -384,7 +374,9 @@ const news = () => Promise.all(NEWS.map(([id, url]) => memo('n:' + id, 55000, as
   ];
   let lastErr = '';
   const t0 = Date.now();
-  // rss.tempo.co di-blokir Cloudflare (403) dan feed aslinya mandek — Google News site query didahulukan
+  // rss.tempo.co = edisi INGGRIS (bukan untuk wire ID) dan tempo.co utama di-blokir
+  // Cloudflare — Google News site query (artikel Indonesia) didahulukan; desc kosong
+  // ditambal lazy via /api/desc.
   if (id === 'TEMPO') attempts.unshift('https://news.google.com/rss/search?hl=id&gl=ID&ceid=ID:id&q=' + encodeURIComponent('site:tempo.co when:2d'));
   outer: for (const u of attempts) {
     for (let i = 0; i < 2; i++) {
@@ -595,7 +587,10 @@ function bottomCursor(j) {
   return c;
 }
 const xSem = makeSem(4);   // maks 4 SearchTimeline paralel — lazy & sweep berbagi slot yang sama
+let xCooldownUntil = 0;    // x-rate-limit-reset terakhir (epoch ms) — semua jalur X hormati ini
+const xCooling = () => Date.now() < xCooldownUntil;
 async function xSearchGo(q, cursor, winH) {
+  if (xCooling()) { const e = new Error('X rate-limit cooldown'); e.cooldown = true; e.retryAt = xCooldownUntil; throw e; }
   const id = await xQueryId();
   // winH: jendela since_time dalam jam; <=0 = tanpa filter waktu (dipakai conversation_id)
   const win = winH == null ? 46 : winH;
@@ -613,6 +608,12 @@ async function xSearchGo(q, cursor, winH) {
     err.status = r.status;
     const resetHdr = r.headers.get('x-rate-limit-reset');
     err.resetTime = resetHdr ? parseInt(resetHdr, 10) * 1000 : 0;
+    // hormati window reset: semua request berikutnya langsung skip sampai
+    // bucket pulih — menembak terus ke dinding 429 justru memperpanjang blokir
+    if (r.status === 429) {
+      const until = err.resetTime || Date.now() + 5 * 60e3;
+      if (until > xCooldownUntil) xCooldownUntil = until;
+    }
     throw err;
   }
   const j = await r.json(), out = new Map(); collect(j, out);
@@ -689,6 +690,10 @@ const xposts = () => memo('x', 300000, async () => {
   await adhocRefresh();
   const meta0 = socMeta();
   if (!xHas()) return { ok: false, err: 'auth_token / ct0 belum diisi di config.json', posts: [], ...meta0 };
+  if (xCooling()) {   // bucket habis — sajikan history basi, jangan bakar request sia-sia
+    const posts = [...xHist.values()].sort((a, b) => histTs(b) - histTs(a));
+    return { ok: false, err: 'X rate-limit — reset ~' + new Date(xCooldownUntil).toTimeString().slice(0, 5) + ' WIB', posts, ...socMeta(), at: Date.now(), cooldown: true };
+  }
   // rotasi sadar-panas: topik yang lama nggak disapu & lagi ramai didahulukan; ad-hoc + 2 terpanas selalu masuk
   const all = SOC.socQueries('x', ADHOC), first = xTick === 0, now = Date.now();
   xTick++;
@@ -713,7 +718,8 @@ const xposts = () => memo('x', 300000, async () => {
   if (first) { for (const t of chosen) { const l = byTopic.get(t) || []; if (l[0]) sel.set(l[0].q, l[0]); } }
   else for (const t of chosen) for (const e of byTopic.get(t) || []) sel.set(e.q, e);
   for (const t of chosen) xSeen.set(t, now);
-  const queries = [...sel.values()], errs = [], batch = [], page2 = [];
+  const queries = [...sel.values()], errs = [], batch = [], failedT = new Set();
+  let page2 = [];
   let rawN = 0, dropTs = 0, dropTag = 0, dropSample = null, newest = 0;
   const ingest = (e, list) => {
     for (const p of list) {
@@ -725,16 +731,20 @@ const xposts = () => memo('x', 300000, async () => {
     }
   };
   for (let i = 0; i < queries.length; i += 5) {
+    if (xCooling()) break;   // 429 di tengah sweep → stop, sisa query menunggu reset berikutnya
     const chunk = queries.slice(i, i + 5);
     const rs = await Promise.allSettled(chunk.map(e => xSearch(e.q)));
     rs.forEach((r, j) => {
       const e = chunk[j];
-      if (r.status === 'rejected') { errs.push(e.t + ': ' + String(r.reason && r.reason.message || r.reason)); return; }
+      if (r.status === 'rejected') { errs.push(e.t + ': ' + String(r.reason && r.reason.message || r.reason)); if (r.reason && r.reason.status === 429) failedT.add(e.t); return; }
       ingest(e, r.value.posts);
       if (r.value.cursor && r.value.posts.length >= 15) page2.push({ e, cursor: r.value.cursor, n: r.value.posts.length });
     });
+    if (i + 5 < queries.length && !xCooling()) await sleep(350 + Math.random() * 350);   // jitter antar-chunk — burst beruntun = pemicu 429
   }
-  // halaman 2 cuma untuk topik yang beneran ramai/hangat — tiap page = 1 request, maks 4 per siklus
+  // halaman 2 cuma untuk topik yang beneran ramai/hangat — tiap page = 1 request, maks 4 per siklus;
+  // topik yang kena 429 di page-1 tidak usah buang request page-2
+  page2 = page2.filter(x => !failedT.has(x.e.t));
   page2.sort((a, b) => (forced.has(b.e.t) ? 1 : 0) - (forced.has(a.e.t) ? 1 : 0) || b.n - a.n);
   for (let i = 0; i < Math.min(4, page2.length); i += 4) {
     const chunk = page2.slice(i, i + 4);
@@ -869,11 +879,30 @@ const thqLazy = q => memo('thq:' + String(q).toLowerCase(), 600000, async () => 
 });
 
 let socialSnapshotAt = 0;
+// histRetag = socAssess per post (~2300) + sort snapshot + socMeta — dulu
+// dihitung ULANG tiap request /api/x|threads (~0.5s flat walau memo hit).
+// Hasil hanya berubah saat history berubah → cache per fingerprint
+// (size + ts terbaru + ADHOC + bucket jam untuk aging). Max-ts scan O(n)
+// tetap jauh lebih murah daripada assess regex per post.
+const socialRespCache = new Map();   // map -> {fp, posts}
+let socialMetaFp = '', socialMetaVal = null;
 function socialResponse(result, map, keep) {
-  histRetag(map, keep);
-  socialSnapshotAt = Math.max(Date.now(), socialSnapshotAt + 1);
-  return { ...result, ...HISTORY.snapshot(map, Date.now()), ...socMeta(),
-    ok: result.ok === true, snapshotAt: socialSnapshotAt, partial: !!result.partial };
+  const now = Date.now();
+  let mx = 0;
+  for (const p of map.values()) { const t = HISTORY.tsOf(p); if (t > mx) mx = t; }
+  const fp = map.size + '|' + mx + '|' + ADHOC.length + '|' + Math.floor(now / 3600e3);
+  let c = socialRespCache.get(map);
+  if (!c || c.fp !== fp) {
+    histRetag(map, keep);
+    c = { fp, posts: HISTORY.snapshot(map, now).posts };
+    socialRespCache.set(map, c);
+  }
+  const mfp = xHist.size + '|' + tHist.size + '|' + Math.floor(now / 3600e3);
+  if (socialMetaFp !== mfp) { socialMetaVal = socMeta(); socialMetaFp = mfp; }
+  socialSnapshotAt = Math.max(now, socialSnapshotAt + 1);
+  return { ...result, ok: true, snapshot: true, classifierVersion: SOC.CLASSIFIER_VERSION,
+    snapshotAt: socialSnapshotAt, posts: c.posts, at: now, coverage: 'sampled',
+    ...socialMetaVal, ok: result.ok === true, partial: !!result.partial };
 }
 
 /* ---------- THREAD: post + balasan (X via search conversation, Threads via worker) ---------- */
@@ -1006,10 +1035,11 @@ const incidents = () => memo('incidents', 55000, async () => {
       const heat = catMeta(cat).sev * recency;
       // judul dengan beberapa tempat sederajat ("banjir di Aceh dan Sumut") → satu titik per tempat, bobot dibagi
       const places = place.all && place.all.length > 1 ? place.all : [place];
+      const dd = String(it.desc || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
       for (const pl of places)
         out.push({ name: pl.name, la: pl.la, lo: pl.lo, prec: pl.prec, prov: pl.prov, kind: cat,
           label: catMeta(cat).label, title: it.title, multi: places.length > 1 || undefined,
-          desc: String(it.desc || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 400) || undefined,
+          desc: dd.length > 400 ? dd.slice(0, 397).replace(/\s+\S*$/, '') + '…' : (dd || undefined),
           assessment: a, src: s.id, url: it.url, ts: it.ts, weight: +(heat / Math.sqrt(places.length)).toFixed(3) });
     }
   }
@@ -1025,7 +1055,11 @@ const incidents = () => memo('incidents', 55000, async () => {
     items.push({ name: p.name, la: p.la, lo: p.lo, prov: p.prov, prec: 'kab', kind: 'node', label: 'Node',
       title: 'Node pemantauan · ' + p.name, src: 'NODE', url: '', ts: now, weight: 0.16, fixed: true });
   }
-  return { ok: true, classifierVersion: SOC.CLASSIFIER_VERSION, items, total: merged.length, raw: out.length, places: GEO.NODES.length, at: now };
+  // stale = insiden non-node terbaru lebih tua dari 3 jam — payload memo
+  // last-good bisa berisi data beku; client pakai flag ini untuk indikator
+  const newest = items.find(i => !i.fixed);
+  const stale = !!newest && now - (newest.ts || 0) > 3 * 3600e3;
+  return { ok: true, classifierVersion: SOC.CLASSIFIER_VERSION, items, total: merged.length, raw: out.length, places: GEO.NODES.length, at: now, newest: newest ? newest.ts : 0, stale };
 });
 
 /* ---------- Situasi: agregat kategori + wilayah buat panel dossier ---------- */
@@ -1346,7 +1380,17 @@ async function disaster(){
   if (hist.status === 'fulfilled') { const arr = hist.value?.Infogempa?.gempa || []; arr.slice(0, 15).forEach(push); }
   const gunung = magma.status === 'fulfilled' ? parseMagma(magma.value) : [];
   const seen = new Set(), dedup = gempa.filter(g => { const k = g.lat.toFixed(3) + g.lon.toFixed(3) + g.mag; if (seen.has(k)) return false; seen.add(k); return true; });
-  disCache.at = now; disCache.data = { ok: true, gempa: dedup, gunung, at: now };
+  // Sumber gagal ≠ tidak ada data: BMKG down + MAGMA up dulu menghapus semua pin
+  // gempa (guard client butuh KEDUA array kosong). Pertahankan irisan terakhir
+  // per-sumber dan tandai stale — payload kosong dari sumber yang fulfilled
+  // tetap membersihkan pin seperti biasa.
+  const gempaOk = auto.status === 'fulfilled' || hist.status === 'fulfilled';
+  const magmaOk = magma.status === 'fulfilled';
+  const prev = disCache.data;
+  const gempaOut = gempaOk ? dedup : (prev ? prev.gempa : []);
+  const gunungOut = magmaOk ? gunung : (prev ? prev.gunung : []);
+  const stale = !!prev && (!gempaOk || !magmaOk);
+  disCache.at = now; disCache.data = { ok: true, gempa: gempaOut, gunung: gunungOut, at: now, stale, srcErr: { gempa: !gempaOk, gunung: !magmaOk } };
   return disCache.data;
 }
 const WX_PTS = [[95.3,5.5],[99.5,0.5],[105.8,-6.2],[110.4,-7.5],[114.5,-3],[119.4,-0.5],[117.0,-5.1],[113.6,-7.3],[120.9,0.5],[119.9,-4.5],[123.0,-1.5],[124.8,0.9],[127.4,0.9],[130.8,-1.5],[131.3,-3],[136.1,-4.5],[137.8,-3],[140.5,-3.7],[113.9,0.5],[95.3,3.6]];
@@ -2079,6 +2123,59 @@ async function thumbFromHtml(rawHtml, article) {
   return v;
 }
 
+// r.jina.ai free tier ~20 RPM — semua call site (thumb fallback + read race)
+// diserialkan dengan jarak minimum supaya burst read+thumb tidak 429 massal.
+let jinaChain = Promise.resolve(), jinaLast = 0;
+const jinaGet = (u, ms, h) => {
+  const p = jinaChain.then(async () => {
+    const wait = Math.max(0, jinaLast + 2500 - Date.now());
+    if (wait) await sleep(wait);
+    jinaLast = Date.now();
+    return mediaGet(u, ms, h);
+  });
+  jinaChain = p.catch(() => {});
+  return p;
+};
+// Cloudflare-challenge hosts (jpnn dll): direct+proxy gagal total, tapi Jina
+// reader tetap bisa fetch — og:image muncul sebagai baris ![...](url) di
+// markdown. Kumpulkan kandidat berurutan dokumen, probe ukuran, ambil yang
+// pertama lolos gate yang sama dengan thumbFromHtml.
+async function thumbFromJina(article) {
+  const { r } = await jinaGet('https://r.jina.ai/' + article, 12000, { accept: 'text/plain' });
+  if (!r.ok) throw new Error('jina HTTP ' + r.status);
+  const txt = await mediaText(r, 2 << 20);
+  if (!txt) throw new Error('jina kosong');
+  const seen = new Set(), cands = [];
+  for (const m of txt.matchAll(/!\[[^\]]*\]\((https?:\/\/[^)\s]+)\)/g)) {
+    let u;
+    try { u = new URL(m[1]).href; } catch { continue; }
+    if (seen.has(u)) continue;
+    seen.add(u); cands.push(u);
+  }
+  const host = new URL(article).hostname;
+  const strictOK = p => p && p.w >= 600 && !rdJunkUrl(p.img) && !rdSmallHint(p.img) && !RD_IMG_JUNK.test(p.img.split('?')[0]) && ogReuse(host, p.img, article) < 1;
+  // Host gambar bisa kena challenge CF yang sama dengan halamannya — probe
+  // direct gagal ≠ gambar jelek. Coba ulang lewat images.weserv.nl (fetch dari
+  // IP lain) khusus untuk verifikasi dimensi; URL asli tetap dipakai display.
+  const probeAny = async (u) => {
+    const d = await probeImage(u, article).catch(() => null);
+    if (d) return d;
+    const w = 'https://images.weserv.nl/?url=' + encodeURIComponent(u.replace(/^https?:\/\//, ''));
+    return probeImage(w, article).catch(() => null);
+  };
+  let probed = 0;
+  for (const u of cands) {
+    const img = upgradeImage(u);
+    if (rdJunkUrl(img) || rdSmallHint(img) || RD_IMG_JUNK.test(img.split('?')[0])) continue;
+    if (++probed > 6) break;
+    const dim = await probeAny(img);
+    if (!dim) continue;
+    const p = { img, w: dim.w, h: dim.h, src: article };
+    if (strictOK(p)) return p;
+  }
+  return { img: '', src: article };
+}
+
 async function thumb(u) {
   const x = publicURL(u);
   if (!x) throw new Error('url tidak valid');
@@ -2114,7 +2211,21 @@ async function thumb(u) {
       } catch (e) {}
     }
   }
-  if (!r || !r.ok) throw lastErr || new Error('fetch gagal');
+  if (!r || !r.ok) {
+    // direct+proxy mati (Cloudflare challenge dsb) → coba Jina reader untuk og:image
+    const vj = await thumbFromJina(article).catch(() => null);
+    if (vj && vj.img) {
+      thumbCache.set(u, { v: vj, at: Date.now() });
+      if (thumbCache.size > 200) thumbCache.delete(thumbCache.keys().next().value);
+      return vj;
+    }
+    // gagal total → cache negatif 60dtk: tanpa ini tiap render lead mengulang
+    // rantai direct→proxy→Jina yang sama (stampede ke upstream yang sedang down)
+    const vn = { img: '', src: article };
+    thumbCache.set(u, { v: vn, at: Date.now() });
+    if (thumbCache.size > 200) thumbCache.delete(thumbCache.keys().next().value);
+    return vn;
+  }
   let html;
   try { html = await mediaText(r, 3 << 20); }   // halaman artikel — cap 3MB
   catch (e) { throw new Error('halaman terlalu besar'); }
@@ -3405,7 +3516,7 @@ async function rdRead(raw) {
     })());
     // Jina reader — markdown, bukan html → thumb() fallback di rdFinish
     jobs.push((async () => {
-      const { r } = await mediaGet('https://r.jina.ai/' + target, Math.min(10000, left()), { accept: 'text/plain' });
+      const { r } = await jinaGet('https://r.jina.ai/' + target, Math.min(10000, left()), { accept: 'text/plain' });
       if (!r.ok) throw new Error('HTTP ' + r.status);
       const txt = await mediaText(r, 5 << 20);
       if (!txt || txt.length <= 200) throw new Error('jina kosong');
@@ -3438,13 +3549,15 @@ async function rdRead(raw) {
     if (win) { fetchMs = Date.now() - t0; return await fin(win.d, win.url, win.html, 'race'); }
     // 2.5) Firecrawl — render browser asli, tembus Cloudflare/challenge yang memukul direct+Jina+proxy
     const FC_KEY = process.env.FIRECRAWL_API_KEY || CFG.firecrawl_key || '';
-    if (FC_KEY && Date.now() - t0 < 30000) {
+    // budget: firecrawl cuma kalau sisa waktu cukup untuk render + fin media —
+    // dulu elapsed<30s + timeout 25s bisa mendorong total ke ~37s (dekat timeout klien 45s)
+    if (FC_KEY && left() > 20000) {
       try {
         const r = await get('https://api.firecrawl.dev/v1/scrape', {
           method: 'POST',
           headers: { 'content-type': 'application/json', authorization: 'Bearer ' + FC_KEY },
-          body: JSON.stringify({ url: target, formats: ['html'], onlyMainContent: false, timeout: 25000 })
-        }, Math.min(30000, left()));
+          body: JSON.stringify({ url: target, formats: ['html'], onlyMainContent: false, timeout: 15000 })
+        }, Math.min(15000, left() - 8000));
         if (r.ok) {
           const j = await r.json();
           const html = j && j.data && j.data.html;
@@ -3580,9 +3693,129 @@ async function ttTile(kind, z, x, y, res) {
   res.end(buf);
 }
 
+/* ---------- /api/desc: meta description untuk kartu feed yang desc RSS-nya kosong (mayoritas link redirect Google News) ----------
+   Client memanggil lazy hanya untuk kartu yang terlihat — endpoint ini TIDAK dipanggil dari
+   news(), jadi tidak ada burst fetch ratusan halaman per siklus. */
+const DESC_TTL = 6 * 3600e3;          // desc valid 6 jam
+const DESC_NEG_TTL = 10 * 60000;      // kegagalan/desc kosong hanya 10 mnt — transien tidak membekukan kartu
+const DESC_CAP = 800;                 // cap entri cache; LRU-ish: entri yang diakses di-refresh posisinya
+const DESC_MAX_PER_CALL = 8;          // hard cap fetch per request
+const DESC_FETCH_GAP = 250;           // jeda antar fetch (serial, concurrency 1)
+const DESC_HOST_GAP = 2000;           // jeda minimal antar fetch ke hostname yang sama (politeness)
+const descCache = new Map();          // url (asli ATAU hasil resolve GN) -> { desc, at }
+const descHostAt = new Map();         // hostname -> ts fetch terakhir
+const descHostChain = new Map();      // hostname -> Promise tail — antrian slot per host
+const descGet = u => {
+  const hit = descCache.get(u);
+  if (!hit) return undefined;
+  descCache.delete(u); descCache.set(u, hit);   // geser ke belakang = LRU-ish
+  return Date.now() - hit.at < (hit.desc ? DESC_TTL : DESC_NEG_TTL) ? hit.desc : undefined;
+};
+const descRemember = (keys, desc) => {
+  const now = Date.now();
+  for (const k of new Set(keys)) { descCache.delete(k); descCache.set(k, { desc, at: now }); }
+  while (descCache.size > DESC_CAP) descCache.delete(descCache.keys().next().value);
+};
+// Baca body stream hanya sampai </head> atau cap byte — meta og:/description semua ada di head,
+// halaman artikel bisa 1MB+. Early-abort: stream dibatalkan begitu cukup, tidak buffer penuh.
+async function mediaHead(r, max) {
+  const reader = r.body && r.body.getReader ? r.body.getReader() : null;
+  if (!reader) {
+    const b = Buffer.from(await r.arrayBuffer());
+    if (b.length > max) throw new Error('halaman terlalu besar');
+    return b.toString('utf8');
+  }
+  const chunks = [];
+  let total = 0, tail = '', eof = false;
+  while (!eof && total <= max) {
+    const rd = await reader.read();
+    eof = rd.done;
+    if (!rd.value) continue;
+    const chunk = Buffer.from(rd.value);
+    chunks.push(chunk);
+    total += chunk.length;
+    tail = (tail + chunk.toString('utf8')).slice(-256);   // tangkap </head> yang terpotong antar-chunk
+    if (total > max || /<\/head\s*>/i.test(tail)) break;
+  }
+  if (!eof) { try { await reader.cancel(); } catch (e) {} }
+  const html = Buffer.concat(chunks).toString('utf8');
+  const hi = html.search(/<\/head\s*>/i);
+  return hi >= 0 ? html.slice(0, hi) : html;
+}
+async function descForUrl(reqUrl) {
+  const cached = descGet(reqUrl);
+  if (cached !== undefined) return cached;
+  const x = publicURL(reqUrl);
+  if (!x) return '';
+  let target = reqUrl;
+  if (/(^|\.)news\.google\.com$/i.test(x.hostname) && GN_PATH.test(x.pathname)) {
+    try { target = await decodeGNews(reqUrl); } catch (e) { descRemember([reqUrl], ''); return ''; }
+    if (/(^|\.)news\.google\.com$/i.test(new URL(target).hostname)) { descRemember([reqUrl], ''); return ''; }   // gagal resolve → jangan fetch halaman GN
+    const viaTarget = descGet(target);   // url resolved mungkin sudah pernah di-fetch lewat request lain
+    if (viaTarget !== undefined) { descRemember([reqUrl], viaTarget); return viaTarget; }
+  }
+  const host = new URL(target).hostname;
+  // Slot per-host sebagai promise chain: request sehost berbaris rapi (gap 2dtk
+  // tetap berlaku), host BERBEDA jalan paralel — batch 8 URL GN yang resolve ke
+  // 8 publisher berbeda selesai ~4x lebih cepat daripada serial penuh.
+  const prev = descHostChain.get(host) || Promise.resolve();
+  let release;
+  const mine = new Promise(r => { release = r; });
+  descHostChain.set(host, prev.then(() => mine));
+  if (descHostChain.size > 500) descHostChain.delete(descHostChain.keys().next().value);
+  await prev;
+  const waitHost = Math.max(0, (descHostAt.get(host) || 0) + DESC_HOST_GAP - Date.now());
+  if (waitHost) await sleep(waitHost);   // tunggu slot host berikutnya — bukan skip, supaya kartu sehost tetap dapat desc
+  let html = '';
+  try {
+    const { r } = await mediaGet(target, 8000, /(^|\.)news\.google\.com$/i.test(x.hostname)
+      ? { referer: 'https://news.google.com/' }
+      : { accept: 'text/html,application/xhtml+xml;q=0.9,*/*;q=0.8' });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const ct = r.headers.get('content-type') || '';
+    if (ct && !/text\/html|application\/xhtml|text\/plain/i.test(ct)) throw new Error('bukan halaman HTML');
+    html = await mediaHead(r, 200 << 10);
+  } catch (e) {
+    descHostAt.set(host, Date.now());
+    if (descHostAt.size > 500) descHostAt.delete(descHostAt.keys().next().value);
+    descRemember([reqUrl, target], '');
+    release();
+    return '';
+  }
+  descHostAt.set(host, Date.now());
+  if (descHostAt.size > 500) descHostAt.delete(descHostAt.keys().next().value);
+  release();
+  // Reuse extractor meta rdRead: rdMeta + rdInline (decode entity + strip tag),
+  // lalu FEEDTEXT.descFrom membersihkan jadi plain text (floor 26 char sudah di dalamnya).
+  const meta = rdMeta(html);
+  const title = rdClean(meta['og:title'] || meta['twitter:title'] ||
+    (html.match(/<title[^>]*>([\s\S]*?)<\/title>/i) || [])[1] || '');
+  // JSON-LD NewsArticle/Article.description — fallback untuk halaman tanpa og:desc
+  const ldArt = rdLd(html).find(n => /article|posting|news/i.test(String(n['@type'] || ''))) || {};
+  const ldDesc = typeof ldArt.description === 'string' ? ldArt.description : '';
+  const raw = meta['og:description'] || meta['twitter:description'] || meta.description || ldDesc;
+  const desc = raw ? FEEDTEXT.descFrom({ description: rdInline(raw) }, title || '') : '';
+  const out = desc && Array.from(desc).length >= 26 ? desc : '';
+  descRemember([reqUrl, target], out);
+  return out;
+}
+
 http.createServer(async (req, res) => {
   const u = new URL(req.url, 'http://x'), cors = { 'access-control-allow-origin': '*' };
-  const json = (o, c = 200) => { res.writeHead(c, { ...cors, 'content-type': 'application/json', 'cache-control': 'no-store' }); res.end(JSON.stringify(o)); };
+  // gzip untuk payload besar (/api/news ~1.4MB, /api/x ~1MB) — browser accept-encoding
+  // otomatis; fallback plain text kalau compress gagal atau client tidak support
+  const json = (o, c = 200) => {
+    const body = JSON.stringify(o);
+    const head = { ...cors, 'content-type': 'application/json', 'cache-control': 'no-store' };
+    if (body.length > 8192 && /\bgzip\b/.test(req.headers['accept-encoding'] || '')) {
+      zlib.gzip(body, (e, b) => {
+        if (e || !b) { res.writeHead(c, head); res.end(body); return; }
+        res.writeHead(c, { ...head, 'content-encoding': 'gzip', vary: 'accept-encoding' }); res.end(b);
+      });
+      return;
+    }
+    res.writeHead(c, head); res.end(body);
+  };
   try {
     // Gate token untuk semua /api/* (kecuali /api/ping, dipakai frontend cek hidup)
     // DAN proxy media /img /hls /vhs. Token efektif = SITREP_TOKEN env, atau token
@@ -3669,14 +3902,14 @@ http.createServer(async (req, res) => {
       }
       return json(socialResponse(await threads(), tHist, SOC.socKeepTh));
     }
-    if (u.pathname === '/api/incidents') return json(await incidents());
+    if (u.pathname === '/api/incidents') { if (u.searchParams.get('fresh')) cache.delete('incidents'); return json(await incidents()); }
     if (u.pathname === '/api/situation') return json(await situation());
     if (u.pathname === '/api/market') return json(await market());
     if (u.pathname === '/api/closes') return json(await closes((u.searchParams.get('list') || '').split(',')));
     if (u.pathname === '/api/flights') return json({ ok: true, items: await flights(), at: Date.now() });
     if (u.pathname === '/api/ships') return json({ ok: true, items: await ships(), n: shipMap.size, live: !!(wsSock && !wsSock.destroyed), at: Date.now() });
     if (u.pathname === '/api/transit') return json({ ok: true, items: await transit(), at: Date.now() });
-    if (u.pathname === '/api/disaster') return json(await disaster());
+    if (u.pathname === '/api/disaster') { if (u.searchParams.get('fresh')) disCache.at = 0; return json(await disaster()); }
     if (u.pathname === '/api/weather') return json(await weather());
     if (u.pathname === '/api/wind') return json(await windGrid());
     if (u.pathname === '/api/fires') return json(await fires());
@@ -3734,6 +3967,37 @@ http.createServer(async (req, res) => {
     if (u.pathname === '/api/thumb') {
       try { return json({ ok: true, ...(await thumb(u.searchParams.get('u') || '')) }); }
       catch (e) { return json({ ok: false, err: String(e.message || e).slice(0, 160) }); }
+    }
+    if (u.pathname === '/api/desc') {
+      // desc untuk kartu feed yang desc RSS-nya kosong — dipanggil client lazy per kartu terlihat.
+      // GET ?url=<satu> ; POST {urls:[...]} maks 8. Miss diproses serial (fetch artikel = mahal).
+      try {
+        let urls = [];
+        if (req.method === 'POST') {
+          let raw = '';
+          for await (const ch of req) { raw += ch; if (raw.length > 8000) break; }
+          try { urls = JSON.parse(raw || '{}').urls || []; } catch (e) { urls = []; }
+        } else {
+          const single = u.searchParams.get('url');
+          if (single) urls = [single];
+        }
+        urls = (Array.isArray(urls) ? urls : [])
+          .map(v => String(v || '').trim())
+          .filter(v => /^https?:\/\//i.test(v))
+          .slice(0, DESC_MAX_PER_CALL);
+        const descs = {};
+        // 4 worker paralel — descForUrl sudah mengantre per-host (gap 2dtk),
+        // jadi URL sehost tetap sopan sementara host berbeda jalan bersamaan
+        const queue = urls.slice();
+        await Promise.all(Array.from({ length: Math.min(4, queue.length) }, async () => {
+          while (queue.length) {
+            const url = queue.shift();
+            try { descs[url] = await descForUrl(url); }
+            catch (e) { descs[url] = ''; }   // per-url gagal tidak boleh menjatuhkan seluruh response
+          }
+        }));
+        return json({ ok: true, descs });
+      } catch (e) { return json({ ok: true, descs: {} }); }
     }
     res.writeHead(404); res.end();
   } catch (e) { if (!res.headersSent) json({ ok: false, err: String(e.message || e) }, 502); else res.end(); }
