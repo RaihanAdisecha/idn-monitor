@@ -3054,6 +3054,7 @@ const xAll = new Map(); let xShown = 30;
 
 function linkify(t){
   return esc(deEmoji(t))
+    .replace(/https?:\/\/t\.co\/\S+/g, '')   // wrapper X tanpa info — link expanded tampil sebagai chip
     .replace(/(https?:\/\/[^\s<]+)/g, (m, u) => {
       const label = u.replace(/^https?:\/\//,'').replace(/\/$/,'');
       return `<a href="${u}" target="_blank" rel="noopener noreferrer">${label.length > 42 ? label.slice(0,42) + '…' : label}</a>`;
@@ -3086,7 +3087,11 @@ function tweetCard(p){
         ${p.url ? `<a class="tw-o" href="${esc(p.url)}" target="_blank" rel="noopener noreferrer" title="Buka di X">${ic('out')}</a>` : ''}
       </div>
       <div class="tw-t">${esc(assessmentLabel(p))}</div>
-      <div class="tw-txt">${linkify(p.text || '')}</div>
+      <div class="tw-txt">${linkify(p.text || '') || '<span style="color:#555">tautan</span>'}</div>
+      ${(p.urls || []).slice(0, 2).map(u => {
+        let host = ''; try { host = new URL(u).hostname.replace(/^www\./, ''); } catch (e) {}
+        return `<a class="th-link" href="${esc(u)}" target="_blank" rel="noopener noreferrer">${ic('out')}${esc(host || 'tautan')}</a>`;
+      }).join('')}
       <div class="tw-a">
         ${p.replies ? `<span>${I.reply}${num(p.replies)}</span>` : `<span>${I.reply}</span>`}
         ${p.reposts ? `<span>${I.rt}${num(p.reposts)}</span>` : `<span>${I.rt}</span>`}
