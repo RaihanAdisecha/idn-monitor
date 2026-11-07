@@ -269,13 +269,16 @@ a{color:inherit;text-decoration:none;text-underline-offset:2px}
   position:absolute;z-index:6;max-width:230px;pointer-events:none;
   padding:2px 0;
 }
-.sit-tip::before{
-  content:"";position:absolute;inset:-12px -18px;z-index:-1;pointer-events:none;
-  -webkit-backdrop-filter:blur(9px) saturate(1.15);backdrop-filter:blur(9px) saturate(1.15);
-  -webkit-mask-image:radial-gradient(105% 150% at 0% 50%,#000 22%,rgba(0,0,0,.6) 52%,transparent 80%);
-  mask-image:radial-gradient(105% 150% at 0% 50%,#000 22%,rgba(0,0,0,.6) 52%,transparent 80%);
-  background:radial-gradient(105% 150% at 0% 50%,rgba(8,8,10,.62) 18%,rgba(8,8,10,.2) 58%,transparent 84%);
+/* SCRIM bersama (tooltip globe + toast fokus): gelap + blur progresif KIRI -> KANAN, atas/bawah tetap penuh */
+.sit-tip::before,.sit-tip::after,.sa-box::before,.sa-box::after{
+  content:"";position:absolute;inset:-12px -48px -12px -16px;z-index:-1;pointer-events:none;
+  -webkit-mask-image:linear-gradient(90deg,transparent 0,#000 8px,#000 52%,rgba(0,0,0,.86) 64%,rgba(0,0,0,.6) 76%,rgba(0,0,0,.3) 88%,transparent 100%),linear-gradient(180deg,transparent 0,#000 5px,#000 calc(100% - 5px),transparent 100%);mask-image:linear-gradient(90deg,transparent 0,#000 8px,#000 52%,rgba(0,0,0,.86) 64%,rgba(0,0,0,.6) 76%,rgba(0,0,0,.3) 88%,transparent 100%),linear-gradient(180deg,transparent 0,#000 5px,#000 calc(100% - 5px),transparent 100%);
+  -webkit-mask-composite:source-in;mask-composite:intersect;
 }
+.sit-tip::before,.sa-box::before{-webkit-backdrop-filter:blur(16px) saturate(1.2);backdrop-filter:blur(16px) saturate(1.2)}
+.sit-tip::after,.sa-box::after{background:rgba(6,6,8,.88)}
+.sit-tip .tip-t{text-shadow:0 1px 6px rgba(0,0,0,.7)}
+.tip-h{margin-top:7px;font:600 7.5px/1 var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--accent)}
 .sit-tip>div{position:relative}
 .sit-alert{
   position:absolute;z-index:7;top:50px;right:12px;
@@ -285,22 +288,27 @@ a{color:inherit;text-decoration:none;text-underline-offset:2px}
 .sit-alert.show{opacity:1;visibility:visible;animation:alertIn .28s cubic-bezier(.2,.8,.3,1)}
 @keyframes alertIn{from{opacity:0;transform:translateX(16px)}to{opacity:1;transform:translateX(0)}}
 .sit-alert.hide{transition:opacity .3s,visibility .3s;opacity:0;visibility:hidden}
-.sa-box{position:relative;background:#1f1f1f;padding:9px 12px 9px;box-shadow:0 8px 22px rgba(0,0,0,.6)}
+.sa-box{position:relative;isolation:isolate;padding:10px 12px}
+.sa-t{text-shadow:0 1px 6px rgba(0,0,0,.7)}
+@keyframes alertpulse{0%,100%{opacity:1}50%{opacity:.55}}
 .sa-cr{position:absolute;width:9px;height:9px;pointer-events:none;border:1.75px solid var(--warn);animation:alertpulse 2s ease-in-out infinite}
 .sa-cr.tl{top:-3px;left:-3px;border-right:none;border-bottom:none}
 .sa-cr.tr{top:-3px;right:-3px;border-left:none;border-bottom:none}
 .sa-cr.bl{bottom:-3px;left:-3px;border-right:none;border-top:none}
 .sa-cr.br{bottom:-3px;right:-3px;border-left:none;border-top:none}
-@keyframes alertpulse{0%,100%{opacity:1}50%{opacity:.55}}
-.sa-h{display:flex;align-items:center;gap:7px;margin-bottom:4px}
+.sa-sev{display:flex;gap:2px;flex:none}
+.sa-sev i{width:5px;height:3px;background:rgba(255,255,255,.16)}
+.sa-sev i.on{background:var(--sa-c,var(--warn))}
+.sa-co{margin:5px 0 6px;font:500 8.5px/1 var(--mono);letter-spacing:.04em;color:var(--text3);font-variant-numeric:tabular-nums;white-space:nowrap}
+.sa-h{display:flex;align-items:center;gap:7px}
 .sa-g{width:11px;height:11px;flex:none;stroke:var(--text3);stroke-width:1.1;fill:none}
 .sa-k{flex:1;min-width:0;font:600 8px/1 var(--mono);letter-spacing:.1em;text-transform:uppercase;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.sa-go{font:600 7.5px/1 var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--text3);opacity:0;transition:opacity .15s}
-.sit-alert:hover .sa-go{opacity:1}
+.sa-go{font:600 7.5px/1 var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--text3);opacity:.7;transition:opacity .15s,color .15s}
+.sit-alert:hover .sa-go{opacity:1;color:#f4f4f4}
 
 
 .sa-t{font:400 11.5px/1.4 var(--sans);color:#f4f4f4;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
-.sa-m{margin-top:5px;font:400 8px/1.3 var(--mono);letter-spacing:.05em;text-transform:uppercase;color:#8d8d8d}
+.sa-m{margin-top:6px;font:400 8px/1.3 var(--mono);letter-spacing:.05em;text-transform:uppercase;color:#8d8d8d}
 .tip-k{font:600 8px/1 var(--mono);letter-spacing:.09em;text-transform:uppercase;margin-bottom:5px;padding-bottom:5px;border-bottom:1px solid rgba(255,255,255,.13);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .tip-k::before{content:"";display:inline-block;width:6px;height:6px;background:currentColor;margin-right:6px;vertical-align:1px}
 .tip-t{font:400 11.5px/1.45 var(--sans);color:#f4f4f4}
@@ -1663,6 +1671,7 @@ const REDUCED = matchMedia('(prefers-reduced-motion: reduce)').matches;
 const view = { lon: 118, lat: 0, zoom: 1 };
 const clampN = (v, a, b) => Math.min(b, Math.max(a, v));
 let flyAnim = null, lastGestEnd = -1e9, globeSuppressClick = 0, gesture = null;
+let globePtrType = 'mouse', tapKey = '', tapAt = 0;   // mobile: tap 1 = tooltip, tap 2 (titik sama) = reader
 const ptrs = new Map();
 
 const hexA = (hex, a) => {
@@ -1752,13 +1761,18 @@ function showSitAlert(p){
   const el = $('#sit-alert'); if (!el) return;
   const cat = p.kind || 'insiden';
   const color = CAT_COLOR[cat] || '#8d8d8d';
-  el.innerHTML = `<div class="sa-box">
+  const SEV = { disaster: 1, fire: .96, flood: .86, demo: .82, kriminal: .78, insiden: .62, kesehatan: .6, siber: .55, politik: .55, ekonomi: .5 };   // sama dengan CATS di server
+  const lit = Math.max(1, Math.min(5, Math.round((SEV[cat] || .5) * 5)));
+  const co = (typeof p.la === 'number' && typeof p.lo === 'number')
+    ? `${Math.abs(p.la).toFixed(2)}°${p.la < 0 ? 'S' : 'N'} · ${Math.abs(p.lo).toFixed(2)}°${p.lo < 0 ? 'W' : 'E'}` : '';
+  el.innerHTML = `<div class="sa-box" style="--sa-c:${color}">
     <i class="sa-cr tl"></i><i class="sa-cr tr"></i><i class="sa-cr bl"></i><i class="sa-cr br"></i>
     <div class="sa-h"><svg class="sa-g" viewBox="0 0 12 12" aria-hidden="true"><circle cx="6" cy="6" r="3.1"/><path d="M6 .8v2M6 9.2v2M.8 6h2M9.2 6h2"/></svg>
-      <span class="sa-k" style="color:${color}">${esc(p.label || CAT_LABEL[cat])}${p.name ? ' — ' + esc(p.name) : ''}</span>
-      <span class="sa-go">BUKA ↗</span></div>
+      <span class="sa-k" style="color:${color}">${esc(p.label || CAT_LABEL[cat])}${p.name ? ' · ' + esc(p.name) : ''}</span>
+      <span class="sa-sev" title="Tingkat keparahan kategori">${[0, 1, 2, 3, 4].map(i => `<i${i < lit ? ' class="on"' : ''}></i>`).join('')}</span></div>
+    ${co ? `<div class="sa-co">${co}${p.prec === 'prov' ? ' · perkiraan' : ''}</div>` : '<div style="height:5px"></div>'}
     <div class="sa-t">${esc(deEmoji(p.title || ''))}</div>
-    <div class="sa-m">${esc(p.src || '')}${p.ts ? ' · ' + esc(wibTime(p.ts)) + ' WIB' : ''}</div>
+    <div class="sa-m">${esc(p.src || '')}${p.ts ? ' · ' + esc(wibTime(p.ts)) + ' WIB' : ''} · <span class="sa-go">Buka ↗</span></div>
   </div>`;
   sitAlertUrl = p.url || '';
   el.hidden = false;
@@ -2020,26 +2034,27 @@ function globeLoop(now){
   if (globeReady && now - globeLast > 33) { globeLast = now; drawGlobe(now); }
   globeRaf = requestAnimationFrame(globeLoop);
 }
-function nearestGlobePoint(x, y){
+function nearestGlobePoint(x, y, r = 9){
   let best = null, bd = Infinity;
   for (const d of globePoints) {
     const dist = Math.hypot(d.x - x, d.y - y);
-    if (dist < 9 && dist < bd) { bd = dist; best = d; }
+    if (dist < r && dist < bd) { bd = dist; best = d; }
   }
   return best;
 }
 const precTxt = p => p.prec === 'prov' ? 'lokasi: perkiraan tingkat provinsi' : p.prec === 'region' ? 'lokasi: perkiraan wilayah' : p.prec === 'kab' ? 'lokasi: pusat kab/kota' : '';
-function showGlobeTip(e, d){
+function showGlobeTip(e, d, touch){
   const tip = $('#sit-tip');
   const wrap = $('.sit-mapwrap').getBoundingClientRect();
   const p = d.p;
   tip.innerHTML = `<div class="tip-k" style="color:${d.color}">${esc(p.label || CAT_LABEL[d.cat])}${p.name ? ' · ' + esc(p.name) : ''}</div>
     <div class="tip-t">${esc(deEmoji(p.title || ''))}</div>
-    <div class="tip-m">${esc(p.src || '')} · ${esc(p.ts ? wibTime(p.ts) : '')} WIB${precTxt(p) ? ' · ' + esc(precTxt(p)) : ''}</div>`;
+    <div class="tip-m">${esc(p.src || '')} · ${esc(p.ts ? wibTime(p.ts) : '')} WIB${precTxt(p) ? ' · ' + esc(precTxt(p)) : ''}</div>${touch && p.url ? '<div class="tip-h">Ketuk lagi · buka reader</div>' : ''}`;
   tip.hidden = false;
   const tw = tip.offsetWidth, th = tip.offsetHeight;
   let left = e.clientX - wrap.left + 12, top = e.clientY - wrap.top + 12;
-  if (left + tw > wrap.width - 6) left = e.clientX - wrap.left - tw - 10;
+  if (touch) { left = e.clientX - wrap.left - tw / 2; top = e.clientY - wrap.top - th - 22; if (top < 4) top = e.clientY - wrap.top + 22; }   // di atas jari
+  if (left + tw > wrap.width - 6) left = touch ? wrap.width - tw - 8 : e.clientX - wrap.left - tw - 10;
   if (top + th > wrap.height - 6) top = e.clientY - wrap.top - th - 10;
   tip.style.left = Math.max(4, left) + 'px';
   tip.style.top = Math.max(4, top) + 'px';
@@ -2049,7 +2064,7 @@ function ptrEnd(e){
   ptrs.delete(e.pointerId);
   const c = $('#sit-globe');
   if (ptrs.size === 0) {
-    if (gesture && gesture.moved > 8) globeSuppressClick = performance.now();
+    if (gesture && gesture.moved > 8) { globeSuppressClick = performance.now(); tapKey = ''; }
     lastGestEnd = performance.now();
     gesture = null;
     if (c) c.style.cursor = 'grab';
@@ -2063,6 +2078,7 @@ function bindGlobeEvents(){
   const c = $('#sit-globe');
   c.addEventListener('pointerdown', e => {
     e.preventDefault();
+    globePtrType = e.pointerType || 'mouse';
     try { c.setPointerCapture(e.pointerId); } catch (err) {}
     ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
     flyAnim = null;
@@ -2077,7 +2093,7 @@ function bindGlobeEvents(){
   });
   c.addEventListener('pointermove', e => {
     const rect = c.getBoundingClientRect();
-    if (!ptrs.has(e.pointerId)) {
+    if (!ptrs.has(e.pointerId) && e.pointerType !== 'touch') {
       const hit = nearestGlobePoint(e.clientX - rect.left, e.clientY - rect.top);
       if (hit) { c.style.cursor = 'pointer'; showGlobeTip(e, hit); }
       else { c.style.cursor = 'grab'; hideGlobeTip(); }
@@ -2110,7 +2126,20 @@ function bindGlobeEvents(){
   c.addEventListener('click', e => {
     if (performance.now() - globeSuppressClick < 350) return;
     const rect = c.getBoundingClientRect();
-    const hit = nearestGlobePoint(e.clientX - rect.left, e.clientY - rect.top);
+    const touch = globePtrType === 'touch' || globePtrType === 'pen';
+    const hit = nearestGlobePoint(e.clientX - rect.left, e.clientY - rect.top, touch ? 22 : 9);
+    if (touch) {
+      if (!hit) { tapKey = ''; hideGlobeTip(); return; }
+      const key = String(hit.p.url || hit.p.title || '');
+      if (key && key === tapKey && performance.now() - tapAt < 9000) {   // tap kedua di titik yang sama
+        tapKey = ''; hideGlobeTip();
+        if (hit.p.url) rdOpen(hit.p.url, null, true, '').catch(() => window.open(hit.p.url, '_blank', 'noopener'));
+        return;
+      }
+      tapKey = key; tapAt = performance.now();
+      showGlobeTip(e, hit, true);
+      return;
+    }
     if (hit && hit.p && hit.p.url) rdOpen(hit.p.url, null, true, '').catch(() => window.open(hit.p.url, '_blank', 'noopener'));
   });
 }
