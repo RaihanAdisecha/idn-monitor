@@ -1873,7 +1873,7 @@ async function cctvBekasi(){
   return d.filter(x => x && x.path).map(x => ({
     n: String(x.name || x.path).replace(/_/g, ' '),
     s: 'https://eofficev2.bekasikota.go.id/backupcctv/m3/' + x.path,
-    e: '', la: null, lo: null, c: 'Bekasi'
+    e: '', la: null, lo: null, c: 'Kota Bekasi'
   }));
 }
 /* probe playlist tiap cam di background — yang upstream-nya kosong/404 dibuang dari catalog */
