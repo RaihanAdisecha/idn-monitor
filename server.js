@@ -1968,20 +1968,27 @@ function rdBlocks(html, finalURL) {
     vseen.add(k); vids.push(v);
     return '\n@@RDV' + (vids.length - 1) + '@@\n';
   });
+  // buang container reaksi/emoji/rating/social-widget sebelum scan gambar — isinya bukan konten artikel
+  s = s.replace(/<(div|span|p|section|ul|ol|table|figure)\b[^>]*(?:class|id)=["'][^"']*(?:reaction|reactions|rating|emoticon|emoji|vote|poll|like-box|dislike|social-share|article-tools|post-tools|share-tools|komentar|comment-box)[^"']*["'][^>]*>[\s\S]*?<\/\1\s*>/gi, ' ');
+  s = s.replace(/<(div|span|p|section|ul|ol|table|figure)\b[^>]*(?:class|id)=["'][^"']*(?:reaction|reactions|rating|emoticon|emoji|vote|poll|like-box|dislike|social-share|article-tools|post-tools|share-tools|komentar|comment-box)[^"']*["'][^>]*\/>/gi, ' ');
   // gambar dalam badan artikel: simpan di posisi aslinya (figure+figcaption atau <img> lepas)
   const imgs = [], iseen = new Set();
   const pickImg = tag => {
     const attr = n => (tag.match(new RegExp('\\b' + n + '=["\']([^"\']+)', 'i')) || [])[1] || '';
+    const cls = (attr('class') + ' ' + attr('id')).toLowerCase();
+    if (/emoji|emoticon|reaction|rating|like|dislike|vote|poll|icon|avatar|logo|badge|smile|frown|thumb|share|social|author|byline/.test(cls)) return null;   // img-widget, bukan foto berita
     let u = attr('data-src') || attr('data-lazy-src') || attr('data-original') || attr('data-lazy') || '';
     if (!u) { const ss = attr('data-srcset') || attr('srcset'); if (ss) u = ss.split(',').map(x => x.trim().split(/\s+/)).sort((a, b) => parseInt(b[1] || 0) - parseInt(a[1] || 0))[0][0]; }
     if (!u) u = attr('src');
     u = rdAbs(u, finalURL);
     if (!u || /^data:/i.test(u)) return null;
-    if (RD_IMG_JUNK.test(u) || /\.(svg|gif)(\?|#|$)/i.test(u)) return null;
-    if (/(\/|_)(banner|promo|iklan|widget|sidebar|stripbanner|avatar|logo)(\/|[-_.]|$)/i.test(u.split('?')[0])) return null;
+    if (RD_IMG_JUNK.test(u) || /\.(svg|gif|ico|cur)(\?|#|$)/i.test(u)) return null;
+    if (/(\/|_)(banner|promo|iklan|widget|sidebar|stripbanner|avatar|logo|emoji|emoticon|reaction|rating|vote|poll|tracking|pixel|spacer|blank|1x1)(\/|[-_.]|$)/i.test(u.split('?')[0])) return null;
     const w = parseInt(attr('width')) || 0, h = parseInt(attr('height')) || 0;
     if ((w && w < 280) || (h && h < 160)) return null;
-    return { url: u, alt: rdInline(attr('alt')) };
+    const alt = rdInline(attr('alt'));
+    if (/^(like|dislike|vote|rate|bagus|jelek|setuju|tidak setuju|share|comment|komentar|emoji)/i.test(alt)) return null;   // alt reaksi, bukan foto
+    return { url: u, alt };
   };
   const addImg = (tag, cap) => {
     const im = pickImg(tag); if (!im) return ' ';
