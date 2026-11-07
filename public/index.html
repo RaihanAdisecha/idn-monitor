@@ -1817,13 +1817,13 @@ const seenIds = new Set((() => { try { return JSON.parse(sessionStorage.getItem(
 const seenWasEmpty = seenIds.size === 0;   // sesi baru: backlog awal ditandai seen diam-diam
 const bootUntil = seenWasEmpty ? Date.now() + 150e3 : 0;   // suppress backlog hanya ~150 dtk pertama setelah load
 const focusHoldUntil = Date.now() + 20000;   // 20 dtk pertama: antrian diisi tapi globe tidak langsung terbang
-const saveSeen = () => { try { sessionStorage.setItem(SEEN_KEY, JSON.stringify([...seenIds].slice(-800))); } catch (e) {} };
+const saveSeen = () => { try { sessionStorage.setItem(SEEN_KEY, JSON.stringify([...seenIds].slice(-3000))); } catch (e) {} };
 const itemIdOf = p => p.url || ((p.title || '') + '|' + (p.src || ''));
 const focusQueue = [];        // item fresh yang belum sempat diumumkan — tidak ditelan, diuras satu per evaluasi
 let lastAutoFocus = 0, rotIdx = 0, focusedHome = true;
 const FOCUS_COOLDOWN = 90000; // anti-yank: globe tidak boleh dansa tiap cycle
 const ROTATE_AFTER = 60000;   // antrean kosong → rotasi item terbaru tiap ~60 dtk setelah fokus terakhir
-const HOME_VIEW = { lat: -2.5, lon: 118, zoom: 2.3 };   // cukup dekat untuk baca dot, tidak mini
+const HOME_VIEW = { lat: -2.5, lon: 118, zoom: 1 };
 const MAG_MIN_FOCUS = 4.5;    // gempa kecil tetap jadi titik, tapi tidak merebut fokus
 const magOf = p => {
   if (typeof p.mag === 'number') return p.mag;
@@ -1837,6 +1837,7 @@ function focusCandidates(){
   const winOf = p => p.sub === 'gempa' ? 12 * 3600e3 : 6 * 3600e3;
   return (PULSE || []).concat(DIS_PULSE || []).filter(p => {
     if (p.fixed || typeof p.la !== 'number' || typeof p.lo !== 'number') return false;
+    if (legendOn[p.kind] === false) return false;   // kategori dimatikan di legend = dot tidak dirender → jangan fokus ke titik invisible
     if (!(p.la > -12 && p.la < 8 && p.lo > 92 && p.lo < 145)) return false;   // bbox Indonesia
     if (!p.ts || now - p.ts > winOf(p) || p.ts > now + 5 * 60e3) return false;
     if (p.sub === 'gempa') { const m = magOf(p); if (m != null && m < MAG_MIN_FOCUS) return false; }
@@ -1870,11 +1871,13 @@ function maybeFocusFresh(){
     const qid = itemIdOf(focusQueue[i]);
     if (!liveIds.has(qid)) { focusQueue.splice(i, 1); seenIds.delete(qid); }
   }
-  if (seenIds.size > 800) { const keep = [...seenIds].slice(-800); seenIds.clear(); keep.forEach(x => seenIds.add(x)); }
+  if (seenIds.size > 3000) { const keep = [...seenIds].slice(-3000); seenIds.clear(); keep.forEach(x => seenIds.add(x)); }
   saveSeen();
+  if (document.hidden) return;                            // tab background: antrian tetap diisi, aksi fokus menunggu tab terlihat
   if (now < focusHoldUntil) return;                        // boot hold: antrian terisi, fokus menunggu
   if (performance.now() - lastGestEnd < 25000) return;   // jangan rebut globe dari user
-  if (now - lastAutoFocus < FOCUS_COOLDOWN) return;       // throttle: satu fokus per 90 detik
+  const cd = focusQueue.length ? 45000 : FOCUS_COOLDOWN;  // item antri didahulukan lebih cepat; rotasi ambient tetap 90 dtk
+  if (now - lastAutoFocus < cd) return;
   if (focusQueue.length) {
     focusQueue.sort(focusSort);
     doFocus(focusQueue.shift());
@@ -1896,7 +1899,7 @@ function goHome(){
   if (focusedHome || !globeReady) return;
   if (performance.now() - lastGestEnd < 60000) return;   // pulang ke home butuh idle lebih lama — paling mengganggu
   focusedHome = true;
-  flyTo(HOME_VIEW.lat, HOME_VIEW.lon, clampN(view.zoom - 2, HOME_VIEW.zoom, 4));   // pull-back proporsional, tidak jatuh bebas ke zoom 1
+  flyTo(HOME_VIEW.lat, HOME_VIEW.lon, HOME_VIEW.zoom);
 }
 setInterval(() => {   // heartbeat: antrian diuras + rotasi jalan walau tidak ada fetch baru
   if (document.hidden || !globeReady) return;
@@ -1933,9 +1936,11 @@ function showSitAlert(p){
     el.classList.add('hide');
     setTimeout(() => {
       el.hidden = true; el.classList.remove('hide','show'); setLinkItem(null);
-      if (globeReady) flyTo(view.lat, view.lon, clampN(view.zoom - 1.6, 2.4, 4.5));   // zoom out dikit, center tetap di titik fokus (arg order: lat, lon!)
+      // zoom-out hanya kalau tidak ada antrian menunggu & user tidak baru berinteraksi — jangan tarik view yang baru difokuskan
+      if (globeReady && !focusQueue.length && performance.now() - lastGestEnd > 10000)
+        flyTo(view.lat, view.lon, clampN(view.zoom - 1.6, 2.4, 4.5));
     }, 320);
-  }, 7000);
+  }, 10000);
 }
 (function(){
   const el = $('#sit-alert');
