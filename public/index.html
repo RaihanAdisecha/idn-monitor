@@ -1086,6 +1086,7 @@ a{color:inherit;text-decoration:none;text-underline-offset:2px}
 .rd-fig figcaption{font:400 9.5px/1.5 var(--mono);letter-spacing:.03em;color:var(--text3);margin-top:6px}
 .rd-vid{margin:2px 0 18px;border:1px solid var(--border);background:#000}
 .rd-vid iframe{display:block;width:100%;aspect-ratio:16/9;border:0}
+.rd-vid video{display:block;width:100%;aspect-ratio:16/9;background:#000}
 .rd-facade{position:relative;display:block;width:100%;aspect-ratio:16/9;padding:0;border:0;background:#000;cursor:pointer;overflow:hidden}
 .rd-facade img{display:block;width:100%;height:100%;object-fit:cover;opacity:.85}
 .rd-facade .rd-play{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:44px;height:44px;border-radius:50%;background:rgba(200,20,20,.92);display:flex;align-items:center;justify-content:center;box-shadow:0 2px 10px rgba(0,0,0,.5)}
@@ -5399,9 +5400,14 @@ function rdError(url, msg) {
 function rdArticle(d, url) {
   const ts = d.time && !isNaN(Date.parse(d.time)) ? wibFull(Date.parse(d.time)) + ' WIB' : '';
   const meta = [d.site, d.byline, ts].filter(Boolean);
-  const hero = d.img;   // server sudah memvalidasi (gambar RSS ikut gerbang ukuran/duplikat); jangan fallback mentah
+  // hero image yang sama dengan poster video = duplikat — tampilkan player, bukan gambar
+  const posters = new Set();
+  for (const v of (d.videos || [])) if (v && v.poster) posters.add(v.poster);
+  for (const b of (d.blocks || [])) if (b.k === 'v' && b.v && b.v.poster) posters.add(b.v.poster);
+  const hero = d.img && !posters.has(d.img) ? d.img : '';   // server sudah memvalidasi (gambar RSS ikut gerbang ukuran/duplikat); jangan fallback mentah
   const img = hero ? `<img class="rd-hero" src="${esc(hero)}" alt="" loading="eager" referrerpolicy="no-referrer" onerror="this.remove()">` : '';
   const rdVidHtml = v => {
+    if (v.kind === 'video') return `<video class="rd-vid" controls playsinline preload="metadata" src="${esc(v.url)}"${v.poster ? ` poster="${esc(v.poster)}"` : ''}></video>`;
     if (v.kind !== 'iframe') return '';
     const yid = (String(v.url).match(/embed\/([\w-]{6,15})/i) || [])[1];
     if (!yid) return `<div class="rd-vid"><iframe src="${esc(v.url)}" title="Video" loading="lazy" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe></div>`;
@@ -5423,7 +5429,7 @@ function rdArticle(d, url) {
     }).join('') || '<p class="rd-p">Tidak ada teks yang bisa diekstrak.</p>';
   } else {
     const pl = (d.paras || []).map((p, i) => `<p class="rd-p${i === 0 ? ' rd-lead' : ''}">${rdLink(p)}</p>`);
-    const vl = (d.videos || []).filter(v => v.kind === 'iframe').map(rdVidHtml);
+    const vl = (d.videos || []).filter(v => v.kind === 'iframe' || v.kind === 'video').map(rdVidHtml);
     const outp = [];
     pl.forEach((p, i) => { outp.push(p); const k = i + 1; vl.forEach((v, j) => { const at = pl.length >= 2 ? Math.min(pl.length - 1, Math.max(1, Math.round(pl.length * (j + 1) / (vl.length + 1)))) : 1; if (at === k) outp.push(v); }); });
     if (!pl.length) outp.push(...vl);
@@ -5437,6 +5443,17 @@ function rdArticle(d, url) {
   $('#rd-state').textContent = (d.thin ? 'ringkasan' : (d.paras || []).length + ' paragraf') + ' · ' + rdHostOf(d.final || url);
   $('#rd-open').href = d.final || url;
   $('#rd-body').scrollTop = 0;
+  $('#rd-body').querySelectorAll('video.rd-vid').forEach(rdMountVideo);
+}
+// video langsung: m3u8 butuh hls.js di Chrome (Safari native); mp4 langsung jalan
+function rdMountVideo(v) {
+  const src = v.getAttribute('src') || '';
+  if (!/\.m3u8(\?|#|$)/i.test(src)) return;
+  if (window.Hls && Hls.isSupported()) {
+    const h = new Hls({ maxBufferLength: 30 });
+    h.loadSource(src); h.attachMedia(v);
+    v.addEventListener('error', () => { try { h.destroy(); } catch (e) {} }, { once: true });
+  }
 }
 // facade YouTube: klik → ganti thumbnail dengan iframe asli
 $('#rd-body').addEventListener('click', e => {
