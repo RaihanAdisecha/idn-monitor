@@ -1820,7 +1820,7 @@ const focusHoldUntil = Date.now() + 20000;   // 20 dtk pertama: antrian diisi ta
 const saveSeen = () => { try { sessionStorage.setItem(SEEN_KEY, JSON.stringify([...seenIds].slice(-3000))); } catch (e) {} };
 const itemIdOf = p => p.url || ((p.title || '') + '|' + (p.src || ''));
 const focusQueue = [];        // item fresh yang belum sempat diumumkan — tidak ditelan, diuras satu per evaluasi
-let lastAutoFocus = 0, rotIdx = 0, focusedHome = true;
+let lastAutoFocus = 0, rotIdx = 0, rotSig = '', focusedHome = true;
 const FOCUS_COOLDOWN = 90000; // anti-yank: globe tidak boleh dansa tiap cycle
 const ROTATE_AFTER = 60000;   // antrean kosong → rotasi item terbaru tiap ~60 dtk setelah fokus terakhir
 const HOME_VIEW = { lat: -2.5, lon: 118, zoom: 1 };
@@ -1830,11 +1830,15 @@ const magOf = p => {
   const m = String(p.title || '').match(/\b(?:m|mag)\.?\s*[:=]?\s*(\d+[.,]\d)/i);
   return m ? parseFloat(m[1].replace(',', '.')) : null;
 };
-// Kandidat fokus: jendela 24 jam (sama dengan titik/KPI), tapi "layak diumumkan" lebih ketat:
-// insiden/volcano < 6 jam, gempa < 12 jam dan hanya M >= MAG_MIN_FOCUS.
+// Kandidat fokus = kejadian BARU, bukan konteks 24 jam: insiden/volcano < 2 jam,
+// gempa < 3 jam (M>=6.5 dapat 8 jam), M >= MAG_MIN_FOCUS. Dot tetap 24 jam; fokus itu untuk "baru".
+const HOT_MS = 90 * 60e3;   // prioritas bencana hanya berlaku selama item masih "panas"
 function focusCandidates(){
   const now = Date.now();
-  const winOf = p => p.sub === 'gempa' ? 12 * 3600e3 : 6 * 3600e3;
+  const winOf = p => {
+    if (p.sub === 'gempa') { const m = magOf(p); return (m != null && m >= 6.5) ? 8 * 3600e3 : 3 * 3600e3; }
+    return 2 * 3600e3;
+  };
   return (PULSE || []).concat(DIS_PULSE || []).filter(p => {
     if (p.fixed || typeof p.la !== 'number' || typeof p.lo !== 'number') return false;
     if (legendOn[p.kind] === false) return false;   // kategori dimatikan di legend = dot tidak dirender → jangan fokus ke titik invisible
@@ -1844,8 +1848,8 @@ function focusCandidates(){
     return true;
   });
 }
-// Urutan: gempa besar (M>=5) & gunung dulu, selain itu murni terbaru. Bukan "bencana selalu menang".
-const focusRank = p => (p.sub === 'volcano' || (p.sub === 'gempa' && (magOf(p) || 0) >= 5)) ? 1 : 0;
+// Urutan queue: gunung api & gempa M>=5 yang masih "panas" (<90 mnt) didahulukan; selebihnya murni terbaru.
+const focusRank = p => ((p.sub === 'volcano' || (p.sub === 'gempa' && (magOf(p) || 0) >= 5)) && Date.now() - (p.ts || 0) < HOT_MS) ? 1 : 0;
 const focusSort = (a, b) => (focusRank(b) - focusRank(a)) || (b.ts || 0) - (a.ts || 0);
 function doFocus(t, silent){
   lastAutoFocus = Date.now();
@@ -1891,7 +1895,9 @@ function idleRotate(items, now){
   if (now - lastAutoFocus < ROTATE_AFTER) return;
   if (performance.now() - lastGestEnd < 45000) return;   // user baru berinteraksi <45 dtk → jangan ganggu
   if (!items.length) { goHome(); return; }
-  const top = items.slice().sort(focusSort).slice(0, 5);
+  const top = items.slice().sort((a, b) => (b.ts || 0) - (a.ts || 0)).slice(0, 5);   // rotasi = yang terbaru, bukan yang paling besar
+  const sig = top.map(itemIdOf).join('|');
+  if (sig !== rotSig) { rotSig = sig; rotIdx = 0; }   // set berubah → mulai putaran dari awal, jangan skip item baru
   if (rotIdx >= top.length) { rotIdx = 0; goHome(); return; }
   doFocus(top[rotIdx++], true);
 }
