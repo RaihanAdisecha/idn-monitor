@@ -1829,8 +1829,11 @@ const focusHoldUntil = Date.now() + 20000;   // 20 dtk pertama: antrian diisi ta
 const saveSeen = () => { try { sessionStorage.setItem(SEEN_KEY, JSON.stringify([...seenIds].slice(-3000))); } catch (e) {} };
 const itemIdOf = p => p.url || ((p.title || '') + '|' + (p.src || ''));
 const focusQueue = [];        // item fresh yang belum sempat diumumkan — tidak ditelan, diuras satu per evaluasi
-let lastAutoFocus = 0, focusedHome = true;
+let lastAutoFocus = 0, lastRotFocus = 0, focusedHome = true;
+const rotSeen = new Map();   // id → ts toast rotasi terakhir — anti spam item yang sama
 const FOCUS_COOLDOWN = 90000; // anti-yank: globe tidak boleh dansa tiap cycle
+const ROTATE_MS = 4 * 60e3;    // rotasi spotlight: max 1 toast per 4 mnt
+const ROT_SEEN_MS = 60 * 60e3; // item yang sama tidak di-toast rotasi dua kali dalam 60 mnt
 const HOME_VIEW = { lat: -2.5, lon: 118, zoom: 2.2 };
 const MAG_MIN_FOCUS = 4.5;    // gempa kecil tetap jadi titik, tapi tidak merebut fokus
 const magOf = p => {
@@ -1889,14 +1892,32 @@ function maybeFocusFresh(){
   if (document.hidden) return;                            // tab background: antrian tetap diisi, aksi fokus menunggu tab terlihat
   if (now < focusHoldUntil) return;                        // boot hold: antrian terisi, fokus menunggu
   if (performance.now() - lastGestEnd < 25000) return;   // jangan rebut globe dari user
-  const cd = focusQueue.length ? 45000 : FOCUS_COOLDOWN;  // item antri didahulukan lebih cepat; rotasi ambient tetap 90 dtk
+  const cd = focusQueue.length ? 45000 : FOCUS_COOLDOWN;  // item antri didahulukan lebih cepat; spotlight rotasi di-throttle ROTATE_MS
   if (now - lastAutoFocus < cd) return;
   if (focusQueue.length) {
     focusQueue.sort(focusSort);
-    doFocus(focusQueue.shift());
+    const q = focusQueue.shift();
+    rotSeen.set(itemIdOf(q), now);   // announcement antrian ikut menghitung sebagai spotlight — jangan langsung diulang rotasi
+    doFocus(q);
     return;
   }
-  goHome();   // antrian kosong → tidak ada rotasi senyap; globe hanya pulang ke overview
+  // Rotasi spotlight: tiap ~4 mnt.toast item terbaru yang belum di-spotlight <60 mnt.
+  // Semua kandidat sudah pernah di-toast → reset siklus & pulang ke overview.
+  if (now - lastRotFocus >= ROTATE_MS) {
+    const eligible = items
+      .filter(p => { const id = itemIdOf(p); return id && now - (rotSeen.get(id) || 0) >= ROT_SEEN_MS; })
+      .sort((a, b) => (b.ts || 0) - (a.ts || 0));
+    if (eligible.length) {
+      const pick = eligible[0];
+      rotSeen.set(itemIdOf(pick), now);
+      if (rotSeen.size > 500) { for (const [k, v] of rotSeen) if (now - v > ROT_SEEN_MS) rotSeen.delete(k); }
+      lastRotFocus = now;
+      doFocus(pick);   // tetap toast — invariant flyTo=toast terjaga
+      return;
+    }
+    rotSeen.clear();
+  }
+  goHome();
 }
 function goHome(){
   if (focusedHome || !globeReady) return;
@@ -2405,6 +2426,7 @@ addEventListener('resize', () => drawGlobe(performance.now()));
 /* --- grouping klaster: tempat + kategori dalam window 12 jam --- */
 function normTitle(t){
   return String(t || '').toLowerCase()
+    .replace(/https?:\/\/\S+|via\s+@youtube/gi, ' ')
     .replace(/\s+-\s+[^-]{2,45}$/, '')
     .replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
 }
@@ -2665,25 +2687,24 @@ async function pullStocks(){
 setInterval(pullStocks, 60000);
 function updateDistress(){
   if (!SIT) return;
-  const posts = [];
-  for (const p of (xPosts || [])) posts.push({ text: p.text || '', from: 'X' });
-  for (const p of (tPosts || [])) posts.push({ text: p.text || '', from: 'Threads' });
+  const posts = socialPool().sort((a, b) => b.ts - a.ts);
   const groups = [];
   for (const p of posts) {
-    const cat = catOfTitle(p.text);
+    const cat = socialCategory(p);
     if (!cat) continue;
     const sig = toks(p.text);
     let target = null;
     for (const g of groups) {
-      if (g.cat !== cat) continue;
+      if (g.cat !== cat || Math.abs(g.latest - p.ts) > 90 * 60e3) continue;
       if (g.sigs.some(s => jac(s, sig) > 0.6)) { target = g; break; }
     }
     if (!target) {
       if (groups.length >= 20) continue;
-      target = { cat, n: 0, sigs: [], sample: p.text, from: p.from };
+      target = { id: p.url || p.text, cat, n: 0, posts: [], sigs: [], sample: p.text, from: p.from, latest: p.ts };
       groups.push(target);
     }
     target.n++;
+    target.posts.push(p);
     target.sigs.push(sig);
   }
   groups.sort((a, b) => b.n - a.n);
@@ -2706,34 +2727,38 @@ function newsLine(x){
   return `<div class="cl-line"><time>${esc(x.ts ? wibTime(x.ts) : '')}</time>
     <span><a href="${esc(x.url)}" target="_blank" rel="noopener">${esc(deEmoji(x.title))}</a><span class="cl-s">${ic('news')} ${esc(x.src || '')}</span></span></div>`;
 }
+// Only server-classified topics can become signals. Query provenance is not evidence.
+const SOCIAL_CATEGORY = { demo:'demo', kebakaran:'fire', karhutla:'fire', banjir:'flood', gempa:'disaster', kecelakaan:'insiden', penembakan:'kriminal', pencurian:'kriminal', penangkapan:'kriminal', phk:'ekonomi', rupiah:'ekonomi', ihsg:'ekonomi', 'listrik padam':'ekonomi', wabah:'kesehatan', pemilu:'politik', ransomware:'siber', 'serangan siber':'siber', 'akun dibajak':'siber' };
+function socialCategory(p){
+  const cats = new Set((p.topics || []).map(t => SOCIAL_CATEGORY[t]).filter(Boolean));
+  return CAT_ORDER.find(c => cats.has(c)) || '';
+}
 function socialPool(){
   const posts = [];
-  for (const p of (xPosts || [])) posts.push({ text: p.text || '', from: 'X', handle: p.handle || '', ts: p.ts || 0, url: p.url || '' });
-  for (const p of (tPosts || [])) posts.push({ text: p.text || '', from: 'Threads', handle: p.username ? '@' + p.username : '', ts: Date.parse(p.created_at || 0) || 0, url: p.url || '' });
+  for (const p of (xPosts || [])) posts.push({ text: p.text || '', from: 'X', handle: p.handle || '', ts: p.ts || 0, url: p.url || '', topics: p.topics || [] });
+  for (const p of (tPosts || [])) posts.push({ text: p.text || '', from: 'Threads', handle: p.username ? '@' + p.username : '', ts: p.ts || Date.parse(p.created_at || '') || 0, url: p.url || '', topics: p.topics || [] });
   return posts;
 }
-function relatedSocial(cat, sigs, n){
+// Require two distinctive shared tokens; a shared hazard word is insufficient.
+const EVENT_GENERIC = new Set('gempa tsunami erupsi gunung banjir kebakaran bencana korban warga terjadi kembali kabar berita update terkini hari ini tadi yang dan atau dari untuk dengan sebuah seorang para oleh pada dalam'.split(' '));
+function eventMatch(a, b){
+  let shared = 0;
+  for (const w of a) if (!EVENT_GENERIC.has(w) && b.has(w)) shared++;
+  return shared >= 2 && jac(a, b) > 0.18;
+}
+function relatedSocial(cat, sigs, n, latest){
   const probe = (sigs || []).slice(0, 3);
   const scored = [];
   for (const p of socialPool()) {
-    if (catOfTitle(p.text) !== cat) continue;
+    if (socialCategory(p) !== cat || !p.ts || !latest || Math.abs(p.ts - latest) > 90 * 60e3) continue;
     const s = toks(p.text);
     let best = 0;
-    for (const g of probe) { const j = jac(s, g); if (j > best) best = j; }
+    for (const g of probe) { const j = eventMatch(s, g) ? jac(s, g) : 0; if (j > best) best = j; }
     scored.push({ p, j: best });
   }
   const matched = scored.filter(x => x.j > 0.12).sort((a, b) => b.j - a.j || (b.p.ts || 0) - (a.p.ts || 0));
   const items = matched.slice(0, n).map(x => x.p);
-  let total = matched.length;
-  if (items.length < n) {
-    const have = new Set(items.map(p => p.url || p.text));
-    for (const x of scored.sort((a, b) => (b.p.ts || 0) - (a.p.ts || 0))) {
-      if (items.length >= n) break;
-      const k = x.p.url || x.p.text;
-      if (!have.has(k)) { items.push(x.p); have.add(k); }
-    }
-  }
-  return { items, total: Math.max(total, items.length) };
+  return { items, total: matched.length };
 }
 function lanesHtml(socRes, newsItems, newsTotal){
   const soc = socRes && socRes.items.length
@@ -2744,27 +2769,20 @@ function lanesHtml(socRes, newsItems, newsTotal){
   const solo = soc && !news ? ' solo-soc' : !soc && news ? ' solo-news' : '';
   return `<div class="tr-body"><div class="tr-lanes${solo}">${soc}${news}</div></div>`;
 }
-function relatedNews(sigs, cat, n){
+function relatedNews(sigs, cat, n, latest){
   if (!SIT) return [];
   const probe = (sigs || []).slice(0, 3);
   const same = (SIT.items || []).filter(it => (it.cat || 'insiden') === cat);
   const scored = [];
   for (const it of same) {
+    if (!it.ts || !latest || Math.abs(it.ts - latest) > 90 * 60e3) continue;
     const s = toks(it.title);
     let best = 0;
-    for (const g of probe) { const j = jac(s, g); if (j > best) best = j; }
+    for (const g of probe) { const j = eventMatch(s, g) ? jac(s, g) : 0; if (j > best) best = j; }
     scored.push({ it, j: best });
   }
   const matched = scored.filter(x => x.j > 0.18).sort((a, b) => b.j - a.j || (b.it.ts || 0) - (a.it.ts || 0));
   const out = matched.slice(0, n).map(x => x.it);
-  if (out.length < n) {
-    const have = new Set(out.map(x => x.url || x.title));
-    for (const x of scored.sort((a, b) => (b.it.ts || 0) - (a.it.ts || 0))) {
-      if (out.length >= n) break;
-      const k = x.it.url || x.it.title;
-      if (!have.has(k)) { out.push(x.it); have.add(k); }
-    }
-  }
   return out;
 }
 function alertCards(){
@@ -2772,10 +2790,10 @@ function alertCards(){
   for (const g of SIG_GROUPS) {
     const sev = g.n >= 6 ? 'kritis' : g.n >= 3 ? 'waspada' : 'info';
     const sample = String(g.sample || '').replace(/^@\w+\s*/, '');
-    const socRes = relatedSocial(g.cat, g.sigs, 6);
-    const rel = relatedNews(g.sigs, g.cat, 6);
-    cards.push({ id: 'd' + g.cat + g.n, sev, cat: g.cat, place: 'Sosial', n: g.n,
-      score: g.n, latest: 0, title: sample,
+    const socRes = { items: g.posts.slice(0, 6), total: g.posts.length };
+    const rel = relatedNews(g.sigs, g.cat, 6, g.latest);
+    cards.push({ id: 'd:' + g.cat + ':' + g.id, sev, cat: g.cat, place: 'Sosial', n: g.n,
+      score: g.n, latest: g.latest, title: sample,
       meta: g.n + ' post · ' + g.from,
       body: lanesHtml(socRes, rel) });
   }
@@ -2786,7 +2804,7 @@ function alertCards(){
       const sev = (s >= 3 && k >= 5) || k >= 8 ? 'kritis' : (k >= 3 || s >= 2) ? 'waspada' : 'info';
       if (sev === 'info') continue;
       const lead = g.items[0];
-      const socRes = relatedSocial(g.cat, g.sigs.slice(0, 4), 6);
+      const socRes = relatedSocial(g.cat, g.sigs.slice(0, 4), 6, g.latest);
       cards.push({ id: 'c' + g.id, sev, cat: g.cat, place: g.place || 'Wilayah belum pasti', n: k,
         score, latest: g.latest || 0, title: lead.title, meta: k + ' kabar · ' + s + ' sumber',
         body: lanesHtml(socRes, g.items.slice(0, 6), g.items.length) });
