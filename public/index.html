@@ -3328,7 +3328,7 @@ function stopCell(cell){
   const p = P.get(cell); if (!p || !p.h || p.stopped) return;
   if (p.h !== 'native') { try { p.h.stopLoad(); } catch (e) {} }
   try { vid(cell).pause(); } catch (e) {}
-  p.stopped = true; p.playing = false; badge(cell, 'wait', 'Jeda'); upd();
+  p.stopped = true; p.playing = false; p.loading = false; badge(cell, 'wait', 'Jeda'); upd();   // loading harus reset — kalau tidak, slot MAXL dimakan hantu selamanya
 }
 /* health reporting + per-host cooldown: host yang lagi sakit tidak dihajar terus */
 const camOfCell = cell => { const p = P.get(cell); if (!p) return null;
@@ -3389,7 +3389,10 @@ function pump(){
         startCell(c); loading++;
       }
     }
-    else if (p.loaded && p.stopped && p.vis && playing < MAXP) { startCell(c); playing++; }
+    else if (p.stopped && p.vis) {   // restart yang ke-stop: loaded → MAXP, belum loaded → MAXL
+      if (p.loaded) { if (playing < MAXP) { startCell(c); playing++; } }
+      else if (loading < MAXL) { startCell(c); loading++; }
+    }
   }
   if (wake) setTimeout(pump, Math.max(500, wake - Date.now() + 300));   // bangun pas cooldown host selesai
 }
