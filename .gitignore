@@ -16,3 +16,6 @@ __pycache__/
 # os junk
 .DS_Store
 About this file. This is Muse's persona.
+
+# deps
+node_modules/

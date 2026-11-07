@@ -52,10 +52,30 @@ const histKey = HISTORY.keyOf, histTs = HISTORY.tsOf;
 const HIST_MAX = { x: 1500, th: 800 }, HIST_AGE = 24 * 3600e3;
 let ADHOC = [];   // topik dinamis dari berita yang lagi naik (nama kasus), in-memory
 const histUser = p => String(p.handle || p.username || '').toLowerCase();
+// anti-astroturf: teks identik dari >=3 akun berbeda = koordinasi bot, bukan liputan.
+// retweet ("RT @") di-skip — viral legit memang share teks yang sama.
+function histAstroturf(map) {
+  const groups = new Map();
+  for (const p of map.values()) {
+    const t = String(p.text || '');
+    if (t.length < 50 || /^\s*(rt\s+)?@/i.test(t)) continue;
+    const sig = SOC.astroturfSig(t);
+    if (sig.length < 40) continue;
+    if (!groups.has(sig)) groups.set(sig, new Set());
+    groups.get(sig).add(histUser(p));
+  }
+  for (const [k, p] of map) {
+    const t = String(p.text || '');
+    if (t.length < 50 || /^\s*(rt\s+)?@/i.test(t)) continue;
+    const sig = SOC.astroturfSig(t);
+    if (sig.length >= 40 && (groups.get(sig) || new Set()).size >= 3) map.delete(k);
+  }
+}
 function histMerge(map, posts, max, file) {
   for (const p of posts) { const k = histKey(p); if (k) map.set(k, p); }
   const now = Date.now();
   histRetag(map, map === xHist ? SOC.socKeepX : SOC.socKeepTh);
+  histAstroturf(map);
   const arr = [...map.values()].filter(p => histTs(p) > 0 && histTs(p) <= now && now - histTs(p) <= HIST_AGE).sort((a, b) => histTs(b) - histTs(a));
   const kept = SOC.socBalance(arr, max, histUser);   // cap per topik + per akun, biar karhutla nggak makan buffer
   map.clear();
@@ -97,6 +117,7 @@ function histLoad(file, map) {
 histLoad(path.join(HIST_DIR, 'x-history.json'), xHist);
 histLoad(path.join(HIST_DIR, 'threads-history.json'), tHist);
 histRetag(xHist, SOC.socKeepX); histRetag(tHist, SOC.socKeepTh);
+histAstroturf(xHist); histAstroturf(tHist);
 const memoRetry = new Map();   // k -> jumlah retry gagal beruntun
 // good(v): predikat "payload ini layak jadi data". Hasil fetch yang resolve tapi
 // gagal (mis. {ok:false}) TIDAK boleh menghapus last-good — diperlakukan seperti throw.
@@ -851,6 +872,7 @@ const incidents = () => memo('incidents', 55000, async () => {
       for (const pl of places)
         out.push({ name: pl.name, la: pl.la, lo: pl.lo, prec: pl.prec, prov: pl.prov, kind: cat,
           label: catMeta(cat).label, title: it.title, multi: places.length > 1 || undefined,
+          desc: String(it.desc || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 400) || undefined,
           assessment: assessNews(it.title), src: s.id, url: it.url, ts: it.ts, weight: +(heat / Math.sqrt(places.length)).toFixed(3) });
     }
   }

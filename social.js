@@ -16,8 +16,25 @@ const socHashCount = t => (String(t).match(/#[\p{L}\p{N}_]+/gu) || []).length;
 // aksara non-Latin (Hangul, Thai, CJK, Kiril, Arab, Devanagari) dominan = konten luar negeri
 // yang tidak tertangkap nama-negara Latin — misal spam tiket Korea full Hangul
 const SOC_NONLATIN_RE = /[\u0E00-\u0E7F\u0E80-\u0EFF\u3040-\u30FF\u3400-\u4DBF\u4E00-\u9FFF\uAC00-\uD7AF\u0400-\u04FF\u0600-\u06FF\u0900-\u097F\u10A0-\u10FF]/g;
+// aksara non-Latin per-script: ID/EN tidak pernah memakai ini, jadi ambang bisa rendah.
+// URL/mention distrip dulu — t.co & handle Latin bukan konten.
+const SOC_SCRIPT_RES = {
+  kana: /[぀-ヿ]/g,                    // Hiragana+Katakana = Jepang
+  hangul: /[가-힯ᄀ-ᅟ]/g,              // Korea
+  thai: /[฀-๿]/g,
+  arabic: /[؀-ۿݐ-ݿﭐ-﷿ﹰ-﻿]/g,
+  cyrillic: /[Ѐ-ӿ]/g,
+  devanagari: /[ऀ-ॿ]/g,
+  armenian: /[԰-֏]/g,
+  hanzi: /[㐀-䶿一-鿿]/g              // Cina
+};
+const SOC_SCRIPT_MIN = { kana: 3, hangul: 3, thai: 4, arabic: 4, cyrillic: 4, devanagari: 4, armenian: 4, hanzi: 3 };
 function socNonLatin(t) {
-  const s = String(t || '');
+  const s = String(t || '').replace(/https?:\/\/\S+/g, ' ').replace(/@[\w]+/g, ' ');
+  for (const k in SOC_SCRIPT_RES) {
+    if ((s.match(SOC_SCRIPT_RES[k]) || []).length >= SOC_SCRIPT_MIN[k]) return true;
+  }
+  // backstop: campuran non-Latin dominan tanpa satu script pun mencapai ambang
   const nl = (s.match(SOC_NONLATIN_RE) || []).length;
   const lat = (s.match(/[A-Za-zÀ-ɏ]/g) || []).length;
   return nl >= 20 && nl > lat;
@@ -25,10 +42,39 @@ function socNonLatin(t) {
 // Vietnam Latin tapi penuh diakritik khas (đ/ă/ơ/ư + vokal bernada) — spam crypto/exchange VN lolos cek non-Latin
 const SOC_VI_RE = /[àáạảãâầấậẩẫăằắặẳẵèéẹẻẽêềếệểễìíịỉĩòóọỏõôồốộổỗơờớợởỡùúụủũưừứựửữỳýỵỷỹđ]/g;
 function socVi(t) {
-  const s = String(t || '');
+  const s = String(t || '').replace(/https?:\/\/\S+/g, ' ').replace(/@[\w]+/g, ' ');
   const vi = (s.match(SOC_VI_RE) || []).length;
   const lat = (s.match(/[A-Za-z]/g) || []).length;
-  return vi >= 15 && vi * 4 >= lat;
+  return (vi >= 15 && vi * 4 >= lat) || (vi >= 8 && vi * 3 >= lat);
+}
+// kepadatan hashtag: spam kampanye/crypto numpuk tag; rasio karakter tag vs total teks
+function socHashJunk(t) {
+  const s = String(t || '');
+  const tags = s.match(/#[\p{L}\p{N}_]+/gu) || [];
+  if (tags.length > 10) return true;
+  const chars = tags.reduce((n, h) => n + h.length, 0);
+  return s.length > 60 && chars / s.length > 0.4;
+}
+// tanda tangan teks untuk deteksi astroturf: buang URL/mention/tag/emoji,
+// sisakan alfabet+angka — dua postingan "sama" dari akun beda = koordinasi
+function astroturfSig(t) {
+  return String(t || '').toLowerCase()
+    .replace(/https?:\/\/\S+/g, ' ')
+    .replace(/@[\w]+/g, ' ')
+    .replace(/#[\p{L}\p{N}_]+/gu, ' ')
+    .replace(/[^\p{L}\p{N} ]/gu, ' ')
+    .replace(/\s+/g, ' ').trim().slice(0, 160);
+}
+// bahasa Latin asing (Spanyol/Italia/Belanda/dst): franc statistik, hanya untuk
+// teks cukup panjang.Whitelist: Indonesia, Melayu (serumpun, sering mis-klasifikasi),
+// Inggris, dan 'und' (tak terdeteksi — biarkan, jangan over-strict).
+const { franc } = require('franc');
+const SOC_LANG_OK = new Set(['ind', 'zlm', 'eng', 'und']);
+function socForeignLang(t) {
+  const s = String(t || '').replace(/https?:\/\/\S+/g, ' ').replace(/@[\w]+/g, ' ').trim();
+  if (s.length < 40) return false;   // teks pendek: franc tidak stabil, biarkan gate lain
+  const lang = franc(s);
+  return !!lang && !SOC_LANG_OK.has(lang);
 }
 
 // kata negara asing: membuang "penembakan di Texas", "gempa Jepang" dst. KECUALI ada petunjuk lokal Indonesia.
@@ -120,13 +166,13 @@ const SOC_TOPICS = [
     th: ['pemilu', 'pilkada'] },
   { id: 'politik', local: true,
     pos: /(partai politik|caleg|capil|daftar caleg|\bdpr\b|\bdprd\b|parlemen|fraksi|koalisi|oposisi|kabinet|reshuffle|\bmenteri\b|wakil (presiden|menteri)|\bistana\b|senayan|menko|kadin|\bgubernur\b|\bbupati\b|wali kota|\bpilkada\b|\bpilgub\b|\bpilbup\b|\bpilgici\b|\bkpud\b|impeachment|majelis kehormatan|sidang mk)/i,
-    neg: /(film|sinema|bioskop|trailer|teaser|poster|nonton|netflix|zombie|sinetron|sinetrik)/i,
+    neg: /(film|sinema|bioskop|trailer|teaser|poster|nonton|netflix|zombie|sinetron|sinetrik|hakase|kpop|k-pop|\bdpr\b[^.\n]{0,15}(cream|artic|live|concert|fan|bias|music|song|album|stage)|dpr (cream|artic))/i,
     x: ['(pemilu OR pilkada OR pilpres OR "partai politik" OR caleg OR DPR OR kabinet OR reshuffle OR menteri) -filter:replies'],
     th: ['pemilu', 'pilkada', 'pilpres', 'DPR', 'kabinet'] },
   { id: 'konflik', local: true,
     pos: /(perang|konflik|invasi|aneksasi|pendudukan|gencatan senjata|ultimatum|kudeta|pemberontakan|separatis|genosida|blokade|embargo|sandera|pembajakan|pertempuran|darurat militer|darurat sipil|mobilisasi|milisi|paramiliter|peluru kendali|\brudal\b|\bdrone\b|\bdron\b|serangan udara|serangan rudal|\bbom\b|granat|artileri|\btni\b|\btentara\b|militer|perjanjian damai|perundingan damai)/i,
     // "perang harga" = sale; "konflik batin/rumah tangga" = personal; "bom waktu/saraf" = bukan senjata
-    neg: /(perang harga|konflik (batin|psikologis|rumah tangga|hukum|personal)|bom (waktu|tank|mobil|rakit|dekat|saraf)|film|sinema|bioskop|trailer|teaser|poster|nonton|netflix|zombie|sinetron|sinetrik)/i,
+    neg: /(perang harga|konflik (batin|psikologis|rumah tangga|hukum|personal)|bom (waktu|tank|mobil|rakit|dekat|saraf)|film|sinema|bioskop|trailer|teaser|poster|nonton|netflix|zombie|sinetron|sinetrik|dirgahayu|kami (akan |sedang )?melaksanakan|wajib hijrah|jauhi yang kafir|khalifahah)/i,
     x: ['(perang OR "gencatan senjata" OR ultimatum OR invasi OR aneksasi OR kudeta OR "perjanjian damai" OR "darurat militer") -filter:replies'],
     th: ['perang', 'konflik', 'gencatan senjata', 'invasi', 'kudeta'] },
   { id: 'insiden', local: true,
@@ -139,7 +185,8 @@ const SOC_TOPICS = [
     th: ['pembunuhan', 'begal'] },
   { id: 'kesehatan', local: true,
     pos: /(demam berdarah|\bdbd\b|\bdhf\b|covid|korona|influenza|\bflu\b|mpox|cacar monyet|campak|morbili|cacar air|tangan kaki mulut|hfmd|leptospirosis|tifus|thypoid|kolera|rabies|gila anjing|anthrax|difteri|polio|meningitis|meningokokus|ensefalitis|chikungunya|cikungunya|zika|filariasis|kaki gajah|hepatitis|\bhiv\b|\baids\b|kusta|lepra|\bispa\b|pneumonia|bronkopneumonia|bronkitis|hmpv|human metapneumovirus|\brsv\b|\bmers\b|ebola|marburg|lassa|west nile|h5n1|avian influenza|\btbc\b|tuberkulosis|\btb\b|diare|disentri|scabies|kudis|keracunan|rotavirus|flu burung|h1n1|malaria|wabah|\bklb\b|kejadian luar biasa|gagal ginjal|stunting|vaksin|imunisasi)/i,
-    neg: /(film|sinema|bioskop|trailer|teaser|poster|nonton|netflix|zombie|mayat hidup|hantu|sekuel|layar lebar|sinetron|sinetrik|hollywood)/i,
+    // DBD = Dead by Daylight (game) sangat ramai di X — "main DBD", "DBD match/rank/chapter" bukan demam berdarah
+    neg: /(film|sinema|bioskop|trailer|teaser|poster|nonton|netflix|zombie|mayat hidup|hantu|sekuel|layar lebar|sinetron|sinetrik|hollywood|dead by daylight|main\s+dbd|play\s+dbd|dbd[^.\n]{0,30}(match|rank|chapter|killer|survivor|lag|server|mobile|skin|update|repair|macro))/i,
     x: ['("demam berdarah" OR DBD OR COVID OR influenza OR campak OR "tangan kaki mulut" OR leptospirosis OR rabies OR kolera OR mpox OR polio OR TBC OR "gagal ginjal" OR KLB OR wabah OR imunisasi OR vaksin) -filter:replies'],
     th: ['demam berdarah', 'wabah', 'TBC', 'influenza', 'keracunan massal', 'gagal ginjal'] },
   { id: 'ransomware', local: true,
@@ -151,7 +198,7 @@ const SOC_TOPICS = [
     th: ['ransomware'] },
   { id: 'serangan siber', local: true,
     pos: /(serangan siber|serangan cyber|peretasan|\bperetas\b|diretas|dibobol|kebocoran data|bocor data|pencurian data|(mencuri|curi|curian) data|\bddos\b|data breach|\bbssn\b|\bpdn\b|exploit|dieksploitasi|\bcve[- ]?\d{4}|kerentanan|vulnerabilit|backdoor|spyware|skimming|carding|cryptojack|deepfake|deface|defacement|phishing|\bphish|vishing|smishing|sextortion|botnet|zero[- ]day|n[- ]?day|infrastruktur kritis|apt\d{1,2}\b|\bc2\b|command and control|leak site|layanan lumpuh|situs lumpuh|gangguan (layanan|sistem|jaringan|aplikasi|infrastruktur)|insiden keamanan|maintenance keamanan|uu pdp|\bpdp\b|dompet kripto|investasi bodong|scam|penipuan online|pinjol ilegal|akun palsu)/i,
-    neg: /(film|sinema|bioskop|trailer|teaser|poster|nonton|netflix|zombie|sinetron|sinetrik|hackathon)/i,
+    neg: /(film|sinema|bioskop|trailer|teaser|poster|nonton|netflix|zombie|sinetron|sinetrik|hackathon|mbti|enneagram)/i,
     x: ['("serangan siber" OR peretasan OR diretas OR "kebocoran data" OR BSSN OR DDoS OR exploit OR phishing OR ransomware OR deepfake) -filter:replies'],
     th: ['serangan siber', 'kebocoran data', 'ransomware', 'phishing', 'exploit'] },
   { id: 'akun dibajak', local: true,
@@ -244,4 +291,4 @@ function socHot(posts, now = Date.now()) {
   return { stats, hot: hot.slice(0, 6) };
 }
 
-module.exports = { CLASSIFIER_VERSION: ASSESS.VERSION, SOC_TOPICS, socAssess, socTopics, socAdhoc, socKeepX, socKeepTh, socBalance, socQueries, socHot, SOC_FOREIGN_RE, SOC_LOCAL_RE };
+module.exports = { CLASSIFIER_VERSION: ASSESS.VERSION, SOC_TOPICS, socAssess, socTopics, socAdhoc, socKeepX, socKeepTh, socBalance, socQueries, socHot, socNonLatin, socVi, socHashJunk, astroturfSig, socForeignLang, SOC_FOREIGN_RE, SOC_LOCAL_RE };

@@ -6,6 +6,10 @@ const tsOf = p => Number(p.ts) || Date.parse(p.created_at || '') || 0;
 function tag(p, extra = [], now = Date.now()) {
   const ts = tsOf(p);
   if (!Number.isFinite(ts) || ts <= 0 || ts > now || now - ts > AGE) return false;
+  const text = String(p.text || '');
+  // prioritas ID + EN: aksara non-Latin/Vietnam-diakritik dominan = spam luar negeri;
+  // hashtag-stuffing = kampanye/crypto, bukan konten kejadian
+  if (SOC.socNonLatin(text) || SOC.socVi(text) || SOC.socHashJunk(text) || SOC.socForeignLang(text)) return false;
   p.ts = ts;
   p.assessment = SOC.socAssess(p.text, extra);
   p.topics = p.assessment.topics.slice();

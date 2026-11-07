@@ -838,7 +838,7 @@ a{color:inherit;text-decoration:none;text-underline-offset:2px}
   flex:none;display:flex;align-items:center;gap:9px;height:40px;padding:0 10px 0 14px;
   background:var(--layer);border-bottom:1px solid var(--border);
 }
-.map-h .ic{width:13px;height:13px;color:var(--accent)}
+.map-h .ic{width:13px;height:13px;color:#f4f4f4}
 .map-t{font:600 10px/1 var(--mono);letter-spacing:.12em;text-transform:uppercase}
 .map-m{margin-left:auto;font:400 9.5px/1 var(--mono);letter-spacing:.04em;color:var(--text3);font-variant-numeric:tabular-nums}
 .map-x{display:inline-flex;align-items:center;gap:5px;height:26px;padding:0 8px;border:1px solid var(--border2);color:var(--text2);
@@ -893,11 +893,9 @@ a{color:inherit;text-decoration:none;text-underline-offset:2px}
 .mly[aria-pressed="true"]{color:var(--text);border-color:var(--border2);background:var(--layer2)}
 .mly[aria-pressed="true"] i{background:var(--accent)}
 .map-hint{margin-left:auto;font:400 8.5px/1 var(--mono);letter-spacing:.05em;text-transform:uppercase;color:var(--text3)}
-.tt-status{display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;min-width:28px;padding:0;border:1px solid var(--border);
-  color:var(--text3)}
-.tt-status i{width:5px;height:5px;background:var(--warn);flex:none}
-.tt-status.ok{color:var(--text2);border-color:var(--border2)}
-.tt-status.ok i{background:var(--ok)}
+.map-live{display:inline-flex;align-items:center;gap:5px;margin-left:10px;padding-left:10px;border-left:1px solid var(--border2);
+  font:500 8.5px/1 var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--ok)}
+.map-live i{width:5px;height:5px;border-radius:50%;background:var(--ok);animation:pulse 1.6s infinite}
 .map-route{
   flex:none;border-bottom:1px solid var(--border);background:#141414;padding:9px 12px;
   display:grid;grid-template-columns:1fr 1fr auto;gap:6px;align-items:center;
@@ -954,6 +952,8 @@ a{color:inherit;text-decoration:none;text-underline-offset:2px}
 .mp-k{font:600 8.5px/1 var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--accent)}
 .mp-t{margin-top:6px;font:500 12.5px/1.4 var(--sans);color:#f4f4f4}
 .mp-m{margin-top:7px;font:400 9px/1.5 var(--mono);letter-spacing:.03em;text-transform:uppercase;color:#8d8d8d}
+.mp-desc{margin-top:6px;font:400 10.5px/1.5 var(--sans);color:#b8b8b8;
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 .mp-m a{color:#c6c6c6;border-bottom:1px solid #525252}
 .mp-m a:hover{color:var(--accent);border-bottom-color:var(--accent)}
 .mp-meta{margin-top:9px;display:flex;flex-direction:column;gap:4px;font:600 8px/1.4 var(--mono);letter-spacing:.07em;text-transform:uppercase}
@@ -978,7 +978,17 @@ a{color:inherit;text-decoration:none;text-underline-offset:2px}
 }
 .mp-src:hover{color:var(--accent);border-bottom-color:var(--accent)}
 .mp-src .ic{width:9px;height:9px}
+button.mp-src{background:none;border-top:0;border-left:0;border-right:0;cursor:pointer}
 .leaflet-marker-icon.mp-dot{border-radius:50%}
+/* pin insiden fresh (<3 jam): dot + ring pulse — hybrid marker, hanya subset fresh yang jadi DOM */
+.pin-fresh{position:relative}
+.pin-fresh i{position:absolute;inset:20%;border-radius:50%;background:var(--pc,#8d8d8d);
+  border:1.5px solid #101010;box-shadow:0 0 4px 0 var(--pc,#8d8d8d);box-sizing:border-box}
+.pin-fresh::before{content:"";position:absolute;inset:0;border-radius:50%;
+  box-shadow:0 0 0 1.5px var(--pc,#8d8d8d);filter:blur(.8px);
+  animation:pinpulse 2.2s ease-out infinite}
+@keyframes pinpulse{0%{transform:scale(.55);opacity:.9}75%{transform:scale(1.6);opacity:0}100%{opacity:0}}
+@media (prefers-reduced-motion:reduce){.pin-fresh::before{animation:none;opacity:.35;transform:scale(1.25)}}
 
 /* marker bencana — meniru visual globe: gempa ripple ring, gunung segitiga */
 .mk-gempa,.mk-gunung{position:relative;width:100%;height:100%;overflow:visible;transform:scale(var(--gs,1));transform-origin:50% 50%}
@@ -1334,7 +1344,7 @@ a{color:inherit;text-decoration:none;text-underline-offset:2px}
   .mapwrap .mly-tabs{min-width:max-content}
   .mapwrap .mly-tabs > .mly-unit{flex:0 0 auto;min-width:auto;padding:3px 4px}
   .mapwrap .mly-sub{min-width:max-content}
-  .mapwrap .mly,.mapwrap .tt-status{width:32px;height:32px;min-width:32px;flex:0 0 auto;padding:0}
+  .mapwrap .mly{width:32px;height:32px;min-width:32px;flex:0 0 auto;padding:0}
   .mapwrap .mly span,.mapwrap .mly-grp{display:none}
   .mapwrap .mly .ic{width:15px;height:15px}
   .map-h{padding:0 8px 0 12px}
@@ -1664,6 +1674,7 @@ a{color:inherit;text-decoration:none;text-underline-offset:2px}
   <div class="map-h">
     <svg class="ic" aria-hidden="true"><use href="#i-pin"></use></svg>
     <span class="map-t">Peta Insiden · Indonesia</span>
+    <span class="map-live"><i></i>Data Live</span>
     <span class="map-m" id="map-meta">—</span>
     <button class="map-x" id="map-close" type="button">Tutup <svg class="ic" aria-hidden="true"><use href="#i-close"></use></svg></button>
   </div>
@@ -1702,8 +1713,7 @@ a{color:inherit;text-decoration:none;text-underline-offset:2px}
     <button class="mly" type="button" data-layer="fires" aria-pressed="false" title="Hotspot karhutla (SiPongi Kemenhut + NASA FIRMS)" aria-label="Hotspot kebakaran"><svg class="ic" aria-hidden="true"><use href="#i-sg-burst"></use></svg><span>Hotspot</span></button>
     <button class="mly" type="button" data-layer="air" aria-pressed="false" title="Kualitas Udara — stasiun AQMS (SiPongi Kemenhut)" aria-label="Kualitas udara"><svg class="ic" aria-hidden="true"><use href="#i-air"></use></svg><span>Udara</span></button>
     <button class="mly" type="button" data-layer="peringatan" aria-pressed="true" title="Peringatan Dini Cuaca (BMKG CAP)" aria-label="Peringatan dini"><svg class="ic" aria-hidden="true"><use href="#i-cloud-warn"></use></svg><span>Warn</span></button></span>
-    <span class="tt-status" id="tt-status" title="Status TomTom" role="img" aria-label="Status TomTom"><i></i></span>
-    <button class="mly" type="button" id="tt-refresh" title="Refresh TomTom" aria-label="Refresh TomTom"><svg class="ic" aria-hidden="true"><use href="#i-sync"></use></svg></button>
+    <button class="mly" type="button" id="map-refresh" title="Refresh semua data peta" aria-label="Refresh peta"><svg class="ic" aria-hidden="true"><use href="#i-sync"></use></svg></button>
     <span class="map-hint" id="map-hint">Mode: Rute A/B · Lalin probe</span>
     </div>
   </div>
@@ -4113,11 +4123,12 @@ const fmtKm = km => km < 10 ? km.toFixed(2) + ' km' : km.toFixed(1) + ' km';
 const fmtDur = sec => { if (sec == null) return '—'; const m = Math.round(sec / 60); return m < 60 ? m + ' mnt' : Math.floor(m / 60) + ' jam ' + (m % 60) + ' mnt'; };
 
 function mapPopup(it){
-  const flowBtn = `<div style="margin-top:8px"><button type="button" data-tt-flow="${it.la},${it.lo}" style="height:24px;padding:0 8px;border:1px solid #525252;background:#262626;color:#f4f4f4;font:500 8px var(--mono);letter-spacing:.06em;text-transform:uppercase">TomTom lalu lintas di sini</button></div>`;
-  return `<div class="mp-k">${esc(it.label || KIND_LABEL[it.kind] || 'Insiden')} · ${esc(it.name)}</div>
+  const kc = CAT_COLOR[it.kind] || KIND_COLOR[it.kind] || '';
+  return `<div class="mp-k"${kc ? ` style="color:${kc}"` : ''}>${esc(it.label || KIND_LABEL[it.kind] || 'Insiden')} · ${esc(it.name)}</div>
     <div class="mp-t">${esc(deEmoji(it.title))}</div>
+    ${it.desc ? `<div class="mp-desc">${esc(deEmoji(it.desc))}</div>` : ''}
     <div class="mp-m">${esc(it.src)} · ${esc(wibFull(it.ts))} WIB${precTxt(it) ? '<br>' + esc(precTxt(it)) : ''}</div>
-    ${it.url ? `<a class="mp-src" href="${esc(it.url)}" target="_blank" rel="noopener">Buka sumber${ic('out')}</a>` : ''}${ttOk ? flowBtn : ''}`;
+    ${it.url ? `<button type="button" class="mp-src mp-read" data-read="${esc(it.url)}">Baca${ic('out')}</button>` : ''}`;
 }
 function camPopup(c){
   return `<div class="mp-k">Kamera CCTV · ${esc(c.c || 'Jakarta')}</div>
@@ -4170,13 +4181,7 @@ function setSatExclusive(onId){
   syncLayers();
   setSatSourceLabel();
 }
-function setSatSourceLabel(){
-  const at = SAT_IDS.find(id => layerOn[id]);
-  if (!at) return;
-  const wibHour = (new Date().getUTCHours() + 7) % 24;
-  const night = at === 'sat-nc' && (wibHour < 6 || wibHour >= 18);
-  $('#map-src').textContent = 'sat ' + SAT_TILES[at].name + ' · BMKG Himawari-9' + (night ? ' · malam: citra gelap' : '');
-}
+function setSatSourceLabel(){ paintMapSrc(); }
 
 /* ---------- SATELLITE: official interactive tiles, timestamped ---------- */
 const SAT_TILES = {
@@ -4185,7 +4190,22 @@ const SAT_TILES = {
   'sat-wv': { param: 'WV', name: 'Water Vapor Enhanced', attribution: 'BMKG Himawari-9' },
   'sat-rain': { param: 'RP', name: 'Rainfall Potential', attribution: 'BMKG Himawari-9 · produk turunan' }
 };
-let satBasalRun = null, satModelRunAt = 0;
+let satBasalRun = null, satModelRunAt = 0, satRunTs = 0, satRunLabel = '', wireSrcText = 'sumber —';
+function paintMapSrc(){
+  const el = $('#map-src'); if (!el) return;
+  const at = SAT_IDS.find(id => layerOn[id]);
+  if (at && satRunTs) {
+    const wibHour = (new Date().getUTCHours() + 7) % 24;
+    const night = at === 'sat-nc' && (wibHour < 6 || wibHour >= 18);
+    const rem = satRunTs + 600e3 - Date.now();   // frame Himawari cadence 10 menit
+    const cd = rem > 0
+      ? 'frame baru ~' + String(Math.floor(rem / 60000)).padStart(2, '0') + ':' + String(Math.floor(rem % 60000 / 1000)).padStart(2, '0')
+      : 'menunggu frame baru…';
+    el.textContent = 'sat ' + SAT_TILES[at].name + ' · obs ' + satRunLabel + ' · ' + cd + (night ? ' · malam: citra gelap' : '');
+    return;
+  }
+  el.textContent = wireSrcText;
+}
 async function initSatelliteLayers(){
   if (!map) return;
   // modelrun dicek maksimal tiap 5 mnt — fram Himawari ganti 10 mnt, fetch tiap
@@ -4207,6 +4227,9 @@ async function initSatelliteLayers(){
       if (l && map.hasLayer(l)) map.removeLayer(l);
     const ts = new Date(basalRun);
     const timeLabel = isNaN(ts) ? basalRun : ts.toLocaleString('id-ID', {timeZone:'Asia/Jakarta'}) + ' WIB';
+    satRunTs = isNaN(ts) ? 0 : ts.getTime();
+    satRunLabel = isNaN(ts) ? basalRun : ts.toLocaleTimeString('id-ID', { timeZone: 'Asia/Jakarta', hour: '2-digit', minute: '2-digit' }) + ' WIB';
+    paintMapSrc();
     const mk = (id) => {
       const spec = SAT_TILES[id];
       // BMKG tileworker render on-demand: request pertama sering 422 timeout,
@@ -4374,11 +4397,22 @@ function paintMap(){
     if (it.fixed) continue;   // node kab/kota = konteks globe saja — di peta cuma clutter & nutupin insiden
     const c = it.sub === 'gempa' ? '#ff5a4e' : (KIND_COLOR[it.kind] || '#8d8d8d');
     const [dx, dy] = joff(it);
-    const m = L.circleMarker([it.la + dy, it.lo + dx], {
-      radius: it.fixed ? 3 : 4 + Math.round(Math.min(1, it.weight || 0.3) * 3),
-      color: '#101010', weight: 1, opacity: .85, fillColor: c,
-      fillOpacity: it.fixed ? .28 : .9
-    });
+    const fresh = it.ts && (Date.now() - it.ts) < 3 * 3600e3;
+    let m;
+    if (fresh) {   // pin <3 jam = divIcon pulse; selebihnya circleMarker canvas
+      const sz = 18 + Math.round(Math.min(1, it.weight || 0.3) * 8);
+      m = L.marker([it.la + dy, it.lo + dx], {
+        icon: L.divIcon({ className: '', iconSize: [sz, sz], iconAnchor: [sz / 2, sz / 2],
+          html: `<div class="pin-fresh" style="--pc:${c};width:${sz}px;height:${sz}px"><i></i></div>` }),
+        keyboard: false
+      });
+    } else {
+      m = L.circleMarker([it.la + dy, it.lo + dx], {
+        radius: 4 + Math.round(Math.min(1, it.weight || 0.3) * 3),
+        color: '#101010', weight: 1, opacity: .85, fillColor: c,
+        fillOpacity: .9
+      });
+    }
     m.bindPopup(mapPopup(it), { maxWidth: 290, keepInView: true });
     m.bindTooltip(deEmoji(it.name), { direction: 'top', offset: [0, -5], opacity: .85 });
     pinLayer.addLayer(m);
@@ -4426,16 +4460,12 @@ async function showTomTomFlow(lat, lon, parentMarker){
   }
 }
 async function checkTomTom(){
-  const st = $('#tt-status');
-  if (API == null) { st.innerHTML = '<i></i>'; st.title = 'TomTom offline'; st.classList.remove('ok'); ttOk = false; return; }
+  if (API == null) { ttOk = false; return; }
   try {
     const d = await getJson(API + '/api/tomtom/status', 8000);
     ttOk = !!d.keyConfigured;
-    st.innerHTML = '<i></i>';
-    st.title = ttOk ? 'TomTom live' : 'TomTom no key';
-    st.classList.toggle('ok', ttOk);
-    if (!ttOk) $('#map-src').textContent = 'TomTom: API key belum ada';
-  } catch (e) { st.innerHTML = '<i></i>'; st.title = 'TomTom error'; }
+    if (!ttOk) { wireSrcText = 'TomTom: API key belum ada'; paintMapSrc(); }
+  } catch (e) {}
 }
 async function pullTomTomIncidents(){
   if (!mapOpen || !map || !ttOk || ttIncBusy || API == null || !layerOn.ttdata) return;
@@ -4604,6 +4634,12 @@ function ensureMap(){
       const [lat, lon] = btn.dataset.ttFlow.split(',').map(Number);
       showTomTomFlow(lat, lon, ev.popup);
     }, { once: true });
+    const rb = ev.popup.getElement()?.querySelector('[data-read]');
+    if (rb) rb.addEventListener('click', () => {
+      const u = rb.dataset.read;
+      if (map) map.closePopup();
+      rdOpen(u, rb);
+    }, { once: true });
   });
   checkTomTom();
   paintMap();
@@ -4636,7 +4672,8 @@ async function pullIncidents(){
       const nReal = mapData.filter(i => !i.fixed).length;
       $('#geo-count').textContent = nReal + ' titik';
       $('#map-meta').textContent = nReal + ' titik · ' + (mapData.length - nReal) + ' node · sync ' + wibTime(d.at);
-      $('#map-src').textContent = 'wire ' + (d.total || nReal) + ' · kamera ' + CAMS.length;
+      wireSrcText = 'wire ' + (d.total || nReal) + ' · kamera ' + CAMS.length;
+      paintMapSrc();
       drawGlobe(performance.now());
       ensureMap(); paintMap();
       if (layerOn.peringatan) pullAlerts();
@@ -5326,12 +5363,14 @@ async function pullAlerts(){
   } catch(e) {}
 }
 
-$('#tt-refresh').addEventListener('click', async () => {
+$('#map-refresh').addEventListener('click', async () => {
+  pullIncidents();
   await checkTomTom();
   if (ttOk) pullTomTomIncidents();
-  else rpOut('<span class="warn">TomTom belum aktif: API key belum terdeteksi server.</span>');
+  satModelRunAt = 0; initSatelliteLayers();
 });
 $('#rp-go').addEventListener('click', calcRoute);
+setInterval(() => { if (mapOpen && SAT_IDS.some(id => layerOn[id])) paintMapSrc(); }, 1000);   // countdown frame satelit
 setInterval(() => { if (mapOpen) pullIncidents(); }, 60000);
 setInterval(() => { if (mapOpen && layerOn.flight) pullFlights(); }, 30000);
 setInterval(() => { if (mapOpen && layerOn.ship) pullShips(); }, 30000);
