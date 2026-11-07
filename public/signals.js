@@ -67,24 +67,36 @@
     return target && !GENERIC_TARGETS.has(target) ? target : '';
   }
 
-  // No fuzzy geography or transitive evidence bridges: both anchors and text must agree.
-  function matches(a, b) {
-    if (!a || !b || a.category !== b.category || !normalize(a.type) || normalize(a.type) !== normalize(b.type)) return false;
+  // Relasi bertingkat: null = anchor konflik/tidak ada jangkar (bukan "unrelated" —
+  // ketiadaan pasangan bukan bukti ketidakcocokan), 'weak' = kandidat longgar untuk
+  // "kemungkinan terkait", 'strong' = anchor + evidence cukup untuk konfirmasi.
+  // matches() tetap strict: hanya 'strong' yang boleh dipakai grouping/korelasi final.
+  function relation(a, b) {
+    if (!a || !b || a.category !== b.category) return null;
+    const typeA = normalize(a.type), typeB = normalize(b.type);
+    if (!typeA || typeA !== typeB) return null;
     const placeA = locationOf(a), placeB = locationOf(b);
     const rawTargetA = normalize(a.target), rawTargetB = normalize(b.target);
-    if (placeA && placeB && placeA !== placeB) return false;
-    if (rawTargetA && rawTargetB && rawTargetA !== rawTargetB) return false;
-    const targetA = targetOf(a), targetB = targetOf(b);
-    if (!(placeA && placeA === placeB) && !(targetA && targetA === targetB)) return false;
+    if (placeA && placeB && placeA !== placeB) return null;
+    if (rawTargetA && rawTargetB && rawTargetA !== rawTargetB) return null;
     // A same-named place in different provinces is still a conflicting location.
     const provA = normalize(a.location && a.location.prov);
     const provB = normalize(b.location && b.location.prov);
-    if (provA && provB && provA !== provB) return false;
+    if (provA && provB && provA !== provB) return null;
+    const targetA = targetOf(a), targetB = targetOf(b);
+    const anchorStrong = (placeA && placeA === placeB) || (targetA && targetA === targetB);
+    const anchorWeak = anchorStrong || (provA && provA === provB);
+    if (!anchorWeak) return null;
     const left = new Set(tokens(a.evidence)), right = new Set(tokens(b.evidence));
     let overlap = 0;
     for (const token of left) if (right.has(token)) overlap++;
-    return overlap >= 2 && overlap / (left.size + right.size - overlap) >= 0.18;
+    const union = left.size + right.size - overlap;
+    const jac = union ? overlap / union : 0;
+    if (anchorStrong && overlap >= 2 && jac >= 0.18) return 'strong';
+    if (overlap >= 1 && jac >= 0.08) return 'weak';
+    return null;
   }
+  function matches(a, b) { return relation(a, b) === 'strong'; }
 
   function platform(post) { return normalize(post.from); }
   function textOf(post) { return typeof post.text === 'string' ? post.text : post.title || ''; }
@@ -184,5 +196,5 @@
     return { accepted: true, posts: Array.from(currentMap.values()) };
   }
 
-  return { VERSION, buildGroups, related, reconcile, tokens, matches };
+  return { VERSION, buildGroups, related, reconcile, tokens, matches, relation };
 }));

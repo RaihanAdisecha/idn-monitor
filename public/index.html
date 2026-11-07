@@ -425,6 +425,9 @@ a{color:inherit;text-decoration:none;text-underline-offset:2px}
 .tr[data-sev="waspada"] .tr-sev{color:#f1c21b}
 .tr[data-sev="info"] .tr-sev{color:var(--text3)}
 .tr-cat{flex:none;font:600 8.5px/1 var(--mono);letter-spacing:.07em;text-transform:uppercase;color:var(--text3);display:inline-flex;align-items:center;gap:5px}
+.tr-rel{flex:none;font:600 8px/1 var(--mono);letter-spacing:.06em;text-transform:uppercase;padding:3px 6px;border:1px solid var(--border2);border-radius:2px;cursor:help}
+.tr-rel.ok{color:#7fd18b;border-color:#2c4a34}
+.tr-rel.maybe{color:#e8b64c;border-color:#4a3d22}
 .tr-cat::before{content:"";width:5px;height:5px;flex:none;border-radius:50%;background:var(--border2)}
 .tr-cat.demo{color:#f1c21b}.tr-cat.demo::before{background:#f1c21b}
 .tr-cat.fire{color:#ff6168}.tr-cat.fire::before{background:#ff6168}
@@ -2756,9 +2759,47 @@ function lanesHtml(socRes, newsItems, newsTotal){
 function relatedNews(group, n){
   return SitrepSignals.related(group, (SIT?.items || []), Date.now(), n);
 }
+// Korelasikan sinyal sosial × klaster berita di level event (bukan teks mentah).
+// strong = anchor+evidence cukup (dikonfirmasi), weak = kandidat longgar (kemungkinan terkait).
+// Tanpa pasangan yang cocok → tetap kartu terpisah; ketiadaan relasi bukan "unrelated".
+function correlateCards(socGroups, newsGroups){
+  const now = Date.now(), cand = [], usedS = new Set(), usedN = new Set();
+  for (const g of socGroups) for (const c of newsGroups) {
+    if (!g.latest || !c.latest || Math.abs(g.latest - c.latest) > 3 * 3600e3) continue;
+    let best = null;
+    for (const ge of (g.events || [])) for (const ne of (c.events || [])) {
+      const r = SitrepSignals.relation(ge, ne);
+      if (r === 'strong') { best = 'strong'; break; }
+      if (r === 'weak' && best !== 'strong') best = 'weak';
+    }
+    if (best) cand.push({ g, c, rel: best });
+  }
+  cand.sort((a, b) => (a.rel === b.rel ? 0 : a.rel === 'strong' ? -1 : 1));
+  const pairs = [];
+  for (const p of cand) {
+    if (usedS.has(p.g) || usedN.has(p.c)) continue;
+    usedS.add(p.g); usedN.add(p.c); pairs.push(p);
+  }
+  return { pairs, socLeft: socGroups.filter(g => !usedS.has(g)), newsLeft: newsGroups.filter(c => !usedN.has(c)) };
+}
 function alertCards(){
   const cards = [];
-  for (const g of SIG_GROUPS) {
+  const socGroups = SIG_GROUPS;
+  const newsGroups = SIT ? buildClusters().filter(g => g.latest && g.latest <= Date.now() && Date.now() - g.latest <= 90 * 60e3).slice(0, 6) : [];
+  const { pairs, socLeft, newsLeft } = correlateCards(socGroups, newsGroups);
+  for (const p of pairs) {
+    const g = p.g, c = p.c, k = c.items.length, s = c.sources.size;
+    const sev = (g.severity === 'warning' || c.events.some(e => e.severity === 'warning')) ? 'waspada' : 'info';
+    const socRes = { items: g.posts.slice(0, 6), total: g.posts.length };
+    cards.push({ id: 'x' + c.id, sev, cat: c.cat, place: c.place || g.place || 'Wilayah belum pasti', n: g.n + k,
+      score: g.accounts * 2 + s * 2 + k, latest: Math.max(g.latest || 0, c.latest || 0),
+      title: deEmoji(c.items[0].title),
+      meta: g.n + ' post · ' + g.accounts + ' akun · ' + s + ' media · ' + g.from,
+      rel: p.rel === 'strong' ? 'dikonfirmasi' : 'kemungkinan terkait',
+      note: p.rel === 'strong' ? 'Event yang sama dikonfirmasi media dan sosial' : 'Kecocokan parsial — evidence belum cukup untuk konfirmasi',
+      body: lanesHtml(socRes, c.items.slice(0, 6), k) });
+  }
+  for (const g of socLeft) {
     const sev = g.severity === 'critical' ? 'kritis' : g.severity === 'warning' ? 'waspada' : 'info';
     const sample = String(g.sample || '').replace(/^@\w+\s*/, '');
     const socRes = { items: g.posts.slice(0, 6), total: g.posts.length };
@@ -2770,11 +2811,9 @@ function alertCards(){
       body: lanesHtml(socRes, rel) });
   }
   if (SIT) {
-    for (const g of buildClusters().slice(0, 6)) {
+    for (const g of newsLeft) {
       const k = g.items.length, s = g.sources.size;
       const score = s * 2 + k;
-      const now = Date.now();
-      if (!g.latest || g.latest > now || now - g.latest > 90 * 60e3) continue;
       const sev = g.events.some(e => e.severity === 'warning') ? 'waspada' : 'info';
       const lead = g.items[0];
       const socRes = relatedSocial(g, 6);
@@ -2802,6 +2841,7 @@ function alertHtml(c){
       <div class="tr-hd"><svg class="ic tr-ic ${c.cat}" aria-hidden="true"><use href="${TK_SIG[c.cat] || '#i-pin'}"></use></svg>
         <span class="tr-sev">${SEV_LABEL[c.sev]}</span>
         <span class="tr-cat ${c.cat}">${esc(CAT_LABEL[c.cat] || c.cat)}</span>
+        ${c.rel ? `<span class="tr-rel ${c.rel === 'dikonfirmasi' ? 'ok' : 'maybe'}" title="${esc(c.note || '')}">${esc(c.rel)}</span>` : ''}
         ${time ? `<time class="tr-time">${esc(time)}</time>` : ''}</div>
       <div class="tr-t">${esc(title)}</div>
       <div class="tr-f"><span class="tr-loc">${esc(c.place)}</span><span${c.note ? ` title="${esc(c.note)}"` : ''}>${esc(c.meta)}</span>
