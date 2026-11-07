@@ -2188,19 +2188,17 @@ function drawGlobe(now){
       continue;
     }
     if (d.fresh && !dim) {
-      const prog = REDUCED ? 0.55 : (((((now / 1000) * 1.25 + d.p.la * 7.3 + Math.abs(d.p.lo)) % 1) + 1) % 1);
-      const ringR = d.r + 3 + prog * 16;
-      ctx.beginPath(); ctx.arc(d.x, d.y, ringR, 0, Math.PI * 2);
-      ctx.strokeStyle = hexA(d.color, REDUCED ? 0.75 : (1 - prog) * 0.82);
-      ctx.lineWidth = 1.45; ctx.stroke();
-      ctx.beginPath(); ctx.arc(d.x, d.y, ringR * 0.72, 0, Math.PI * 2);
-      ctx.strokeStyle = hexA(d.color, REDUCED ? 0.34 : (1 - prog) * 0.36);
-      ctx.lineWidth = 0.8; ctx.stroke();
+      // Fresh = статичное тонкое кольцо + яркое ядро. НЕ expand-пульс —
+      // он визуально конфликтовал с сейсмическими кольцами gempa.
+      ctx.beginPath(); ctx.arc(d.x, d.y, d.r + 3, 0, Math.PI * 2);
+      ctx.strokeStyle = hexA(d.color, 0.55);
+      ctx.lineWidth = 1;
+      ctx.stroke();
     }
     ctx.beginPath(); ctx.arc(d.x, d.y, d.r, 0, Math.PI * 2);
     ctx.save();
     ctx.shadowColor = d.color;
-    ctx.shadowBlur = dim ? 0 : (d.fresh ? 11 : 5);
+    ctx.shadowBlur = dim ? 0 : 7;
     ctx.fillStyle = hexA(d.color, (d.fresh ? 0.96 : 0.65) * (dim ? 0.3 : 1));
     ctx.fill();
     ctx.restore();
