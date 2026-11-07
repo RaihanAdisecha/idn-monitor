@@ -217,7 +217,7 @@ const news = () => Promise.all(NEWS.map(([id, url]) => memo('n:' + id, 55000, as
 // geo:true = kejadian fisik/lokal → boleh jadi pin peta, node globe, dan masuk marquee.
 // geo:false = topik naratif (ekonomi, politik, siber) → hanya News Wire & statistik situasi.
 const CATS = [
-  { id:'demo', label:'Demo', sev:0.82, geo:true, re:/(\bdemo\b(?!\s*(aplikasi|game|produk|sistem|fitur|cara|tutorial))|unjuk rasa|aksi massa|protes|mogok|kerusuhan|bentrok|\bmassa\b|long march|audiensi)/i },
+  { id:'demo', label:'Demo', sev:0.82, geo:true, re:/(\bdemo\b(?!\s*(aplikasi|game|produk|sistem|fitur|cara|tutorial|masak|memasak|kuliner|spesial|special))(?<!cooking demo|cooking\s+demo)|unjuk rasa|aksi massa|protes|mogok|kerusuhan|bentrok|\bmassa\b|long march|audiensi)/i },
   { id:'fire', label:'Kebakaran', sev:0.96, geo:true, re:/(kebakaran|karhutla|kebakaran hutan|kebakaran lahan|terbakar|kobaran api|asap tebal)/i },
   { id:'flood', label:'Banjir', sev:0.86, geo:true, re:/(banjir|genangan|longsor|tanah longsor|cuaca ekstrem|hujan deras|\brob\b)/i },
   { id:'disaster', label:'Bencana', sev:1, geo:true, re:/(gempa|tsunami|erupsi|letusan|bencana|evakuasi|korban jiwa|ambruk|tenggelam|hanyut|banjir bandang)/i },
@@ -591,133 +591,10 @@ const threadOf = (raw) => {
 };
 
 /* ---------- Peta insiden: demo & bencana seluruh Indonesia ---------- */
-const PLACES = [
-  // Jakarta & Jabodetabek
-  { name: 'Istana Merdeka', la: -6.1702, lo: 106.8272, re: /\bistana\b|istana negara|istana merdeka/i },
-  { name: 'DPR / MPR Senayan', la: -6.2185, lo: 106.8002, re: /\bdpr\b|\bmpr\b|senayan|parlemen|komisi iii/i },
-  { name: 'Monas · Medan Merdeka', la: -6.1754, lo: 106.8272, re: /monas|medan merdeka|lapangan banteng|patung kuda|harmoni/i },
-  { name: 'Jakarta', la: -6.2088, lo: 106.8456, re: /jakarta|dki|tanah abang|kemayoran|cilandak|kebayoran|polda metro|duri kepa|kebon jeruk|penjaringan|cakung|pasar minggu|kepulauan ?seribu|pulau ?seribu/i },
-  { name: 'Bogor', la: -6.5971, lo: 106.8060, re: /bogor|sentul|cibinong|ciawi/i },
-  { name: 'Depok', la: -6.4025, lo: 106.7942, re: /\bdepok\b/i },
-  { name: 'Tangerang', la: -6.1781, lo: 106.6319, re: /tangerang|serpong|\bbsd\b|bintaro/i },
-  { name: 'Bekasi', la: -6.2383, lo: 106.9756, re: /bekasi|cikarang|purwakarta/i },
-  { name: 'Karawang', la: -6.3086, lo: 107.2997, re: /karawang|cikampek|jatisari|klari|tirtamulya/i },
-  { name: 'Cilegon', la: -6.0192, lo: 106.0713, re: /\bcilegon\b/i },
-  { name: 'Serang', la: -6.1201, lo: 106.1503, re: /\bserang\b/i },
-  { name: 'Pandeglang', la: -6.4957, lo: 106.1919, re: /pandeglang|\blebak\b/i },
-  // Jawa Barat — spesifik dulu, Bandung (dengan 'jawa barat') paling akhir
-  { name: 'Sukabumi', la: -6.9276, lo: 106.9286, re: /\bsukabumi\b/i },
-  { name: 'Ciamis', la: -7.3169, lo: 107.3506, re: /\bciamis\b/i },
-  { name: 'Cirebon', la: -6.7329, lo: 108.5521, re: /\bcirebon\b|kraton cirebon/i },
-  { name: 'Kuningan', la: -6.9806, lo: 108.4824, re: /\bkuningan\b/i },
-  { name: 'Sumedang', la: -6.8483, lo: 107.9237, re: /\bsumedang\b/i },
-  { name: 'Majalengka', la: -6.8369, lo: 108.2358, re: /majalengka|majalenka/i },
-  { name: 'Subang', la: -6.5701, lo: 107.7596, re: /\bsubang\b/i },
-  { name: 'Indramayu', la: -6.3520, lo: 108.3226, re: /\bindramayu\b/i },
-  { name: 'Garut', la: -7.1507, lo: 107.9008, re: /\bgarut\b/i },
-  { name: 'Tasikmalaya', la: -7.3271, lo: 108.2192, re: /tasikmalaya|\btasik\b/i },
-  { name: 'Cianjur', la: -6.8167, lo: 107.1394, re: /\bcianjur\b/i },
-  { name: 'Pangandaran', la: -7.6479, lo: 108.4874, re: /pangandaran|\bpangand\b/i },
-  { name: 'Majalaya', la: -7.1370, lo: 107.3960, re: /majalaya|leuwimunding|cimanggu|cibodas|padamukti|mekargaluyu|wangunharja|taktajan|sirnagalih|cireundeu|sukawangi|tanjungsari/i },
-  { name: 'Bandung', la: -6.9175, lo: 107.6191, re: /bandung|jawa ?barat|\bjabar\b|cimahi|lembang|cimenyan|ciburuy|pangalengan|rinanti|arcamanik|ciparay|cililin|cileunyi|cibiru|cidadap|sukahaji|supratman|isola|antapani|regol|dayeuhkolot|gileleang|pangantenan|sarijadi|sukamaju|cicalengka|cimaung|cingin/i },
-  // Jawa Tengah & DIY — spesifik dulu, Semarang (dengan 'jawa tengah') terakhir
-  { name: 'Solo', la: -7.5755, lo: 110.8243, re: /\bsolo\b|surakarta|jebres|laweyan|serengan|pasar kliwon|mojosongo|ketelan|nusukan/i },
-  { name: 'Boyolali', la: -7.5361, lo: 110.6014, re: /boyolali|gladag|nogosari|tulung|wonosegoro|ceceran|sambi|genteng|klaret|srowo/i },
-  { name: 'Yogyakarta', la: -7.7956, lo: 110.3695, re: /yogyakarta|jogja|\bdiy\b|sleman|bantul|kulon progo|gunung kidul|kalasan|ngaglik|ngawen|sedayu|sanden|piyungan|prambanan|wonosari|yogya/i },
-  { name: 'Gunung Merapi', la: -7.5400, lo: 110.4420, re: /\bmerapi\b/i },
-  { name: 'Klaten', la: -7.7014, lo: 110.6044, re: /klaten|ceper|gayam|banyudono|klirong|prambanan|kemusu|wedi|polanharjo|trucuk|delanggu|jrakah|klego/i },
-  { name: 'Sukoharjo', la: -7.6590, lo: 110.8294, re: /sukoharjo|mojogedang|baki|tasikmadu|ketenger|weru|grogol|sambirejo|ngamplang|bendosari|nguter/i },
-  { name: 'Sragen', la: -7.4326, lo: 111.0218, re: /sragen|gemolong|nonogan|tanjonan|mangunharjo|gesi|kaliaman|sumberlawang|kedawung|tanon/i },
-  { name: 'Karanganyar', la: -7.5560, lo: 110.9778, re: /karanganyar|kartasura|nongkosawit|pringapus|jumapolo|jaten|kelir|poncogati|tawang|kemarang|mangunsari|plupuh|sabrang|delik|ngargoyoso|jumantoro/i },
-  { name: 'Wonogiri', la: -7.8629, lo: 110.9298, re: /wonogiri|baturetno|tirtomoyo|giritontro|gudangan|manyaran|selotopo|padas|bayat|ngadirojo/i },
-  { name: 'Grobogan', la: -7.0799, lo: 110.9289, re: /grobogan|ngasu|ngemplak|kedonglimpul|gondang|karangrowo|plamongan|tawangharjo|wirosari|gopuro|ngandong/i },
-  { name: 'Rembang', la: -6.7198, lo: 111.3937, re: /rembang|sumberpucung|tambak|bulu|pamotan|lasem|sedan|kragan|klakar|suwal|pancur|ampel|rajeg|sumbergriyo|trangkil|wangun|glagahkulon|sumberom/i },
-  { name: 'Jepara', la: -6.5971, lo: 110.6697, re: /jepara|mundu|keling|bangsri|donorojo|kroyo|keritang|kubangharjo|mulyoharjo|winongan|mayong|karimun ?jawa/i },
-  { name: 'Kendal', la: -6.9600, lo: 110.1611, re: /kendal|boja|wlingi|kangkung|ngampel|brangsong|kranggan|sendang|ngalar|candisari|gemuh|manggoran|ngadirejo|paseh|joho|jogo|ngaliyan|nagan|purwo|yogo|trosono|kaliwungu/i },
-  { name: 'Pekalongan', la: -6.8894, lo: 109.6752, re: /pekalongan|wirokuwo|ijjas|limbangan|kandri|buaran|kemangi|kelangan|warungpring|karangdadap|beji|pasirsari|siyono|notopuro|pejarakan|srengseng|tirto|paninggaran|trebulyo|jatibarang|penawangan/i },
-  { name: 'Tegal', la: -6.8713, lo: 109.1402, re: /\btegal\b|slawi|matahari|rejotangan|dadeya|suradadi|balokang|jasinga|muaradani|talang|girus|kramat|sudira|pagu|cabong|bonang|sinapuk|sinaria|kerang|tarub|prajurit|bategede/i },
-  { name: 'Brebes', la: -6.8571, lo: 109.0431, re: /brebes|klampok|jambu|bumiayu|sirampog|bantarkawung|kertasemaya|kasemen|sidomukti|kutabawa|susukan|randugunting|ketanggungan|tanah ampel|notogoro|boto|ciber|lumbung|karangsuwung|krembugan|kakutjapan/i },
-  { name: 'Pemalang', la: -6.8912, lo: 109.3826, re: /pemalang|petarukan|mrandakan|pulosari|comal|kebondalem|randanan|sidorejo|pelawangan|petung|siwalan|wonokerto|grabag/i },
-  { name: 'Cilacap', la: -7.6337, lo: 109.0156, re: /cilacap|binangun|jeruklegi|gimanja|padaherang|wanayasa|sidawangi|sidareja|adipala|baturraden|wangon|karangrejo|kawung|kudang|kutawinang|lumbungrejo|sidamulya|sokaraja|tunggal|donorejo/i },
-  { name: 'Banjarnegara', la: -7.4027, lo: 109.6653, re: /banjarnegara|wanadadi|pesarean|purwanegara|tembung|medi|rawayan|klanggot|banjarwinangun|sorowajan|sidakan|banyunur|sukareja|randegan|kaliangkrik/i },
-  { name: 'Purbalingga', la: -7.4409, lo: 109.3558, re: /purbalingga|kutasari|kalibawang|padakasih|madukara|sudimara|bantarsoka|karangmoncol|karangjaya|kawunganten|pengadingan|karangsari|rencana|gumbel|sragi|mrebet|kajatan|darangdan|karangdawa|gringsing|kwitang|widuran|karangkamulyan/i },
-  { name: 'Kebumen', la: -7.6693, lo: 109.6659, re: /kebumen|prembun|bulusari|juginawan|puring|klambu|murtigading|gombong|sawer|wargon|mendo|kaduged|karet|penggung|selarong|kalijambe|patuk|wadaslimuluh|wonodadi|palirang|bendungan/i },
-  { name: 'Purworejo', la: -7.7164, lo: 109.9223, re: /purworejo|kajoran|kledung|ngombol|bandungan|bandongan|kukar|kemantren|pakis|penggasin|sendangagung|setulu|tegalrejo|wangon|wirogrobo|payaman|ngelo|kledungan|gudur|kradenan/i },
-  { name: 'Wonosobo', la: -7.3700, lo: 109.9040, re: /wonosobo|kaliwiro|batuuripiro|leksono|ngawen|plosorejo|selomerto|selosari|tingkir|sookoho|danasari|watukiskoro|kaliangserut|jepon|sindara|batur|wapeng|kalisowo|madukoro|mayang|mintaragen|ngadipiro|parakan|suwandono|taliwang/i },
-  { name: 'Temanggung', la: -7.3167, lo: 110.2050, re: /temanggung|kranggan|ngatu|prono|tretep|wadeng|gubug|grogan|bansari|bekasan|brangsoko|grobogan|gumuk|jenggawah|kanjeng|kayumenyan|klipar|krasakan|lanang|mulyosari|ngitirejo|padas|pandansari|paras|parakan|penawangan|pijajar|randugunting|sandungan|sanijayan|selorejo|slogoh|sodo|sumberejo|tanggerang|tangen|temas|tenglengan|terban|tresnorejo|tunggul|wayoro|wonokarto|wonokromo|wonorejo|wora|wuryantoro/i },
-  { name: 'Magelang', la: -7.4698, lo: 110.2187, re: /magelang|mungkid|secang|\bselo\b|ngadipuro|krajan|ngemudung|ngentang|padangroyo|plosorejo|pritigading|sumurjoyo|tuntang|windusari/i },
-  { name: 'Kudus', la: -6.8067, lo: 110.8438, re: /\bkudus\b|dawe|geneng|jekulo|kalibenda|kangkung|kaliwungu|pantai|karangsampean|keling|menggar|ngareyan|palang|tambakromo|ungu|undaan|wangon|welahan|juni|bakal|krandekan|mejoho|ngaruh|pawon|ploso|temulus|diwek|judan|kandeman|wawar/i },
-  { name: 'Demak', la: -6.8947, lo: 110.6409, re: /\bdemak\b|grogol|mijen|mojo|wonokerto|wonosari|febr|mojolaban|bendan|derap|gajah|gadingsari|sroi|sinartopo|sumur|wonorejo|wonomarto|wonopringgo|wonoyoso|keteleng/i },
-  { name: 'Pati', la: -6.7581, lo: 111.0058, re: /\bpati\b|pekelong|sigaluh|tukul|jagalan|jaken|bugel|padureso|parengon|cabean|turem|kaduang|kemiri|angonan|negr|tamansari|wonokromo|wurorejo|tirem|mrebet/i },
-  { name: 'Semarang', la: -6.9932, lo: 110.4203, re: /semarang|jawa tengah|\bjateng\b|salatiga|sinten|sintang|pringsijat|gunungpati|manyaran|\btugu\b|ngaliyan|palebon|pucangsawit|gajahmiring|tanahmas|karangturi|gondomulyo|glenmore|sugihwaras|tlogosari|tanjungmoro|banyumanik|gundih|wonoplumbon|sawojajar|gondangrejo|meteseh|pedurungan/i },
-  // Jawa Timur — spesifik dulu, Surabaya (dengan 'jawa timur') terakhir
-  { name: 'Malang', la: -7.9666, lo: 112.6326, re: /malang|kota batu|singosari|pakis|ngantang|puyo|wajak|dau|bululawang|turen/i },
-  { name: 'Kediri', la: -7.8196, lo: 112.0187, re: /kediri|kandat|plosoklat|dandangan|katang|ngadiluwih|pabian|purwoasri|tarok|cepogo|jabung|klampukan/i },
-  { name: 'Blitar', la: -8.0941, lo: 112.1680, re: /blitar|kanigoro|wonorejo|wonotirto|garum|sanankerto|kunduran|talun|selopadhar|kesamben|kalibabat|tegalombo|kunir|kademangan|winong/i },
-  { name: 'Madiun', la: -7.6298, lo: 111.5233, re: /madiun|caruban|sawahan|klego|saradan|maospati|ballet|dongi|gingkas|ngebel|ngawe|panekan|ploso|tanjungsari|yuan|bobot|caringin|dungus|kati|srondol|tritunggal|wonorejo/i },
-  { name: 'Jombang', la: -7.5516, lo: 112.2358, re: /jombang|mojokerto|trowulan|sumobito|peterongan|berbek|gudo|wonoasri|ploso|mentoro|\bkudu\b|tempel|dare|geluk|gosari|jerukwangi|gondang|puter|ceket/i },
-  { name: 'Nganjuk', la: -7.6000, lo: 111.8780, re: /nganjuk|kertosono|wilangan|dodolak|prambon|bandrek|pacet|dempet|gadging|gajebang|geneng|gempol|rejoagung|wilmantoro|sukontoro|glagah|mantup|kentheng|sawahan|ngetos|setren|tawangharjo|tindih/i },
-  { name: 'Pasuruan', la: -7.6516, lo: 112.9168, re: /pasuruan|prigen|pandaan|gempol|punggur|pasan|waru|watangsari|gramak|johar|kemang|bangil|sresmo|mororejo|binginwangi|klekok|donomulyo|mentung|ngasam|purwodadi|sawo|setunggal|sindang|sumberpasir|sumberrejo|tongas|tropodo|watesrejo|wonoasri/i },
-  { name: 'Probolinggo', la: -7.7504, lo: 113.2117, re: /probolinggo|lumajang|kraksaan|srono|pasirian|pancur|sumbersari|tembayan|alen-alen|cliung|kedawung|kembangbahu|klakah|meru|poncosari|randuacir|ringintembok|senduro|sumberrejo|sumberwaru|tegalsari|kelud/i },
-  { name: 'Jember', la: -8.1847, lo: 113.6709, re: /jember|situbondo|kalisat|tanggul|kencong|puger|ambulu|balung|sukowono|tempurejo|kali anyar|arjasa|gruyang|wuluhan|mumbulsari|tunjungan/i },
-  { name: 'Banyuwangi', la: -8.2167, lo: 114.3708, re: /banyuwangi|bondowoso|silir agung|rahang kencong|glagah|kalibaru|kembirit|muncar|\btenggar\b|giri ayu|songgon|randuagung|wongsorejo/i },
-  { name: 'Bojonegoro', la: -7.1530, lo: 111.8817, re: /bojonegoro|tuban|widodaren|babat|kebonsari|ngoro|mlati|dander|bengawan|kapas|plumpuhan|ngasem|sampuran|tarik|kanor|padangan|sepuluh|teluk|tembung|widang|wonotrik|bojong/i },
-  { name: 'Ngawi', la: -7.1087, lo: 111.4523, re: /ngawi|magetan|ponorogo|maospati|geneng|wungu|pancung|kuniran|ngrandah|babadan|menjangan|paker|pulutan|sukorato/i },
-  { name: 'Lamongan', la: -7.1245, lo: 112.4578, re: /lamongan|brondong|mlakah|sukolilo|sugihwaras|kedungtuban|sumberbening|kalibohwono|babakan|tanah merah|perbaungan|sukomoro|tedjo|karanggeneng|karangpilang|carikan|ngumbu|ngobo|plosowangi|plosopatik|sidokare|sidomulyo|panciran|panceng|pancuran|srondol|tanahbrojo|tirtoyudo|tulen|wotan|sambong/i },
-  { name: 'Pacitan', la: -8.0369, lo: 111.0968, re: /pacitan|trenggalek|tulungagung|plered|pucuk|sampung|karangdowo|polosan|punakawan|besuki|gondang|jirak|kembangsore|kunen|ngadirojo|nglegok|plompong|puluran|sumberagung|sumberbening|\btugu\b|wadak|wapung|wonosari/i },
-  { name: 'Gunung Bromo', la: -7.9425, lo: 112.9530, re: /\bbromo\b/i },
-  { name: 'Gunung Semeru', la: -8.1080, lo: 112.9700, re: /\bsemeru\b/i },
-  { name: 'Gunung Kelud', la: -7.9333, lo: 112.3000, re: /\bkelud\b/i },
-  { name: 'Surabaya', la: -7.2575, lo: 112.7521, re: /surabaya|jawa timur|\bjatim\b|sidoarjo|gresik|bengawan|driyorejo|godong|gonagan|krian|mrandu|porong|sampean|sukodono|tanggulangin|wonoayu/i },
-  // Sumatera
-  { name: 'Medan', la: 3.5952, lo: 98.6722, re: /medan|sumatera ?utara|\bsumut\b|simalungun|deli ?serdang|\bkaro\b|binjai|tanjung ?balai|tebing ?tinggi|padang ?sidimpuan|padang ?lawas|tapanuli|labuhan ?batu|asahan|dairi|mandailing|langkat|panai|naras|sinaloan|dangir|marbau|secanggang|tanjung ?morawa|hamparan ?perak|beringin|delitua|namorambe|patumbak|sawit ?seberang|simanindo|sunggal|marlang|kisaran|rantau ?prapat|pematang ?siantar/i },
-  { name: 'Bukittinggi', la: -0.3054, lo: 100.3708, re: /bukittinggi|payakumbuh|tanah dato|tanahdatar|\bagam\b|iv koto|parambahan|lubuk alung|sitiung|ampek/i },
-  { name: 'Sawah Lunto', la: -0.6809, lo: 100.8214, re: /sawah lunto|sijunjung|darmasraya|silaut|lirik|caniago|gusn/i },
-  { name: 'Solok', la: -0.8085, lo: 101.1447, re: /\bsolok\b|solok selatan|pantai cifor|lembah anai|painan|pasaman|pasaman barat|silok|jematan|luak|sumpur/i },
-  { name: 'Padang', la: -0.9471, lo: 100.4172, re: /padang|sumatera ?barat|\bsumbar\b|pariaman|padang ?panjang|limapuluh ?kota|padang ?pariaman|koto ?baru|koto ?besi|sitiung|air ?bangis/i },
-  { name: 'Batam', la: 1.1301, lo: 104.0529, re: /batam|kepulauan ?riau|kepri|tanjung ?pinang|bintan|karimun|natuna|lingga|tanjung ?limau|serasan|ranai|pangkil|sungailiat|mapur|barelang|subi/i },
-  { name: 'Pekanbaru', la: 0.5071, lo: 101.4478, re: /pekanbaru|\briau\b|dumai|bengkalis|siak|kampar|rohil|rokan|batu ?hirang|indragiri|pelalawan|tapung|tembilahan|besitang/i },
-  { name: 'Jambi', la: -1.6101, lo: 103.6131, re: /\bjambi\b|muaro jambi|tungkal|tanjung jabung|kerinci|sungaipenuh|merangin|batanghari|muara bulian|muara pemula|sengeti|singingi|tungkal ilir|tungkal ulu|bujang gadis|sungei gelam/i },
-  { name: 'Bengkulu', la: -3.7904, lo: 102.2578, re: /bengkulu|kepahiang|rejang|mukomuko|seluma|kaironi|kota agung|manna|pino|pantai serut|tanjungduren/i },
-  { name: 'Pangkal Pinang', la: -2.1314, lo: 106.1151, re: /pangkal pinang|\bbangka\b|\bbelitung\b|belitung|bangka|tanjungpandan|peken|pemali|tempelang|kura|sijuk|simangunsong|senggarang|kuala kampung|ujung genteng|air kolong|sicantik/i },
-  { name: 'Palembang', la: -2.9761, lo: 104.7754, re: /palembang|sumatera selatan|\bsumsel\b|ogan ilir|prabumulih|lahat|muara enim|banyuasin|komering|penukal|empatlawan|pagaralam|gorang lebar|bagieng|sukaeri|tanahkago|tranum/i },
-  { name: 'Bandar Lampung', la: -5.3971, lo: 105.2668, re: /lampung|tulang bawang|mesuji|pringsewu|tanggamus|pesawaran|way kanan|kalianda|jati agung|seputih|kerasaman|kemiling|ratu ambaling|raja basa|raja jogi|raja mas|raja puri|sukajadi|tegalsari|teluk betung|terbanggi|terbung|way jiwo|wiyono/i },
-  { name: 'Banda Aceh', la: 5.5483, lo: 95.3238, re: /\baceh\b|banda aceh|langsa|pidie|lhokseumawe|aceh tengah|aceh utara|aceh timur|aceh selatan|aceh barat|aceh singkil|singkil|bener meriah|gayo lues|nagan raya|subulussalam|aceh jaya|aceh tamiang|calang|\bgayo\b|kuta alam|meulaboh|sabang|seulawah|beutong|bireuen|gegur|jantho|kuta cane|lhok ukur|lut|meureudu|muara dua|nagan|nomploh|peusangan|praya/i },
-  // Kalimantan
-  { name: 'Pontianak', la: -0.0263, lo: 109.3425, re: /pontianak|kalimantan barat|\bkalbar\b|sambas|ketapang|sanggau|sekadau|melawi|kapuas hulu|landak|sintang|singkawang|ngabang|putussibau|sejahtera|kentapang|kubing|menjalin|sepawak|simanggang|stambak|subah|entikong|badau|bengkung/i },
-  { name: 'Palangka Raya', la: -2.2080, lo: 113.9165, re: /palangka raya|kalimantan tengah|\bkalteng\b|kotim|kotawaringin|mentaya|sampit|kapuas|katingan|barito|gunung mas|pulau pisau|murung raya|barito utara|barito selatan|sukamara|lamandau|seruyan|residen|laung|mendawai|menyawa|tanambul|tanjungsari|tartono|teweh/i },
-  { name: 'Banjarmasin', la: -3.3186, lo: 114.5944, re: /banjarmasin|kalimantan selatan|\bkalsel\b|kabupaten banjar|martapura|hulu sungai|tanah laut|tabalong|balangan|tapin|banjarbaru|barabai|kotabaru|tanah bumbu|tanahbumbu|batulicin|ambawang|masinggaling|marabahan|satui/i },
-  { name: 'Balikpapan', la: -1.2379, lo: 116.8529, re: /balikpapan|samarinda|kalimantan timur|\bkaltim\b|\bikn\b|ibu kota nusantara|berau|kutai|penajam|mahakam|tana tindung|paser|bontang|tanah gro|manggar|sepaku|sengatta|waropen/i },
-  { name: 'Tarakan', la: 3.3274, lo: 117.5759, re: /tarakan|kalimantan utara|\bkaltara\b|bulungan|malinau|nunukan|krayan|kayan|sedalir|apau|kekayan|lubok|mayong|pangalungan|seko/i },
-  // Sulawesi — Toraja & Gorontalo dulu (keyword 'bone bolango'/'toraja' jangan ketarik Makassar)
-  { name: 'Toraja', la: -3.3231, lo: 119.8893, re: /tana toraja|\btoraja\b|rantepao|makale|barru|malangking|posi|sekesu|sanggala|tangke|rindingallo|sangalla|bastem|baruppu|balutu|londok|maddare|malangpong|nanggala/i },
-  { name: 'Gorontalo', la: 0.5435, lo: 123.0568, re: /gorontalo|boalemo|bone bolango|tilamuta|pohuwato|nangala|mondulo|talumono|buntar|lakevo|duantolotolonga|sanoyan|tapa|tiagu|beo|pilombayan|monano|dulangio|randang|pasimbulaan/i },
-  { name: 'Makassar', la: -5.1477, lo: 119.4327, re: /makassar|sulawesi selatan|\bsulsel\b|gowa|maros|bantaeng|jeneponto|sinjai|wajo|soppeng|pinrang|sidrap|luwu|enrekang|luwu timur|luwu utara|luwu selatan|palopo|sidenreng|bangkala|suppa|takerada|majang|baranti|diatalang|malangke|panca|ponco/i },
-  { name: 'Manado', la: 1.4748, lo: 124.8421, re: /manado|sulawesi utara|\bsulut\b|bitung|minahasa|tomohon|tondano|kotamobagu|bolmut|sangihe|siau|talaud|tatab|moum|bahona|duluduo|kema|tabukan|kempatmaub|keke|pulutan|ratatotok|sinonsayang|talawakao|ungunen|woloan|biaro|buski|ewot|hatub|kowili|melalan|nani|pinet|sawangan|tibo|toraket|tobelo|taliabu|galela|morotai/i },
-  { name: 'Palu', la: -0.8917, lo: 119.8707, re: /\bpalu\b|sulawesi ?tengah|\bsulteng\b|luwuk|banggai|\bposo\b|morowali|tojo una una|\bsigi\b|donggala|toli-toli|sigili|\bparigi\b(?!\s*moutong)|sabudaya|tabarpa|tobaku|\bdolo\b|alakia|sidokan|tana polo|tomarasa|tomudu|\bumbara\b|\btambul\b|subpe|\bturen\b|\bsambak\b|tanalili|wonodaa|wonopanggo/i },
-  { name: 'Kendari', la: -3.9985, lo: 122.5130, re: /kendari|sulawesi tenggara|\bsultra\b|kolaka|bau-bau|baubau|buton|\bmuna\b|una-una|lahu|wangi-wangi|menui|bondoala|kuepi|takabe|tawaili|towuti|trawak|ulubulu|wasu|melolo|mowewe|latambaga|muni|pohuwato|parigi ?moutong|duruka|tiworo|lasusua/i },
-  { name: 'Mamuju', la: -2.6748, lo: 118.8884, re: /mamuju|sulawesi barat|\bsulbar\b|polewali|mamasa|pasangkayu|mamuju tengah|budong|bubulan|daddolo|masameng|kayalu|talingo|taluma|mamuju utara|sagadung|padanglobak|tambun|tange|tomarasi|tumbocakti|kalumpang|bontotalli|dali|galesong|masapait|margabakti|masena|matano|mongalen/i },
-  // Nusa Tenggara — Pelaga dulu sebelum Denpasar ('\bbali\b' menelan)
-  { name: 'Pelaga', la: -8.3600, lo: 115.3500, re: /\bpelaga\b/i },
-  { name: 'Denpasar', la: -8.6705, lo: 115.2126, re: /denpasar|\bbali\b|badung|kuta|gianyar|tabanan|buleleng|jembrana|bangli|karangasem|singaraja|amlapura|semarapura|tegalalang|ubud|sanur|nusa dua|mengwitani|datutan|klemben|kubutambahan|pekat|baturiti|tekuan|ukiran|sinde|trunyan|abian/i },
-  { name: 'Mataram', la: -8.5833, lo: 116.1167, re: /mataram|lombok|nusa tenggara barat|\bntb\b|bima|dompu|sumbawa|senggigi|pujut|aikmel|suralaga|sikur|wongosari|rasa|bue|madakap|tola|jadid|donggo|sapit|talawao|katik|sampaga|sodi|tolotangga|madapang|sengkol|sodo|taloto|cisolok|buye|lalang|tiwuh/i },
-  { name: 'Kupang', la: -10.1772, lo: 123.6070, re: /kupang|nusa tenggara timur|\bntt\b|atambua|oecusse|amfoi|koepang|sai ?lopo|sobala|ohin|takko|atonutu|aupay|sabu|raijua|sawu|malo|nusa tamban/i },
-  { name: 'Flores', la: -8.8400, lo: 121.0300, re: /\bflores\b|maumere|\bende\b|\blabuan bajo\b|sikka|ngada|ruteng|boawae|lembata|kefa|flores selatan|kawalingga|gamel|boan|boa ruku|wolowaru|wololete|bomaki|lawitolemo|nangaroro|sano nggoang|wulanggere|wuatoba|paputungan|hameto|kedang|llanai|mbefus|nbiele|pago|paga|raijuku|santaana|sawuro|taikla/i },
-  // Maluku — Ambon 'maluku' jangan telan 'maluku utara' (lookahead)
-  { name: 'Ambon', la: -3.6954, lo: 128.1814, re: /ambon|maluku(?!\s*utara)|malteng|tual|namlea|masohi|dobo|seram|buru|lelitu|wana|taniwel|kaitetu|latale|lola|morela|nunu|puatap|saleman|saparua|saparuan|titawa|tulehu|wakasih|hatawano|elat|haruku/i },
-  { name: 'Ternate', la: 0.7900, lo: 127.3840, re: /ternate|maluku utara|\bmalut\b|tidore|tobelo|galela|morotai|taliabu|sanana|gane|baham|pagu|pola-mole|obir|sula|maba|kayoa|wasile|salawu|lato|kobisi|golalu|wajil/i },
-  { name: 'Gunung Ruang', la: 2.3000, lo: 125.3910, re: /gunung ruang|erupsi ruang|letusan ruang/i },
-  // Papua — spesifik per kabupaten; 'papua' generik sengaja tidak dipakai
-  { name: 'Sorong', la: -0.8787, lo: 131.2698, re: /sorong|papua barat|\bpapbar\b|maybrat|saifi|sele/i },
-  { name: 'Manokwari', la: -0.8615, lo: 134.0620, re: /manokwari|wasior|ransi|sauce|sarar|beser|macakat|waigeo|arfak|iryan|aimasi|moki|sou|soulat|soubou|sukie/i },
-  { name: 'Fakfak', la: -3.0331, lo: 132.3161, re: /fakfak|kaimana|matia|sekar|foniki|saka/i },
-  { name: 'Jayapura', la: -2.5916, lo: 140.6690, re: /jayapura|nabire|sarmi|keem|kay|sentani|jumanto|asmat|aikima|asiki|ambelo|aseki|bega|bema|ibin|mamberam/i },
-  { name: 'Merauke', la: -8.5657, lo: 140.4100, re: /merauke|boven digul|tanah merah|maro|okaba|yatabe|maripuni|yuliki|zanando|zanagi|bovon/i },
-  { name: 'Timika', la: -4.5437, lo: 136.8798, re: /timika|mimika|freeport|tbo|tspo|kupu|itam|maele|nakoti|nim|sarea|tambatra|wanggar|wann/i },
-  { name: 'Wamena', la: -4.1389, lo: 138.9511, re: /wamena|lani ?jaya|tolikara|yali|yapua|ilaga|paniai|mamberamo|hoyade|ngajum|dagai|dogiyai|deiyai|pegunungan ?bintang|maybrat|tambul|nduga|silimo/i },
-  { name: 'Biak', la: -1.1869, lo: 136.1169, re: /biak|supiori|warsami|yapen|serui|kerom|numfor|pandai|irian jaya|irian|triton|airair|ambel|gorom|unurum guay/i }
-];
-const placeOf = t => PLACES.find(p => p.re.test(t)) || null;
+/* Geocoder: lihat geocode.js (gazetteer 514 kab/kota Kepmendagri 2025, match per-token, presisi jujur) */
+const GEO = require('./geocode');
+const placeOf = t => GEO.locate(t);
+const GEO_WINDOW = 72 * 3600e3;
 const incidents = () => memo('incidents', 55000, async () => {
   const srcs = await news(), now = Date.now(), out = [], seen = new Set();
   for (const s of srcs) {
@@ -725,27 +602,27 @@ const incidents = () => memo('incidents', 55000, async () => {
     for (const it of s.items) {
       const cat = catOf(it.title);
       if (!cat || catMeta(cat).geo === false) continue;
+      const age = it.ts ? Math.max(0, now - it.ts) : 12 * 3600e3;
+      if (age > GEO_WINDOW) continue;                       // jendela sama dengan /api/situation → angka sinkron
+      const k = breakNorm(it.title).slice(0, 56);
+      if (!k || seen.has(k)) continue;
       const place = placeOf(it.title);
       if (!place) continue;
-      const key = place.name + '|' + String(it.title).toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 40);
-      if (seen.has(key)) continue;
-      seen.add(key);
-      const age = it.ts ? Math.max(0, now - it.ts) : 12 * 3600e3;
+      seen.add(k);
       const recency = Math.max(0.16, Math.exp(-age / (20 * 3600e3)));
       const heat = catMeta(cat).sev * recency;
-      out.push({ name: place.name, la: place.la, lo: place.lo, kind: cat,
+      out.push({ name: place.name, la: place.la, lo: place.lo, prec: place.prec, prov: place.prov, kind: cat,
         label: catMeta(cat).label, title: it.title,
         src: s.id, url: it.url, ts: it.ts || now, weight: +heat.toFixed(3) });
     }
   }
   out.sort((a, b) => b.ts - a.ts);
-  const items = out.slice(0, 120);
-  for (const p of PLACES) {
-    if (items.some(i => i.name === p.name)) continue;
-    items.push({ name: p.name, la: p.la, lo: p.lo, kind: 'node', label: 'Node',
+  const items = out.slice(0, 400);
+  for (const p of GEO.NODES) {
+    items.push({ name: p.name, la: p.la, lo: p.lo, prov: p.prov, prec: 'kab', kind: 'node', label: 'Node',
       title: 'Node pemantauan · ' + p.name, src: 'NODE', url: '', ts: now, weight: 0.16, fixed: true });
   }
-  return { ok: true, items, total: out.length, places: PLACES.length, at: now };
+  return { ok: true, items, total: out.length, places: GEO.NODES.length, at: now };
 });
 
 /* ---------- Situasi: agregat kategori + wilayah buat panel dossier ---------- */
@@ -759,7 +636,7 @@ const situation = () => memo('situation', 45000, async () => {
       const cat = catOf(it.title);
       if (!cat) continue;
       const age = it.ts ? now - it.ts : 12 * 3600e3;
-      if (age > 72 * 3600e3) continue;
+      if (age > GEO_WINDOW) continue;
       const k = breakNorm(it.title).slice(0, 56);
       if (!k || seen.has(k)) continue;
       seen.add(k);

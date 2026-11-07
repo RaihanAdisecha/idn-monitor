@@ -6,7 +6,8 @@ RUN apt-get update \
 
 WORKDIR /app
 COPY package.json ./
-COPY server.js config.json start.sh ./
+COPY server.js geocode.js config.json start.sh ./
+COPY geo/ ./geo/
 COPY public/ ./public/
 COPY vendor/ ./vendor/
 

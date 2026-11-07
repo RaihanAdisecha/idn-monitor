@@ -1830,6 +1830,24 @@ function drawGlobe(now){
   const zoomBoost = Math.min(1.3, (view.zoom - 1) * 0.5);
   const slotCount = {};
   const pts = [];
+  // Node pemantauan tetap (semua kab/kota): titik redup sebagai konteks, kecuali wilayah yang sudah punya insiden
+  {
+    const hot = new Set();
+    for (const p of (PULSE || [])) if (!p.fixed && p.name) hot.add(p.name);
+    const nr = 0.8 + Math.min(1.1, (view.zoom - 1) * 0.35);
+    ctx.save();
+    ctx.fillStyle = 'rgba(160,160,160,.34)';
+    ctx.beginPath();
+    for (const p of (PULSE || [])) {
+      if (!p.fixed || hot.has(p.name) || typeof p.la !== 'number') continue;
+      if (d3.geoDistance([p.lo, p.la], globeCenter) >= Math.PI / 2 - 0.03) continue;
+      const q = proj([p.lo, p.la]);
+      if (!q) continue;
+      ctx.moveTo(q[0] + nr, q[1]); ctx.arc(q[0], q[1], nr, 0, Math.PI * 2);
+    }
+    ctx.fill();
+    ctx.restore();
+  }
   for (const p of (PULSE || []).concat(DIS_PULSE || [])) {
     if (p.fixed || typeof p.la !== 'number' || typeof p.lo !== 'number') continue;
     if (legendOn[p.kind] === false) continue;
@@ -1841,7 +1859,7 @@ function drawGlobe(now){
     const slot = slotCount[name] || 0;
     slotCount[name] = slot + 1;
     const ang = slot * 2.399963;
-    const off = slot === 0 ? 0 : 1.7 + Math.sqrt(slot) * 3.9;
+    const off = slot === 0 ? 0 : Math.min(2.4 + Math.sqrt(slot) * 2.6, 13);   // spiral kecil & dibatasi: titik tetap dekat lokasi aslinya
     const zScale = 0.8 + view.zoom * 0.16;
     const r = 1.35 + (p.weight || .3) * 2.5 + zoomBoost;
     pts.push({ x: xy[0] + Math.cos(ang) * off * zScale, y: xy[1] + Math.sin(ang) * off * zScale,
@@ -1909,6 +1927,10 @@ function drawGlobe(now){
     ctx.fill();
     ctx.restore();
     ctx.lineWidth = .7; ctx.strokeStyle = '#0d0d0d'; ctx.stroke();
+    if (d.p && (d.p.prec === 'prov' || d.p.prec === 'region') && !dim) {   // lokasi cuma perkiraan area → cincin putus-putus
+      ctx.save(); ctx.setLineDash([2, 2]); ctx.beginPath(); ctx.arc(d.x, d.y, d.r + 3.2, 0, Math.PI * 2);
+      ctx.strokeStyle = hexA(d.color, .7); ctx.lineWidth = .9; ctx.stroke(); ctx.restore();
+    }
   }
   // Connector toast: digambar di canvas SEBELUM label wilayah → label menumpuk di atas garis (interplay)
   const alertEl = $('#sit-alert');
@@ -1945,7 +1967,7 @@ function drawGlobe(now){
     ctx.restore();
   }
   // Label wilayah saat zoom cukup dalam, biar klaster terbaca per wilayah
-  if (view.zoom >= 1.42) {
+  if (view.zoom >= 1.0) {
     const groups = new Map();
     for (const d of pts) {
       const n = (d.p && d.p.name) || '';
@@ -1955,7 +1977,8 @@ function drawGlobe(now){
     }
     const labels = [...groups.values()]
       .map(g => ({ name: g.name, x: g.x / g.c, y: g.y / g.c, c: g.c }))
-      .sort((a, b) => b.c - a.c).slice(0, 12);
+      .sort((a, b) => b.c - a.c || (a.name < b.name ? -1 : 1));
+    const maxLab = view.zoom < 1.42 ? 5 : view.zoom < 2.2 ? 20 : 80;   // makin zoom makin banyak label; yang bentrok muncul saat zoom-in
     ctx.font = '600 8px "IBM Plex Mono", ui-monospace, monospace';
     ctx.textBaseline = 'middle';
     const placed = [];
@@ -1963,6 +1986,7 @@ function drawGlobe(now){
       const text = L.name + ' ' + L.c;
       const tw = ctx.measureText(text).width;
       const box = { x: L.x + 11, y: L.y - 6, w: tw + 6, h: 13 };
+      if (placed.length >= maxLab) break;
       const clash = placed.some(p => p.x < box.x + box.w && p.x + p.w > box.x && p.y < box.y + box.h && p.y + p.h > box.y);
       if (clash) continue;
       ctx.fillStyle = 'rgba(10,10,10,.72)';
@@ -1989,13 +2013,14 @@ function nearestGlobePoint(x, y){
   }
   return best;
 }
+const precTxt = p => p.prec === 'prov' ? 'lokasi: perkiraan tingkat provinsi' : p.prec === 'region' ? 'lokasi: perkiraan wilayah' : p.prec === 'kab' ? 'lokasi: pusat kab/kota' : '';
 function showGlobeTip(e, d){
   const tip = $('#sit-tip');
   const wrap = $('.sit-mapwrap').getBoundingClientRect();
   const p = d.p;
   tip.innerHTML = `<div class="tip-k" style="color:${d.color}">${esc(p.label || CAT_LABEL[d.cat])}${p.name ? ' · ' + esc(p.name) : ''}</div>
     <div class="tip-t">${esc(deEmoji(p.title || ''))}</div>
-    <div class="tip-m">${esc(p.src || '')} · ${esc(p.ts ? wibTime(p.ts) : '')} WIB</div>`;
+    <div class="tip-m">${esc(p.src || '')} · ${esc(p.ts ? wibTime(p.ts) : '')} WIB${precTxt(p) ? ' · ' + esc(precTxt(p)) : ''}</div>`;
   tip.hidden = false;
   const tw = tip.offsetWidth, th = tip.offsetHeight;
   let left = e.clientX - wrap.left + 12, top = e.clientY - wrap.top + 12;
@@ -3273,6 +3298,7 @@ function startCell(cell){
   v.onloadeddata = () => {
     if (p.loaded) return;
     p.loaded = true; p.loading = false; p.nerr = p.merr = p.tries = p.step = p.rest = 0;
+    const rc = camList[p.idx]; if (rc) { const cc = CAMS[rc._i]; if (cc) cc.fails = 0; }   // cam pulih → reset hitungan gagal
     if (p.vis) badge(cell, 'live', 'Live'); else stopCell(cell);
     pump(); upd();
   };
@@ -3291,10 +3317,20 @@ function kill(cell){
   const v = vid(cell); if (v) { try { v.pause(); } catch (e) {} v.removeAttribute('src'); v.load(); }
   p.h = null; p.loading = p.loaded = p.playing = p.stopped = false;
   p.dead = true; p.tries = (p.tries || 0) + 1; p.step = 0; p.rest = 0;
+  const rc = camList[p.idx];
+  if (rc) { const cc = CAMS[rc._i]; cc.fails = (cc.fails || 0) + 1;
+    if (cc.fails >= 4 && !cc._hide) { cc._hide = true; hideCell(cell); return; } }   // 4x gagal → hilang dari grid
   badge(cell, 'off', 'Offline');
   clearTimeout(p.retry);
   p.retry = setTimeout(() => { p.dead = false; p.tries = Math.max(0, p.tries - 1); badge(cell, 'wait', 'Antre'); pump(); }, Math.min(30000, 5000 * p.tries));
   pump(); upd();
+}
+function hideCell(cell){
+  const p = P.get(cell); if (!p) return;
+  clearTimeout(p.retry); clearTimeout(p.t);
+  if (p.h && p.h !== 'native') { try { p.h.destroy(); } catch (e) {} }
+  P.delete(cell); cell.remove();
+  layout(); upd();
 }
 function pump(){
   const all = [...P.entries()].filter(([, p]) => !p.dead);
@@ -3351,7 +3387,8 @@ function layout(){
 function wantList(){
   const q = ($('#cq').value || '').toLowerCase();
   const l = CAMS.map((c, i) => ({ ...c, _i:i })).filter(c =>
-    (district === 'Semua' || c.c === district) && (!q || c.n.toLowerCase().includes(q)));
+    (district === 'Semua' || c.c === district) && (!q || c.n.toLowerCase().includes(q))
+    && c._hide !== true && !(aliveMap && aliveMap[c._i] === false));   // cam mati tidak pernah dirender
   if (aliveMap) l.sort((a, b) => (aliveMap[b._i] !== false) - (aliveMap[a._i] !== false));
   return l;
 }
@@ -3417,7 +3454,12 @@ addEventListener('keydown', e => {
 });
 async function pullAlive(){
   if (API == null) return;
-  try { aliveMap = (await getJson(API + '/api/cams', 60000)).alive; } catch (e) {}
+  try {
+    const a = await getJson(API + '/api/cams', 60000);
+    const s = JSON.stringify(a.alive);
+    if (s !== pullAlive.last) { pullAlive.last = s; aliveMap = a.alive; renderCams(); }
+    else aliveMap = a.alive;
+  } catch (e) {}
 }
 async function pullCctv(){
   if (API == null) return;
@@ -3425,10 +3467,16 @@ async function pullCctv(){
     const d = await getJson(API + '/api/cctv', 30000);
     if (!d || !Array.isArray(d.cams) || !d.cams.length) return;
     pullCctv.have = pullCctv.have || new Set(CAMS.map(c => c.s));
+    pullCctv.byS = pullCctv.byS || new Map(CAMS.map(c => [c.s, c]));
+    let revived = false;
+    for (const c of d.cams) {   // server re-verify alive → tampilkan lagi cam yang sempat di-hide
+      const ex = pullCctv.byS.get(c.s);
+      if (ex && ex._hide) { ex._hide = false; ex.fails = 0; revived = true; }
+    }
     const add = d.cams.filter(c => c && c.s && c.n && !pullCctv.have.has(c.s));
-    if (!add.length) return;
-    add.forEach(c => pullCctv.have.add(c.s));
-    CAMS.push(...add);
+    if (!add.length && !revived) return;
+    add.forEach(c => { pullCctv.have.add(c.s); pullCctv.byS.set(c.s, c); });
+    if (add.length) CAMS.push(...add);
     drawCityBar(); renderCams();
   } catch (e) {}
 }
@@ -3464,7 +3512,7 @@ function mapPopup(it){
   const flowBtn = `<div style="margin-top:8px"><button type="button" data-tt-flow="${it.la},${it.lo}" style="height:24px;padding:0 8px;border:1px solid #525252;background:#262626;color:#f4f4f4;font:500 8px var(--mono);letter-spacing:.06em;text-transform:uppercase">TomTom lalu lintas di sini</button></div>`;
   return `<div class="mp-k">${esc(it.label || KIND_LABEL[it.kind] || 'Insiden')} · ${esc(it.name)}</div>
     <div class="mp-t">${esc(deEmoji(it.title))}</div>
-    <div class="mp-m">${esc(it.src)} · ${esc(wibFull(it.ts))} WIB</div>
+    <div class="mp-m">${esc(it.src)} · ${esc(wibFull(it.ts))} WIB${precTxt(it) ? '<br>' + esc(precTxt(it)) : ''}</div>
     ${it.url ? `<a class="mp-src" href="${esc(it.url)}" target="_blank" rel="noopener">Buka sumber${ic('out')}</a>` : ''}${ttOk ? flowBtn : ''}`;
 }
 function camPopup(c){
@@ -3842,9 +3890,10 @@ async function pullIncidents(){
       }
       PULSE = mapData;
       maybeFocusFresh();
-      $('#geo-count').textContent = mapData.length + ' titik';
-      $('#map-meta').textContent = mapData.length + ' titik · sync ' + wibTime(d.at);
-      $('#map-src').textContent = 'wire ' + (d.total || mapData.length) + ' · kamera ' + CAMS.length;
+      const nReal = mapData.filter(i => !i.fixed).length;
+      $('#geo-count').textContent = nReal + ' titik';
+      $('#map-meta').textContent = nReal + ' titik · ' + (mapData.length - nReal) + ' node · sync ' + wibTime(d.at);
+      $('#map-src').textContent = 'wire ' + (d.total || nReal) + ' · kamera ' + CAMS.length;
       drawGlobe(performance.now());
       ensureMap(); paintMap();
       if (layerOn.peringatan) pullAlerts();

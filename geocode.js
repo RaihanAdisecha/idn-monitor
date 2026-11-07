@@ -1,12 +1,12 @@
 "use strict";
 /* Geocoder judul berita → titik di Indonesia.
    Prinsip: akurasi > recall. Lebih baik tidak ada titik daripada titik salah.
-   - Sumber: data/gazetteer.json (514 kab/kota + 38 provinsi + kecamatan unik, Kepmendagri 2025)
+   - Sumber: geo/gazetteer.json (514 kab/kota + 38 provinsi + kecamatan unik, Kepmendagri 2025)
    - Matching per-token (bukan substring), frasa terpanjang menang ("Banda Aceh" tidak jadi "Aceh")
    - Nama yang juga kata umum (Malang, Batu, Serang, Metro...) hanya sah dengan penanda lokatif
    - Presisi dilaporkan jujur: poi > kab (pusat pemerintahan) > prov (centroid, perkiraan) */
 const path = require('path');
-const G = require(path.join(__dirname, 'data', 'gazetteer.json'));
+const G = require(path.join(__dirname, 'geo', 'gazetteer.json'));
 
 const norm = s => String(s).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, ' ').trim();
 const LEVEL = { poi: 7, kec: 6.5, kab: 6, region: 3.5, prov: 3 };
@@ -42,10 +42,14 @@ for (const k of G.kab) {
   const m = /^(kepulauan|pulau) (.+)$/.exec(n);
   if (m && m[2].length >= 5 && m[2] !== 'seribu') put(m[2], e);
 }
-// ibukota kabupaten sebagai alias (Ruteng, Labuan Bajo, Sigli...) kalau tidak bentrok dengan nama lain
+// ibukota kabupaten sebagai alias (Ruteng, Labuan Bajo, Sigli...): hanya yang unik secara nasional,
+// bukan kata generik, dan tidak bentrok dengan nama kab/kota lain
+const IK_GENERIC = new Set(['tanjung', 'kuala', 'muara', 'sungai', 'simpang', 'pulau', 'bukit', 'batu', 'air', 'pasar', 'kota', 'teluk', 'padang', 'lubuk', 'pangkalan', 'labuhan', 'sei', 'karang', 'sinar', 'baru', 'mekar', 'tebing', 'talang', 'ujung', 'mandiri', 'jaya', 'wonosari', 'bangkinang']);
+const ikCount = {};
+for (const k of G.kab) { const ik = norm(k.ibukota.replace(/^Kota /, '')); ikCount[ik] = (ikCount[ik] || 0) + 1; }
 for (const k of G.kab) {
   const ik = norm(k.ibukota.replace(/^Kota /, ''));
-  if (ik.length >= 6 && !idx.has(ik) && !AMBIG.has(ik)) put(ik, { ...kabByCode[k.code], alias: true });
+  if (ik.length >= 6 && ikCount[ik] === 1 && !idx.has(ik) && !AMBIG.has(ik) && !IK_GENERIC.has(ik.split(' ')[0])) put(ik, { ...kabByCode[k.code], alias: true });
 }
 // alias manual (singkatan & sebutan umum)
 const kabByName = (nm, kota) => G.kab.find(k => norm(k.name) === norm(nm) && (kota == null || k.kota === kota));

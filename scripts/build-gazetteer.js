@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-/* Bangun data/gazetteer.json dari cahyadsn/wilayah (Kepmendagri 300.2.2-2138/2025, MIT).
+/* Bangun geo/gazetteer.json dari cahyadsn/wilayah (Kepmendagri 300.2.2-2138/2025, MIT).
    Isi: provinsi (centroid = rata-rata pusat kab/kota), 514 kab/kota (koordinat pusat pemerintahan),
    dan kecamatan unik → kab induk. Jalankan: node scripts/build-gazetteer.js */
 const fs = require('fs'), path = require('path');
@@ -40,7 +40,7 @@ const norm = s => String(s).toLowerCase().normalize('NFD').replace(/[\u0300-\u03
   const kecOut = {};
   for (const [n, s] of Object.entries(kec)) kecOut[n] = [...s];
   const out = { src: 'cahyadsn/wilayah (Kepmendagri 300.2.2-2138/2025)', prov: Object.values(prov), kab, kec: kecOut };
-  fs.mkdirSync(path.join(__dirname, '..', 'data'), { recursive: true });
-  fs.writeFileSync(path.join(__dirname, '..', 'data', 'gazetteer.json'), JSON.stringify(out));
+  fs.mkdirSync(path.join(__dirname, '..', 'geo'), { recursive: true });
+  fs.writeFileSync(path.join(__dirname, '..', 'geo', 'gazetteer.json'), JSON.stringify(out));
   console.log('prov', out.prov.length, 'kab/kota', kab.length, 'kec', Object.keys(kecOut).length);
 })();
