@@ -670,7 +670,7 @@ const placeOf = t => GEO.locate(t);
 const NOT_EVENT_RE = /\b(reses|apresiasi|penghargaan|salurkan|menyalurkan|penyaluran|bantuan (?:rp|tahap|untuk|bagi|kemanusiaan)|kirim bantuan|donasi|santunan|gagasan|webinar|seminar|rakor|rapat koordinasi|kunjungan kerja|kunker|dipulangkan|pemulangan|ucapan duka|doa bersama|pekarangan|ketahanan pangan|kesejahteraan|proklim|sinkronkan|disinkronkan)\b/i;
 const HEALTH_EVENT_RE = /(wabah|dbd|demam berdarah|covid|korona|flu burung|h1n1|malaria|\btb\b|tuberkulosis|diare|keracunan|\bklb\b|gagal ginjal)/i;
 const plotOk = (title, cat) => !NOT_EVENT_RE.test(title) && (cat !== 'kesehatan' || HEALTH_EVENT_RE.test(title));
-const GEO_WINDOW = 72 * 3600e3;
+const GEO_WINDOW = 24 * 3600e3;
 const incidents = () => memo('incidents', 55000, async () => {
   const srcs = await news(), now = Date.now(), out = [], seen = new Set();
   for (const s of srcs) {

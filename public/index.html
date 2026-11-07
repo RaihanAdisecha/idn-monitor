@@ -1083,6 +1083,11 @@ a{color:inherit;text-decoration:none;text-underline-offset:2px}
 .rd-fig figcaption{font:400 9.5px/1.5 var(--mono);letter-spacing:.03em;color:var(--text3);margin-top:6px}
 .rd-vid{margin:2px 0 18px;border:1px solid var(--border);background:#000}
 .rd-vid iframe{display:block;width:100%;aspect-ratio:16/9;border:0}
+.rd-facade{position:relative;display:block;width:100%;aspect-ratio:16/9;padding:0;border:0;background:#000;cursor:pointer;overflow:hidden}
+.rd-facade img{display:block;width:100%;height:100%;object-fit:cover;opacity:.85}
+.rd-facade .rd-play{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:44px;height:44px;border-radius:50%;background:rgba(200,20,20,.92);display:flex;align-items:center;justify-content:center;box-shadow:0 2px 10px rgba(0,0,0,.5)}
+.rd-facade .rd-play svg{width:18px;height:18px;fill:#fff;margin-left:2px}
+.rd-facade:hover .rd-play{background:#e02020}
 .rd-p{font:400 13px/1.68 var(--sans);color:var(--text2);margin:0 0 14px;overflow-wrap:anywhere}
 .rd-p.rd-lead{font-size:14px;color:var(--text)}
 .rd-p a{color:var(--text);border-bottom:1px solid var(--border2)}
@@ -1149,6 +1154,28 @@ a{color:inherit;text-decoration:none;text-underline-offset:2px}
   font:500 9px/1 var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--text2);
 }
 .gx:hover{border-color:var(--text2);color:var(--text)}
+
+/* ---- Sinyal v3: ledger (kolom waktu + baris berpemisah hairline, tanpa kotak/rail) ---- */
+.triage{padding:0 14px 6px;gap:0}
+.tr{display:block;padding:15px 0;border:0;border-top:1px solid var(--border);background:none}
+.tr:first-child{border-top:0}
+.tr-ret,.tr-place,.tr-n{display:none}
+.tr-time{margin-left:auto;flex:none;font:500 10px/1 var(--mono);font-variant-numeric:tabular-nums;color:var(--text3)}
+.tr-ic{flex:none;width:16px;height:16px;color:var(--text3)}
+.tr-ic.demo{color:#f1c21b}.tr-ic.fire{color:#ff6168}.tr-ic.flood{color:#7aa9ff}.tr-ic.disaster{color:#c9a6ff}
+.tr-ic.siber{color:#c8f04b}.tr-ic.kriminal{color:#ffb066}.tr-ic.kesehatan{color:#ff8ab5}.tr-ic.ekonomi{color:#6fe7b6}
+.tr-ic.politik{color:#93bcff}.tr-ic.insiden{color:#a9a9a9}
+.tr-m{padding:0;min-width:0}
+.tr-hd{gap:10px}
+.tr-sev{font-size:9.5px;letter-spacing:.08em}
+.tr-cat{font-size:9.5px}
+.tr-cat::before{display:none}
+.tr-t{margin-top:7px;font:400 13px/1.5 var(--sans);color:var(--text);-webkit-line-clamp:3}
+.tr[data-sev="info"] .tr-t{color:var(--text2)}
+.tr-f{margin-top:9px;gap:6px;font:400 11px/1.4 var(--sans);letter-spacing:0;text-transform:none;color:var(--text3);flex-wrap:wrap}
+.tr-f .tr-loc::after{content:" · "}
+.tr-more{margin-left:8px;padding:2px 0;font:600 11px/1.4 var(--sans);letter-spacing:0;text-transform:none;color:var(--text);text-decoration:underline;text-underline-offset:3px;text-decoration-color:var(--border2)}
+.tr-more:hover{text-decoration-color:var(--text)}
 
 /* ============================================================ RESPONSIVE */
 @media (max-width:1180px){
@@ -1353,7 +1380,7 @@ a{color:inherit;text-decoration:none;text-underline-offset:2px}
         <canvas id="sit-globe" role="img" aria-label="Globe dunia dengan titik insiden live, bisa di-drag dan di-zoom"></canvas>
         <div class="sit-corners" aria-hidden="true"><i class="tl"></i><i class="tr"></i><i class="bl"></i><i class="br"></i></div>
         <div class="sit-globe-kpi">
-          <div class="sit-kpi-main"><b id="sit-total">—</b><span>insiden · 72 jam</span></div>
+          <div class="sit-kpi-main"><b id="sit-total">—</b><span>insiden · 24 jam</span></div>
           <div class="sit-kpi-sync"><span id="sit-sync-state">live</span><time id="sit-sync-time">—</time></div>
         </div>
         <div class="sit-globe-tag">Globe · live</div>
@@ -1785,43 +1812,98 @@ function tickFly(now){
   view.zoom = flyAnim.from.zoom + (flyAnim.to.zoom - flyAnim.from.zoom) * e;
   if (t >= 1) flyAnim = null;
 }
-const seenIds = new Set();
+const SEEN_KEY = 'sitrep.seenIds';
+const seenIds = new Set((() => { try { return JSON.parse(sessionStorage.getItem(SEEN_KEY) || '[]'); } catch (e) { return []; } })());
+const seenWasEmpty = seenIds.size === 0;   // sesi baru: jangan umumkan item lama sebagai "baru"
+const saveSeen = () => { try { sessionStorage.setItem(SEEN_KEY, JSON.stringify([...seenIds].slice(-800))); } catch (e) {} };
 const itemIdOf = p => p.url || ((p.title || '') + '|' + (p.src || ''));
 const focusQueue = [];        // item fresh yang belum sempat diumumkan — tidak ditelan, diuras satu per evaluasi
-let lastAutoFocus = 0;
+let lastAutoFocus = 0, rotIdx = 0, focusedHome = true;
 const FOCUS_COOLDOWN = 90000; // anti-yank: globe tidak boleh dansa tiap cycle
+const ROTATE_AFTER = 60000;   // antrean kosong → rotasi item terbaru tiap ~60 dtk setelah fokus terakhir
+const HOME_VIEW = { lat: -2.5, lon: 118, zoom: 1 };
+const MAG_MIN_FOCUS = 4.5;    // gempa kecil tetap jadi titik, tapi tidak merebut fokus
+const magOf = p => {
+  if (typeof p.mag === 'number') return p.mag;
+  const m = String(p.title || '').match(/\b(?:m|mag)\.?\s*[:=]?\s*(\d+[.,]\d)/i);
+  return m ? parseFloat(m[1].replace(',', '.')) : null;
+};
+// Kandidat fokus: jendela 24 jam (sama dengan titik/KPI), tapi "layak diumumkan" lebih ketat:
+// insiden/volcano < 6 jam, gempa < 12 jam dan hanya M >= MAG_MIN_FOCUS.
+function focusCandidates(){
+  const now = Date.now();
+  const winOf = p => p.sub === 'gempa' ? 12 * 3600e3 : 6 * 3600e3;
+  return (PULSE || []).concat(DIS_PULSE || []).filter(p => {
+    if (p.fixed || typeof p.la !== 'number' || typeof p.lo !== 'number') return false;
+    if (!(p.la > -12 && p.la < 8 && p.lo > 92 && p.lo < 145)) return false;   // bbox Indonesia
+    if (!p.ts || now - p.ts > winOf(p) || p.ts > now + 5 * 60e3) return false;
+    if (p.sub === 'gempa') { const m = magOf(p); if (m != null && m < MAG_MIN_FOCUS) return false; }
+    return true;
+  });
+}
+// Urutan: gempa besar (M>=5) & gunung dulu, selain itu murni terbaru. Bukan "bencana selalu menang".
+const focusRank = p => (p.sub === 'volcano' || (p.sub === 'gempa' && (magOf(p) || 0) >= 5)) ? 1 : 0;
+const focusSort = (a, b) => (focusRank(b) - focusRank(a)) || (b.ts || 0) - (a.ts || 0);
+function doFocus(t, silent){
+  lastAutoFocus = Date.now();
+  focusedHome = false;
+  flyTo(t.la, t.lo, Math.max(view.zoom, 5));
+  setLinkItem(t);
+  if (!silent) showSitAlert(t);   // rotasi idle = ambient, tidak boleh spam toast
+}
 function maybeFocusFresh(){
   const now = Date.now();
-  // Bencana didahulukan: gempa BMKG & gunung MAGMA adalah event, bukan noise wire.
-  // Window eligibility pakai umur data: insiden 6 jam; gempa 24 jam (BMKG hanya terbitkan
-  // gempa hari ini — quake lama yang baru pertama terlihat tetap layak announce);
-  // volcano tetap 6 jam supaya status Siaga yang tidak berubah (ts=midnight) tidak eligible.
-  const isDisaster = p => p.sub === 'gempa' || p.sub === 'volcano';
-  const winOf = p => p.sub === 'gempa' ? 24 * 3600e3 : 6 * 3600e3;
-  const items = (PULSE || []).concat(DIS_PULSE || []).filter(p =>
-    !p.fixed && typeof p.la === 'number' && typeof p.lo === 'number' &&
-    p.la > -12 && p.la < 8 && p.lo > 92 && p.lo < 145 &&   // bbox Indonesia — titik 0,0/luar negeri tidak pernah difokus
-    p.ts && now - (p.ts || 0) < winOf(p));
-  // enqueue item yang belum pernah terlihat; queue di-prune thd item yang hilang dari feed
+  const items = focusCandidates();
   const liveIds = new Set();
   for (const p of items) {
     const id = itemIdOf(p);
     if (!id) continue;
     liveIds.add(id);
-    if (!seenIds.has(id) && !focusQueue.some(q => itemIdOf(q) === id)) focusQueue.push(p);
-    seenIds.add(id);
+    if (!seenIds.has(id)) {
+      // sesi baru: hanya kedatangan < 10 mnt yang diumumkan; backlog ditandai sudah-dilihat
+      if (!(seenWasEmpty && now - p.ts > 600e3) && !focusQueue.some(q => itemIdOf(q) === id)) focusQueue.push(p);
+      seenIds.add(id);
+    }
   }
   for (let i = focusQueue.length - 1; i >= 0; i--) if (!liveIds.has(itemIdOf(focusQueue[i]))) focusQueue.splice(i, 1);
-  if (seenIds.size > 800) { seenIds.clear(); for (const p of items) seenIds.add(itemIdOf(p)); }
-  if (!focusQueue.length) return;
+  if (seenIds.size > 800) { const keep = [...seenIds].slice(-800); seenIds.clear(); keep.forEach(x => seenIds.add(x)); }
+  saveSeen();
   if (performance.now() - lastGestEnd < 25000) return;   // jangan rebut globe dari user
   if (now - lastAutoFocus < FOCUS_COOLDOWN) return;       // throttle: satu fokus per 90 detik
-  focusQueue.sort((a, b) => (isDisaster(b) - isDisaster(a)) || ((b.mag || 0) - (a.mag || 0)) || (b.ts || 0) - (a.ts || 0));
-  const t = focusQueue.shift();
-  lastAutoFocus = now;
-  flyTo(t.la, t.lo, Math.max(view.zoom, 5));
-  setLinkItem(t);
-  showSitAlert(t);
+  if (focusQueue.length) {
+    focusQueue.sort(focusSort);
+    doFocus(focusQueue.shift());
+    return;
+  }
+  idleRotate(items, now);
+}
+// Antrean kosong: putar bergantian di 5 item terbaru; setelah satu putaran, kembali ke tampilan Indonesia penuh.
+// Rotasi bersifat ambient: flyTo senyap (tanpa toast) dan butuh idle lebih lama supaya tidak mencuri view user.
+function idleRotate(items, now){
+  if (now - lastAutoFocus < ROTATE_AFTER) return;
+  if (performance.now() - lastGestEnd < 45000) return;   // user baru berinteraksi <45 dtk → jangan ganggu
+  if (!items.length) { goHome(); return; }
+  const top = items.slice().sort(focusSort).slice(0, 5);
+  if (rotIdx >= top.length) { rotIdx = 0; goHome(); return; }
+  doFocus(top[rotIdx++], true);
+}
+function goHome(){
+  if (focusedHome || !globeReady) return;
+  if (performance.now() - lastGestEnd < 60000) return;   // pulang ke home butuh idle lebih lama — paling mengganggu
+  focusedHome = true;
+  flyTo(HOME_VIEW.lat, HOME_VIEW.lon, HOME_VIEW.zoom);
+}
+setInterval(() => {   // heartbeat: rotasi/pulang tetap jalan walau tidak ada fetch baru
+  if (document.hidden || !globeReady) return;
+  if (performance.now() - lastGestEnd < 25000) return;
+  if (focusQueue.length) return;                        // antrian didahulukan — jangan dipotong rotasi
+  idleRotate(focusCandidates(), Date.now());
+}, 15000);
+// Wire/breaking dapat berita baru → segera tarik insiden supaya titik + fokus ikut (server memo 55 dtk).
+let globeSyncT = 0;
+function syncGlobeSoon(){
+  clearTimeout(globeSyncT);
+  globeSyncT = setTimeout(() => { try { pullIncidents(); } catch (e) {} }, 2000);
 }
 let linkItem = null;
 function setLinkItem(p){ linkItem = p; }
@@ -2601,6 +2683,7 @@ function updateDistress(){
 /* --- Alert triase: gabungan distress sosial + klaster insiden + sumber gagal --- */
 const SEV_RANK = { kritis: 0, waspada: 1, info: 2 };
 const SEV_LABEL = { kritis: 'Kritis', waspada: 'Waspada', info: 'Info' };
+const unent = v => { const t = document.createElement('textarea'); t.innerHTML = String(v == null ? '' : v); return t.value; };
 const SEV_ICON = { kritis: '▲', waspada: '●', info: '○' };
 function socLine(p){
   const who = p.from + (p.handle ? ' · ' + p.handle : '');
@@ -2711,16 +2794,16 @@ function alertHtml(c){
   const open = openAlert === c.id;
   const time = c.latest ? wibTime(c.latest) : '';
   const expandable = !!c.body;
+  const title = deEmoji(unent(c.title)).replace(/https?:\/\/\S+/g, '').replace(/\s{2,}/g, ' ').replace(/(?:\s*>+)+\s*$/, '…').trim();
   return `<div class="tr" data-sev="${c.sev}">
-    <span class="tr-ret" aria-hidden="true"><i></i><i></i><i></i><i></i><b>${SEV_ICON[c.sev]}</b></span>
     <div class="tr-m">
-      <div class="tr-hd"><span class="tr-sev">${SEV_LABEL[c.sev]}</span>
+      <div class="tr-hd"><svg class="ic tr-ic ${c.cat}" aria-hidden="true"><use href="${TK_SIG[c.cat] || '#i-pin'}"></use></svg>
+        <span class="tr-sev">${SEV_LABEL[c.sev]}</span>
         <span class="tr-cat ${c.cat}">${esc(CAT_LABEL[c.cat] || c.cat)}</span>
-        <span class="tr-place">${esc(c.place)}</span>
-        <span class="tr-n">${c.n ? c.n + (c.meta.includes('post') ? ' post' : ' kabar') : ''}${time ? ' · ' + esc(time) : ''}</span></div>
-      <div class="tr-t">${esc(deEmoji(c.title))}</div>
-      <div class="tr-f"><span>${esc(c.meta)}</span>
-        ${expandable ? `<button class="tr-more" type="button" data-toggle="${esc(c.id)}" aria-expanded="${open ? 'true' : 'false'}">${open ? 'tutup' : 'detail'}</button>` : ''}</div>
+        ${time ? `<time class="tr-time">${esc(time)}</time>` : ''}</div>
+      <div class="tr-t">${esc(title)}</div>
+      <div class="tr-f"><span class="tr-loc">${esc(c.place)}</span><span>${esc(c.meta)}</span>
+        ${expandable ? `<button class="tr-more" type="button" data-toggle="${esc(c.id)}" aria-expanded="${open ? 'true' : 'false'}">${open ? 'Tutup' : 'Detail'}</button>` : ''}</div>
       ${open && expandable ? c.body : ''}
     </div>
   </div>`;
@@ -2728,6 +2811,8 @@ function alertHtml(c){
 function renderAlerts(){
   const el = $('#triage'); if (!el) return;
   const cards = alertCards();
+  const cnt = { kritis: 0, waspada: 0, info: 0 }; cards.forEach(c => cnt[c.sev]++);
+  const sum = cards.length ? `<div class="tr-sum">${['kritis','waspada','info'].map(k => `<span data-sev="${k}"><b>${cnt[k]}</b><i>${SEV_LABEL[k]}</i></span>`).join('')}</div>` : '';
   el.innerHTML = cards.length ? cards.map(alertHtml).join('') :
     `<div class="tr" data-sev="info"><span class="tr-ret" aria-hidden="true"><i></i><i></i><i></i><i></i><b>○</b></span><div class="tr-m">
       <div class="tr-hd"><span class="tr-sev">Normal</span><span class="tr-place">Semua sinyal dalam batas normal</span></div>
@@ -3121,9 +3206,11 @@ function mergedMedia(){
   const all = [], now = Date.now();
   lastGood.forEach(v => { if (now - v.at <= 2 * 3600e3) all.push(...v.items); });
   const seen = new Set();
+  const nkey = t => String(t || '').toLowerCase().replace(/&[a-z#0-9]+;/g, ' ')
+    .replace(/[^a-z0-9]+/g, ' ').trim();   // normalisasi: spasi/entity/ekor sumber tidak bikin dup lolos
   _mmCache = all.filter(h => {
     if (h.ts && now - h.ts > 36 * 3600e3) return false;
-    const k = h.title.toLowerCase(); if (seen.has(k)) return false; seen.add(k); return true;
+    const k = nkey(h.title); if (seen.has(k)) return false; seen.add(k); return true;
   }).sort((a, b) => b.ts - a.ts);
   _mmSig = sig;
   return _mmCache;
@@ -3432,6 +3519,7 @@ async function pullBreaking(){
     breakFail = 0;
     breakAt = Date.now();
     buildTicker();
+    if (hasNew) syncGlobeSoon();
     $('#tk-count').textContent = items.length;
     if (hasNew) {
       const b = $('#tk-count');
@@ -4416,7 +4504,7 @@ async function pullDisaster(){
     const gempaMarkers = [], gunungMarkers = [];
     for (const g of (d.gempa || [])) {
       const gts = Date.parse(g.time) || 0;
-      if (gts < today) continue;   // hanya gempa hari ini (WIB)
+      if (!gts || Date.now() - gts > 24 * 3600e3) continue;   // rolling 24 jam, sama dengan insiden
       const key = g.lat.toFixed(2) + ',' + g.lon.toFixed(2) + '|' + g.mag;
       const rad = 5 + Math.min(9, (g.mag || 0) * 2.2);
       const m = L.circleMarker([g.lat, g.lon], { radius: rad, color: '#ff3b30', weight: 1.5,
@@ -5202,6 +5290,7 @@ function markFresh(){
   if (!firstPull) titles.forEach(t => { if (!seenNews.has(t)) freshNews.add(t); });
   seenNews = titles;
   firstPull = false;
+  if (freshNews.size) syncGlobeSoon();
 }
 
 async function pullX(){
@@ -5345,9 +5434,16 @@ function rdArticle(d, url) {
   const meta = [d.site, d.byline, ts].filter(Boolean);
   const hero = d.img;   // server sudah memvalidasi (gambar RSS ikut gerbang ukuran/duplikat); jangan fallback mentah
   const img = hero ? `<img class="rd-hero" src="${esc(hero)}" alt="" loading="eager" referrerpolicy="no-referrer" onerror="this.remove()">` : '';
-  const rdVidHtml = v => v.kind === 'iframe'
-    ? `<div class="rd-vid"><iframe src="${esc(v.url)}" title="Video" loading="lazy" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe></div>`
-    : '';
+  const rdVidHtml = v => {
+    if (v.kind !== 'iframe') return '';
+    const yid = (String(v.url).match(/embed\/([\w-]{6,15})/i) || [])[1];
+    if (!yid) return `<div class="rd-vid"><iframe src="${esc(v.url)}" title="Video" loading="lazy" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe></div>`;
+    // facade: thumbnail + play — iframe baru dimuat saat diklik, video rusak tidak auto-error
+    return `<button class="rd-vid rd-facade" type="button" data-src="${esc(v.url)}">
+      <img src="https://i.ytimg.com/vi/${yid}/hqdefault.jpg" alt="Video YouTube" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">
+      <span class="rd-play"><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg></span>
+    </button>`;
+  };
   const note = d.thin ? `<div class="rd-note">Halaman ini tidak mengirim teks penuh (login/JS). Ringkasan di bawah diambil dari metadata. Buka asli untuk lanjut.</div>` : '';
   let flow, hasBlocks = Array.isArray(d.blocks) && d.blocks.length > 0;
   if (hasBlocks) {
@@ -5375,6 +5471,14 @@ function rdArticle(d, url) {
   $('#rd-open').href = d.final || url;
   $('#rd-body').scrollTop = 0;
 }
+// facade YouTube: klik → ganti thumbnail dengan iframe asli
+$('#rd-body').addEventListener('click', e => {
+  const f = e.target.closest('.rd-facade'); if (!f) return;
+  const src = f.getAttribute('data-src'); if (!src) return;
+  const box = document.createElement('div'); box.className = 'rd-vid';
+  box.innerHTML = `<iframe src="${src}" title="Video" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe>`;
+  f.replaceWith(box);
+});
 const rdThreadCache = new Map();
 let rdThreadSeq = 0;
 
