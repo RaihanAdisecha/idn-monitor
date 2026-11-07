@@ -3979,6 +3979,26 @@ function pump(){
   if (wake) setTimeout(pump, Math.max(500, wake - Date.now() + 300));   // bangun pas cooldown host selesai
 }
 let pumpT = 0; const pumpSoon = () => { clearTimeout(pumpT); pumpT = setTimeout(pump, 100); };
+/* Tab/browser disembunyikan: timer throttle, HLS live edge jalan terus, sel bisa
+   ke-kill massal dan balik ke "Antre". Pas visible lagi → kick semua sel yang
+   visible: resume load, play video yang ke-pause, reset waitT, lalu pump. */
+const kickCams = () => setTimeout(() => {
+  P.forEach((p, c) => {
+    if (!p.vis) return;
+    const v = vid(c);
+    if (p.h && p.h !== 'native' && !p.loaded) { try { p.h.startLoad(-1); } catch (e) {} }
+    if (p.h && p.loaded && v && v.paused) v.play().catch(() => {});
+    if (p.waitT) {
+      p.waitT = 0;
+      if (p.h && p.h !== 'native') { try { p.h.stopLoad(); p.h.startLoad(-1); } catch (e) {} }
+      if (v) v.play().catch(() => {});
+    }
+  });
+  pump();
+}, 400);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) kickCams(); });
+window.addEventListener('pageshow', kickCams);
+window.addEventListener('focus', kickCams);
 const vio = new IntersectionObserver(es => es.forEach(e => {
   const c = e.target, p = P.get(c); if (!p) return;
   p.vis = e.isIntersecting; clearTimeout(p.t);
