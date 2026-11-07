@@ -546,18 +546,6 @@ a{color:inherit;text-decoration:none;text-underline-offset:2px}
 .cl a.srcl .ic,.nd-n a .ic{width:10px;height:10px;margin-left:5px;vertical-align:-1px}
 
 /* ============================================================ NEWS */
-.srcs{display:flex;gap:4px;padding:8px 12px;border-bottom:1px solid var(--border);overflow-x:auto;scrollbar-width:none;
-  -webkit-mask-image:linear-gradient(90deg,#000 calc(100% - 22px),transparent);mask-image:linear-gradient(90deg,#000 calc(100% - 22px),transparent)}
-.srcs::-webkit-scrollbar{display:none}
-.sc{
-  flex:none;display:inline-flex;align-items:center;gap:5px;height:21px;padding:0 6px;
-  border:1px solid var(--border);font:500 9px/1 var(--mono);letter-spacing:.06em;
-  text-transform:uppercase;color:var(--text3);
-}
-.sc i{width:5px;height:5px;background:var(--ok);flex:none}
-.sc.proxy i,.sc.stale i{background:var(--warn)}
-.sc.fail i{background:var(--accent)}
-.sc.off i{background:var(--text3)}
 .catbar{display:flex;gap:2px;padding:9px 12px 0;border-bottom:1px solid var(--border);overflow-x:auto;scrollbar-width:none;
   -webkit-mask-image:linear-gradient(90deg,#000 calc(100% - 22px),transparent);mask-image:linear-gradient(90deg,#000 calc(100% - 22px),transparent)}
 .catbar::-webkit-scrollbar{display:none}
@@ -1393,7 +1381,6 @@ a{color:inherit;text-decoration:none;text-underline-offset:2px}
   <section class="pane" aria-label="Wire berita">
     <div class="ph"><span class="ph-k">04</span><h2 class="ph-t">News Wire</h2><span class="ph-m" id="nmeta">—</span></div>
     <div class="pb">
-      <div class="srcs" id="srcs"></div>
       <div class="catbar" id="catbar" role="group" aria-label="Kategori berita"></div>
       <div class="tools">
         <input class="inp" id="fq" type="search" placeholder="Saring berita… (/)" aria-label="Saring berita">
@@ -1671,6 +1658,7 @@ let PULSE = [], DIS_PULSE = [], globeReady = false, globeCtx = null, globeIdn = 
 const legendOn = Object.fromEntries(Object.keys(CAT_GEO).map(c => [c, true]));
 const REDUCED = matchMedia('(prefers-reduced-motion: reduce)').matches;
 const view = { lon: 118, lat: 0, zoom: 1 };
+const ZOOM_MAX = 24;   // dulu 7: titik se-centroid tidak pernah sempat melebar
 const clampN = (v, a, b) => Math.min(b, Math.max(a, v));
 let flyAnim = null, lastGestEnd = -1e9, globeSuppressClick = 0, gesture = null;
 let globePtrType = 'mouse', tapKey = '', tapAt = 0;   // mobile: tap 1 = tooltip, tap 2 (titik sama) = reader
@@ -1888,7 +1876,7 @@ function drawGlobe(now){
     slotCount[name] = slot + 1;
     const ang = slot * 2.399963;
     const off = slot === 0 ? 0 : Math.min(2.4 + Math.sqrt(slot) * 2.6, 13);   // spiral kecil & dibatasi: titik tetap dekat lokasi aslinya
-    const zScale = 0.8 + view.zoom * 0.16;
+    const zScale = Math.max(0.8 + view.zoom * 0.16, view.zoom * 0.6);   // spiral ikut skala peta (bukan dikunci piksel), titik se-centroid melebar saat zoom-in
     const r = 1.35 + (p.weight || .3) * 2.5 + zoomBoost;
     pts.push({ x: xy[0] + Math.cos(ang) * off * zScale, y: xy[1] + Math.sin(ang) * off * zScale,
       r, cat: p.kind, color: p.sub === 'gempa' ? '#ff5a4e' : p.sub === 'volcano' ? (LVL_COLOR[p.lvl] || '#8d8d8d') : (CAT_COLOR[p.kind] || '#8d8d8d'), fresh, p });
@@ -2108,7 +2096,7 @@ function bindGlobeEvents(){
     } else if (gesture.mode === 'pinch' && ptrs.size === 2) {
       const [a, b] = [...ptrs.values()];
       const dist = Math.hypot(a.x - b.x, a.y - b.y);
-      if (gesture.dist > 0) view.zoom = clampN(gesture.zoom * dist / gesture.dist, 0.9, 7);
+      if (gesture.dist > 0) view.zoom = clampN(gesture.zoom * dist / gesture.dist, 0.9, ZOOM_MAX);
       gesture.moved += 1;
     }
     lastGestEnd = performance.now();
@@ -2118,7 +2106,7 @@ function bindGlobeEvents(){
   c.addEventListener('wheel', e => {
     e.preventDefault();
     flyAnim = null;
-    view.zoom = clampN(view.zoom * (e.deltaY < 0 ? 1.4 : 1 / 1.4), 0.9, 7);
+    view.zoom = clampN(view.zoom * (e.deltaY < 0 ? 1.4 : 1 / 1.4), 0.9, ZOOM_MAX);
     lastGestEnd = performance.now();
   }, { passive: false });
   c.addEventListener('mouseleave', () => { if (!ptrs.size) hideGlobeTip(); });
@@ -3011,18 +2999,6 @@ function mergedMedia(){
   _mmSig = sig;
   return _mmCache;
 }
-function renderSrcs(){
-  const ids = SRC_IDS || RSS_SOURCES.map(x => x.id);
-  $('#srcs').innerHTML = ids.map(id => {
-    const st = srcState.get(id), g = lastGood.get(id), n = g ? g.items.length : 0;
-    let cls = '', note = 'belum';
-    if (!st) cls = 'off';
-    else if (st.ok) { cls = st.via === 'langsung' ? '' : 'proxy'; note = st.via + ' · ' + n; }
-    else if (g) { cls = 'stale'; note = 'stale · ' + n; }
-    else { cls = 'fail'; note = 'gagal'; }
-    return `<span class="sc ${cls}" title="${esc(id)} · ${esc(note)}"><i></i>${esc(id)}</span>`;
-  }).join('');
-}
 function fallbackImgOK(u){
   if (!u || /news\.google\.com|lh3\.googleusercontent\.com/i.test(u)) return false;
   const m = u.match(/[?&](?:w|width)=(\d{2,4})/i) || u.match(/\/(\d{2,4})x(\d{2,4})\//);
@@ -3153,7 +3129,6 @@ function renderNews(){
     renderNlist();
   }
   $('#f-news').textContent = items.length;
-  renderSrcs();
   updateFoot();
 }
 let newsList = [], curLead = null;
