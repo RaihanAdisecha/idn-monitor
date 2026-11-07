@@ -1252,6 +1252,10 @@ a{color:inherit;text-decoration:none;text-underline-offset:2px}
   .rd-b{padding:16px 16px 24px}
   .rd-art h1{font-size:16px}
   .rd-hm{display:none}
+  /* TV: dock full-width di bottom viewport — posisi inline tvPlace kalah oleh !important */
+  .tvwrap{left:0!important;right:0!important;top:auto!important;bottom:0!important;width:100%!important;max-width:none!important;border-left:0;border-right:0;border-bottom:0}
+  .tvwrap .tv-h{cursor:default}
+  .tvwrap .tv-grip{display:none}
 }
 @media (prefers-reduced-motion:reduce){
   *,*::before,*::after{animation:none!important;transition:none!important}
@@ -5072,7 +5076,7 @@ function tvPlace(x, y){
 }
 function tvSave(){
   const r = $('#tvwrap').getBoundingClientRect();
-  try { localStorage.setItem('sitrep.tv', JSON.stringify({ x: Math.round(r.left), y: Math.round(r.top) })); } catch (e) {}
+  try { localStorage.setItem('sitrep.tv2', JSON.stringify({ x: Math.round(r.left), y: Math.round(r.top) })); } catch (e) {}
 }
 function tvSnap(){
   const w = $('#tvwrap'), r = w.getBoundingClientRect();
@@ -5091,10 +5095,10 @@ function tvOpen(){
   w.setAttribute('aria-hidden', 'false');
   $('#btn-tv').setAttribute('aria-expanded', 'true');
   let saved = null;
-  try { saved = JSON.parse(localStorage.getItem('sitrep.tv') || 'null'); } catch (e) {}
+  try { saved = JSON.parse(localStorage.getItem('sitrep.tv2') || 'null'); } catch (e) {}
   const r = w.getBoundingClientRect();
   if (saved && Number.isFinite(saved.x) && Number.isFinite(saved.y)) tvPlace(saved.x, saved.y);
-  else tvPlace(innerWidth - r.width - 18, innerHeight - r.height - 44);
+  else tvPlace(18, Math.max(6, Math.min(innerHeight - r.height - 44, (innerHeight - r.height) / 2)));
   tvPlay();
 }
 function tvClose(){
