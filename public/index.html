@@ -1263,11 +1263,9 @@ a{color:inherit;text-decoration:none;text-underline-offset:2px}
   .rd-art h1{font-size:16px}
   .rd-hm{display:none}
   /* TV: dock full-width di bottom viewport — posisi inline tvPlace kalah oleh !important */
-  .tvwrap{left:0!important;right:0!important;top:auto!important;bottom:0!important;width:100%!important;max-width:none!important;border-left:0;border-right:0;border-bottom:0}
+  .tvwrap{left:12px!important;right:auto!important;top:auto!important;bottom:0!important;width:min(72vw,400px)!important;max-width:none!important;border-left:0;border-right:0;border-bottom:0;border-radius:8px 8px 0 0}
   .tvwrap .tv-h{cursor:default}
   .tvwrap .tv-grip{display:none}
-  .tv-body{height:clamp(110px,24vh,180px);aspect-ratio:auto}
-  .tv-body video{object-fit:contain}
 }
 @media (prefers-reduced-motion:reduce){
   *,*::before,*::after{animation:none!important;transition:none!important}
