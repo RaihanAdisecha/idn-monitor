@@ -12,6 +12,8 @@ function tag(p, extra = [], now = Date.now()) {
   if (SOC.socNonLatin(text) || SOC.socVi(text) || SOC.socHashJunk(text) || SOC.socForeignLang(text)) return false;
   p.ts = ts;
   p.assessment = SOC.socAssess(p.text, extra);
+  // isu yang SEMUA temuannya scope foreign = bukan sinyal buat feed Indonesia
+  if (p.assessment.scope === 'foreign') return false;
   p.topics = p.assessment.topics.slice();
   p.qs = p.topics.slice(); // compatibility only, never query provenance
   p.adhocPhrases = extra.filter(t => t.adhoc && p.topics.includes(t.id)).map(t => t.id);

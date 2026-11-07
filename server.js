@@ -713,7 +713,7 @@ const threads = () => memo('threads', 300000, async () => {
   const forced = new Set(ADHOC.map(a => a.id).concat(hotTop));
   const chosen = new Set();
   // throttle sejak siklus pertama: burst ~30 request langsung memicu 429 Threads
-  const N = 10, pri = t => ((now - (thSeen.get(t) || 0)) / 60000) * (1 + Math.min(heat(t), 60) / 15);
+  const N = 13, pri = t => ((now - (thSeen.get(t) || 0)) / 60000) * (1 + Math.min(heat(t), 60) / 15);
   const rest = [...byTopic.keys()].filter(t => !forced.has(t)).sort((a, b) => pri(b) - pri(a));
   let used = 0;
   for (const t of forced) { chosen.add(t); used += byTopic.get(t).length; }
@@ -722,7 +722,7 @@ const threads = () => memo('threads', 300000, async () => {
   const searches = [...new Set([...chosen].flatMap(t => byTopic.get(t)))];
   const watch = [...new Set(TH_WATCH.concat(dynWatch(now)))];
   // profil watchlist: semua kalau ≤6, rotasi sisanya per siklus
-  const wN = Math.min(6, watch.length), wOff = watch.length ? (thTick - 1) % watch.length : 0;
+  const wN = Math.min(8, watch.length), wOff = watch.length ? (thTick - 1) % watch.length : 0;
   const profiles = watch.length <= wN ? watch.slice() :
     Array.from({ length: wN }, (_, i) => watch[(wOff + i) % watch.length]);
   const chunks = [{ s: [], p: [] }, { s: [], p: [] }, { s: [], p: [] }];

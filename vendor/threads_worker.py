@@ -46,7 +46,7 @@ def main():
 
     for u in profiles:
         try:
-            found = client.posts(u, 20)
+            found = client.posts(u, 40)   # posts() punya paginasi — 40 post/profil per siklus
         except ScrapeError as exc:
             errs.append({"q": "@" + u, "err": str(exc)})
         except Exception as exc:  # noqa: BLE001
