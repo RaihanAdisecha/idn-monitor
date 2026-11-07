@@ -638,11 +638,15 @@ a{color:inherit;text-decoration:none;text-underline-offset:2px}
   -webkit-mask-image:linear-gradient(90deg,#000 calc(100% - 22px),transparent);mask-image:linear-gradient(90deg,#000 calc(100% - 22px),transparent)}
 .citybar::-webkit-scrollbar{display:none}
 .cb{
-  flex:none;height:31px;padding:0 8px;border-bottom:2px solid transparent;
-  font:500 9px/1 var(--mono);letter-spacing:.06em;text-transform:uppercase;color:var(--text3);
+  flex:none;display:inline-flex;align-items:center;gap:6px;height:26px;margin:5px 4px 5px 0;
+  padding:0 11px;border:1px solid var(--border2);border-radius:20px;
+  font:500 9px/1 var(--mono);letter-spacing:.05em;text-transform:uppercase;color:var(--text3);
+  transition:background .12s,border-color .12s,color .12s;
 }
-.cb:hover{color:var(--text2)}
-.cb[aria-selected="true"]{color:var(--text);border-bottom-color:var(--accent)}
+.cb:hover{color:var(--text2);border-color:var(--text3)}
+.cb .cb-n{font:600 8px/1 var(--mono);color:var(--text3);background:var(--layer2);border-radius:8px;padding:2px 5px}
+.cb[aria-selected="true"]{color:#fff;background:var(--accent);border-color:var(--accent)}
+.cb[aria-selected="true"] .cb-n{color:#fff;background:rgba(255,255,255,.22)}
 .camgrid{display:grid;grid-template-columns:repeat(var(--cols,2),minmax(0,1fr));gap:1px;background:var(--border)}
 .cam{position:relative;display:block;width:100%;padding:0;background:#000;text-align:left;cursor:pointer}
 .cam .frame{position:relative;aspect-ratio:16/9;overflow:hidden;background:#000}
@@ -3360,10 +3364,12 @@ function renderCams(){
   layout(); upd(); pump();
 }
 function drawCityBar(){
-  const ds = ['Semua', ...new Set(CAMS.map(c => c.c))];
+  const cnt = {};
+  CAMS.forEach(c => { cnt[c.c] = (cnt[c.c] || 0) + 1; });
+  const ds = ['Semua', ...Object.keys(cnt).sort((a, b) => cnt[b] - cnt[a])];
   $('#citybar').innerHTML = ds.map(d => {
     const n = CAMS.filter(c => d === 'Semua' || c.c === d).length;
-    return `<button class="cb" type="button" data-city="${esc(d)}" role="tab" aria-selected="${d === district}">${esc(d)}<span style="color:var(--text3);margin-left:5px">${n}</span></button>`;
+    return `<button class="cb" type="button" data-city="${esc(d)}" role="tab" aria-selected="${d === district}">${esc(d)}<span class="cb-n">${n}</span></button>`;
   }).join('');
 }
 $('#citybar').addEventListener('click', e => {
