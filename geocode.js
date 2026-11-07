@@ -14,6 +14,19 @@ for (const k of G.kab) { const f = FIX.kab[k.code]; if (f) { k.la = f[0]; k.lo =
 for (const p of G.prov) { const f = FIX.prov[p.code]; if (f) { p.la = f[0]; p.lo = f[1]; } }
 
 const norm = s => String(s).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, ' ').trim();
+/* Nama provinsi resmi (gazetteer) vs singkatan yang dipakai entri POI.
+   Tanpa normalisasi ini, "DKI Jakarta" dianggap beda provinsi dari
+   "Daerah Khusus Ibukota Jakarta" dan POI yang benar ikut dibuang. */
+const PROV_CANON = {
+  'daerah khusus ibukota jakarta': 'dki jakarta',
+  'dki jakarta': 'dki jakarta',
+  'daerah istimewa yogyakarta': 'di yogyakarta',
+  'di yogyakarta': 'di yogyakarta',
+  'yogyakarta': 'di yogyakarta',
+  'kepulauan bangka belitung': 'bangka belitung',
+  'bangka belitung': 'bangka belitung'
+};
+const provKey = p => { const k = norm(p); return PROV_CANON[k] || k; };
 const LEVEL = { poi: 7, kec: 6.5, kab: 6, region: 3.5, prov: 3 };
 
 // nama kab/kota yang juga kata umum / nama institusi: wajib ada penanda lokatif tepat sebelumnya
@@ -213,7 +226,7 @@ cpoi('medan-kota', 'Medan Kota', 3.5730, 98.6889, 'Sumatera Utara', ['medan kota
 cpoi('glugur', 'Glugur', 3.6099, 98.6749, 'Sumatera Utara', ['glugur']);
 cpoi('polonia', 'Polonia', 3.5596, 98.6659, 'Sumatera Utara', ['polonia']);
 cpoi('helvetia', 'Helvetia', 3.6070, 98.6305, 'Sumatera Utara', ['helvetia']);
-cpoi('perumnas', 'Perumnas', 3.6952, 98.6873, 'Sumatera Utara', ['perumnas']);
+cpoi('perumnas', 'Perumnas', 3.6952, 98.6873, 'Sumatera Utara', ['perumnas'], true);   // "perumnas" = perumahan nasional, bukan nama tempat
 cpoi('tamalanrea', 'Tamalanrea', -5.1105, 119.4695, 'Sulawesi Selatan', ['tamalanrea']);
 cpoi('mariso', 'Mariso', -5.1553, 119.4069, 'Sulawesi Selatan', ['mariso']);
 cpoi('tamalate', 'Tamalate', -5.1930, 119.3862, 'Sulawesi Selatan', ['tamalate']);
@@ -283,7 +296,10 @@ function locate(title) {
       const list = idx.get(key);
       if (!list) continue;
       const prev = tk[i - 1] || '', prev2 = tk[i - 2] || '';
-      if (AMBIG.has(key) && !(LOC_CUE.has(prev) || PREFIX_KAB.has(prev) || PREFIX_KOTA.has(prev))) { continue; }
+      // token terakhir setelah POI/kecamatan hampir selalu nama kota induk
+      // ("Sukolilo, Pati", "Menteng, Bogor") walau tanpa kata "di".
+      const cityTail = (i + n >= tk.length) && cands.length > 0;
+      if (AMBIG.has(key) && !(LOC_CUE.has(prev) || PREFIX_KAB.has(prev) || PREFIX_KOTA.has(prev) || cityTail)) { continue; }
       if (key === 'malaka' && prev === 'selat') continue;
       if (key === 'metro' && /^(jaya|tv)$/.test(tk[i + 1] || '')) continue;
       // pilih entri: prefix eksplisit > kota (bila kembar kab/kota) > pertama
@@ -326,6 +342,22 @@ function locate(title) {
   }
   if (!cands.length) return null;
   cands.sort((a, b) => (b.score + b.cue) - (a.score + a.cue) || a.pos - b.pos);
+  /* POI kawasan menang skor, tapi nama POI banyak yang dipakai di beberapa kota
+     (Perumnas, Simpang Lima, Cipayung, Menteng...). Kalau judul menyebut kab/prov
+     eksplisit di provinsi berbeda, POI itu hampir pasti salah kota: buang, pakai
+     kab/prov yang disebut. Gunung api (id "V...") dikecualikan karena puncak gunung
+     memang lokasi kejadian, bukan kota administratif. */
+  for (let guard = 6; guard > 0; guard--) {
+    const top = cands[0];
+    // HANYA level poi yang boleh dibuang — kab/kec/prov yang menang skor
+    // (mis. "di Cilegon" dapat cue) tidak boleh dikalahkan kandidat prov lain.
+    if (!top || top.e.level !== 'poi' || top.e.id[0] === 'V' || !top.e.prov) break;
+    const alt = cands.find(c => c !== top &&
+      (c.e.level === 'kab' || c.e.level === 'prov') &&
+      c.e.prov && provKey(c.e.prov) !== provKey(top.e.prov));
+    if (!alt) break;
+    cands.splice(cands.indexOf(top), 1);
+  }
   const best = cands[0];
   const e = best.e;
   // beberapa tempat sederajat yang disebut berurutan ("Aceh, Jawa Tengah dan Jawa Timur") → semuanya titik sah, bukan cuma yang pertama

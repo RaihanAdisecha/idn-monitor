@@ -852,10 +852,11 @@ const threadOf = (raw) => {
 /* ---------- Peta insiden: demo & bencana seluruh Indonesia ---------- */
 /* Geocoder: lihat geocode.js (gazetteer 514 kab/kota Kepmendagri 2025, match per-token, presisi jujur) */
 const GEO = require('./geocode');
+const EVM = require('./evmerge');
 const placeOf = t => GEO.locate(t);
 // Judul yang menyebut tempat + kata insiden tapi BUKAN kejadian baru di tempat itu: bantuan, reses, apresiasi, program kesehatan umum.
 // Dipakai hanya untuk titik peta/statistik wilayah; berita tetap tampil di news wire.
-const NOT_EVENT_RE = /\b(reses|apresiasi|penghargaan|salurkan|menyalurkan|penyaluran|bantuan (?:rp|tahap|untuk|bagi|kemanusiaan)|kirim bantuan|donasi|santunan|gagasan|webinar|seminar|rakor|rapat koordinasi|kunjungan kerja|kunker|dipulangkan|pemulangan|ucapan duka|doa bersama|pekarangan|ketahanan pangan|kesejahteraan|proklim|sinkronkan|disinkronkan)\b/i;
+const NOT_EVENT_RE = /\b(reses|apresiasi|penghargaan|salurkan|menyalurkan|penyaluran|bantuan (?:rp|tahap|untuk|bagi|kemanusiaan)|kirim bantuan|donasi|santunan|gagasan|webinar|seminar|rakor|rapat koordinasi|kunjungan kerja|kunker|dipulangkan|pemulangan|ucapan duka|doa bersama|pekarangan|ketahanan pangan|kesejahteraan|proklim|sinkronkan|disinkronkan|inovasi|sosialisasi|edukasi|kesiapsiagaan|mitigasi|pencegahan|simulasi|pelatihan|resmikan|launching|dihadiri|hadiri|tinjau|opini|analisis|kolom|imbau|pemakaman)\b/i;
 const HEALTH_EVENT_RE = new RegExp('(?:' + HEALTH_DZ + '|' + HEALTH_EVT + ')', 'i');
 const plotOk = (title, cat) => !NOT_EVENT_RE.test(title) && (cat !== 'kesehatan' || HEALTH_EVENT_RE.test(title));
 const GEO_WINDOW = 24 * 3600e3;
@@ -886,69 +887,18 @@ const incidents = () => memo('incidents', 55000, async () => {
     }
   }
   out.sort((a, b) => b.ts - a.ts);
-  /* Event-level merge: peristiwa yang sama (kategori + tempat + token langka
-     bersama) → SATU pin. Tanpa ini 5 outlet memberitakan kebakaran yang sama
-     jadi 5 titik di koordinat sama. eid stabil lintas refresh (sticky via
-     prev-cache) supaya client tidak toast dobel saat representative berganti. */
-  const EV_GENERIC = new Set([...TSTOP,
-    'kebakaran','banjir','gempa','guncang','kecelakaan','tabrak','tawuran','longsor',
-    'demo','unjuk','rasa','massa','damkar','pemadam','waspada','peringatan','tertimpa',
-    'menimpa','luka','tewas','meninggal','korban','evakuasi','ditangkap','terbakar',
-    'meluas','amblas','rob','genangan','macet','terpampang','terkunci','terdampak']);
-  const evHash = s => { let h = 5381; for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) >>> 0; return h.toString(36); };
-  const evRare = (title, pk) => {
-    const pt = new Set(pk.split(' '));
-    return new Set(breakNorm(title).split(' ').filter(w => w.length >= 5 && !EV_GENERIC.has(w) && !pt.has(w)));
-  };
+  /* Event-level merge ada di evmerge.js (unit-tested): peristiwa sama
+     (kategori + tempat + token langka / jendela hazard) → satu pin,
+     eid stabil lintas refresh lewat rt, rep dipilih dari kualitas laporan. */
   const prevPins = ((((cache.get('incidents') || {}).v) || {}).items) || [];
-  const prevByKey = new Map();   // kind|placeKey → [prev pin ber-eid]
-  for (const pp of prevPins) {
-    if (!pp || !pp.eid || pp.kind === 'node' || typeof pp.name !== 'string') continue;
-    const k = pp.kind + '|' + GEO.norm(pp.name);
-    if (!prevByKey.has(k)) prevByKey.set(k, []);
-    prevByKey.get(k).push(pp);
-  }
-  const evGroups = new Map();
-  for (const p of out) {
-    const pk = GEO.norm(p.name);
-    const key = p.kind + '|' + pk;
-    if (!evGroups.has(key)) evGroups.set(key, []);
-    evGroups.get(key).push({ p, rs: evRare(p.title, pk) });
-  }
-  const merged = [];
-  for (const [key, members0] of evGroups) {
-    const [cat, pk] = key.split('|');
-    const parent = members0.map((_, i) => i);
-    const find = i => parent[i] === i ? i : (parent[i] = find(parent[i]));
-    for (let i = 0; i < members0.length; i++) for (let j = i + 1; j < members0.length; j++) {
-      if ([...members0[i].rs].some(t => members0[j].rs.has(t))) { const a = find(i), b = find(j); if (a !== b) parent[a] = b; }
-    }
-    const cls = new Map();
-    members0.forEach((m, i) => { const r = find(i); if (!cls.has(r)) cls.set(r, []); cls.get(r).push(m); });
-    for (const members of cls.values()) {
-      members.sort((a, b) => (b.p.ts || 0) - (a.p.ts || 0));
-      const rep = members[0].p;
-      const rareU = new Set(); members.forEach(m => m.rs.forEach(t => rareU.add(t)));
-      let eid = '';
-      if (rep.multi && rep.url) eid = 'u' + evHash(rep.url);   // multi-kota: semantik lama (satu artikel = satu event)
-      else {
-        for (const pp of (prevByKey.get(key) || [])) {
-          const pr = evRare(pp.title, pk);
-          if ([...rareU].some(t => pr.has(t))) { eid = pp.eid; break; }
-        }
-        if (!eid) eid = 'e' + evHash(cat + '|' + pk + '|' + [...rareU].sort().join(','));
-      }
-      const item = { ...rep, eid };
-      if (members.length > 1) item.n = members.length;
-      merged.push(item);
-    }
-  }
+  const merged = EVM.mergeEvents(out, prevPins, { normPlace: s => GEO.norm(s) });
+  merged.sort((a, b) => (b.ts || 0) - (a.ts || 0));
   const items = merged.slice(0, 400);
   for (const p of GEO.NODES) {
     items.push({ name: p.name, la: p.la, lo: p.lo, prov: p.prov, prec: 'kab', kind: 'node', label: 'Node',
       title: 'Node pemantauan · ' + p.name, src: 'NODE', url: '', ts: now, weight: 0.16, fixed: true });
   }
-  return { ok: true, items, total: out.length, places: GEO.NODES.length, at: now };
+  return { ok: true, items, total: merged.length, raw: out.length, places: GEO.NODES.length, at: now };
 });
 
 /* ---------- Situasi: agregat kategori + wilayah buat panel dossier ---------- */
@@ -3309,7 +3259,7 @@ http.createServer(async (req, res) => {
   try {
     if (u.pathname === '/' || u.pathname === '/index.html') { res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' }); return res.end(fs.readFileSync(HTML)); }
     if (u.pathname === '/idn.geo.json' || u.pathname === '/idn-context.geo.json' || u.pathname === '/idn-prov.geo.json' || u.pathname === '/world110.geo.json') { res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store', 'access-control-allow-origin': '*' }); return res.end(fs.readFileSync(path.join(__dirname, 'public', u.pathname.slice(1)))); }
-    if (u.pathname === '/signals.js' || u.pathname === '/wxicons.js') { res.writeHead(200, { 'content-type': 'application/javascript; charset=utf-8', 'cache-control': 'no-store' }); return res.end(fs.readFileSync(path.join(__dirname, 'public', u.pathname.slice(1)))); }
+    if (u.pathname === '/signals.js' || u.pathname === '/wxicons.js' || u.pathname === '/wire-core.js') { res.writeHead(200, { 'content-type': 'application/javascript; charset=utf-8', 'cache-control': 'no-store' }); return res.end(fs.readFileSync(path.join(__dirname, 'public', u.pathname.slice(1)))); }
     if (u.pathname === '/api/ping') return json({ ok: true, x: xHas(), classifierVersion: SOC.CLASSIFIER_VERSION });
     if (u.pathname === '/api/news') {
       const srcs = await news();
