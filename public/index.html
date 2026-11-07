@@ -5081,7 +5081,7 @@ function tvPlace(x, y){
 }
 function tvSave(){
   const r = $('#tvwrap').getBoundingClientRect();
-  try { localStorage.setItem('sitrep.tv2', JSON.stringify({ x: Math.round(r.left), y: Math.round(r.top) })); } catch (e) {}
+  try { localStorage.setItem('sitrep.tv3', JSON.stringify({ x: Math.round(r.left), y: Math.round(r.top) })); } catch (e) {}
 }
 function tvSnap(){
   const w = $('#tvwrap'), r = w.getBoundingClientRect();
@@ -5100,7 +5100,7 @@ function tvOpen(){
   w.setAttribute('aria-hidden', 'false');
   $('#btn-tv').setAttribute('aria-expanded', 'true');
   let saved = null;
-  try { saved = JSON.parse(localStorage.getItem('sitrep.tv2') || 'null'); } catch (e) {}
+  try { saved = JSON.parse(localStorage.getItem('sitrep.tv3') || 'null'); } catch (e) {}
   const r = w.getBoundingClientRect();
   if (saved && Number.isFinite(saved.x) && Number.isFinite(saved.y)) tvPlace(saved.x, saved.y);
   else tvPlace(18, innerHeight - r.height - 44);
