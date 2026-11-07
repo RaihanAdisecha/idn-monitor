@@ -3146,14 +3146,7 @@ function insertLeadThumb(h, info){
 async function hydrateLead(h){
   leadThumbURL = h && h.url || '';
   if (!h || API == null) return;
-  // lead wajib ada gambar + deskripsi panjang: kandidat desc>160 didahulukan, baru sisanya
-  const pool = [h, ...leadPool.filter(x => x.url !== h.url)];
-  pool.sort((a, b) => (b.ts || 0) - (a.ts || 0) ||
-                      (((b.desc || '').length > 160) - ((a.desc || '').length > 160)) ||
-                      ((b.desc || '').length - (a.desc || '').length));
-  const cands = pool.slice(0, 10);
-  for (const c of cands) {
-    if (leadThumbURL !== h.url) return;                    // lead sudah diganti render lain
+  const infoOf = async c => {
     let info = leadThumbs.get(c.url);
     if (info === undefined) {
       try {
@@ -3164,16 +3157,28 @@ async function hydrateLead(h){
       leadThumbs.set(c.url, info);
       if (leadThumbs.size > 120) leadThumbs.delete(leadThumbs.keys().next().value);
     }
+    return info;
+  };
+  // gambar milik lead sendiri dicek DULU — headline tidak boleh tertukar kalau thumb-nya ada
+  const hi = await infoOf(h);
+  if (leadThumbURL !== h.url) return;                        // lead sudah diganti render lain
+  if (hi && hi.img) { insertLeadThumb(h, hi); return; }
+  // lead memang tanpa gambar → promosikan kandidat lain yang punya gambar (maksimal sekali per lead)
+  const pool = [h, ...leadPool.filter(x => x.url !== h.url)];
+  pool.sort((a, b) => (b.ts || 0) - (a.ts || 0) ||
+                      (((b.desc || '').length > 160) - ((a.desc || '').length > 160)) ||
+                      ((b.desc || '').length - (a.desc || '').length));
+  for (const c of pool.slice(0, 10)) {
+    if (leadThumbURL !== h.url) return;                      // render lain sudah mengambil alih
+    if (c.url === h.url) continue;                           // h sudah dicek di atas
+    const info = await infoOf(c);
+    if (leadThumbURL !== h.url) return;                      // guard PASCA-await: cegah hydrate basi menimpa lead baru
     if (!info || !info.img) continue;
-    if (c.url !== h.url) {                                  // kandidat lain yang punya gambar → promosikan jadi lead
-      leadPool = [c, ...leadPool.filter(x => x.url !== c.url)];
-      $('#lead').innerHTML = leadHtml(c);
-      leadThumbURL = c.url;
-      insertLeadThumb(c, info);
-      curLead = c; renderNlist();   // render ulang grid — parity tetap benar, tidak ada item hilang di tengah
-      return;
-    }
-    insertLeadThumb(h, info);
+    leadPool = [c, ...leadPool.filter(x => x.url !== c.url)];
+    $('#lead').innerHTML = leadHtml(c);
+    leadThumbURL = c.url;
+    insertLeadThumb(c, info);
+    curLead = c; renderNlist();   // render ulang grid — parity tetap benar, tidak ada item hilang di tengah
     return;
   }
 }
@@ -3225,9 +3230,12 @@ function renderNews(){
     $('#lead').innerHTML = '';
     $('#nlist').innerHTML = '<div class="empty">Tidak ada berita yang lolos saring.</div>';
   } else {
-    curLead = pickLead(list);
+    // lead stabil: selama artikel yang sama masih ada di list, jangan ganti headline tiap refresh
+    const keep = curLead && list.find(x => x.url === curLead.url);
+    curLead = keep || pickLead(list);
     leadPool = list;
-    $('#lead').innerHTML = leadHtml(curLead);
+    const sameLead = keep && $('#lead .lead') && $('#lead .lead').getAttribute('href') === curLead.url;
+    if (!sameLead) $('#lead').innerHTML = leadHtml(curLead);   // lead sama → DOM tidak dibangun ulang (gambar hasil hydrate tidak hilang)
     hydrateLead(curLead);
     renderNlist();
   }
@@ -5207,12 +5215,14 @@ async function refreshAll(manual){
   busy = true;
   $('#countdown').textContent = 'Menarik…';
   try {
-    await Promise.all([pullMedia(), pullSituation(), pullStocks()]);
+    // fire-and-forget duluan: incidents/globe tidak boleh nunggu pipeline news selesai —
+    // server-side incidents() dan /api/news share memo feed yang sama, jadi paralel tanpa fetch ganda
     pullX();
     pullThreads();
     pullIncidents();
     pullAlive();
     pullCctv();
+    await Promise.all([pullMedia(), pullSituation(), pullStocks()]);
     P.forEach((p, c) => { if (p.dead) { p.dead = false; p.tries = 0; badge(c, 'wait', 'Antre'); } });
     pump();
     $('#lastsync').textContent = 'sync ' + wibTime(Date.now()) + ' WIB';
