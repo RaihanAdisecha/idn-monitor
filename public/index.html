@@ -190,6 +190,8 @@ a{color:inherit;text-decoration:none;text-underline-offset:2px}
 .pb::-webkit-scrollbar-thumb{background:#3d3d3d;border:2px solid var(--bg)}
 
 /* ============================================================ MARKET */
+/* market body: ikut sistem collapse pane di mobile, tetap flex-column di desktop supaya .stk flex:1 jalan */
+.mkt-body{flex:1;min-height:0;display:flex;flex-direction:column;overflow:hidden}
 .stk{flex:1;min-height:72px;display:flex;flex-direction:column;background:var(--bg);overflow:hidden}
 .stk-r1,.stk-r2{flex:1;min-height:0;display:flex;align-items:stretch}
 .stk-r2{border-top:1px solid var(--border)}
@@ -1190,7 +1192,9 @@ a{color:inherit;text-decoration:none;text-underline-offset:2px}
   .console{display:block;background:var(--bg)}
   .pane{border-bottom:1px solid var(--border)}
   .pane .pb{display:none;overflow:visible}
+  .pane .mkt-body{display:none}
   .pane.open .pb:not([hidden]){display:block}
+  .pane.open .mkt-body{display:flex}
   .ph{cursor:pointer;user-select:none;-webkit-user-select:none}
   .ph::after{
     content:"";flex:none;width:8px;height:8px;margin-left:2px;
@@ -1415,6 +1419,7 @@ a{color:inherit;text-decoration:none;text-underline-offset:2px}
   <section class="pane mkt" aria-label="Pasar saham Indonesia">
     <div class="ph"><span class="ph-k">02</span><h2 class="ph-t">Market · IDX</h2>
       <span class="ph-m" id="stk-meta">—</span></div>
+    <div class="mkt-body">
     <div class="tape" id="tape" hidden><div class="tapetrack" id="tapetrack"></div></div>
     <div class="stk">
       <div class="stk-r1">
@@ -1435,6 +1440,7 @@ a{color:inherit;text-decoration:none;text-underline-offset:2px}
         </div>
         <div class="stk-chips" id="fx-chips"></div>
       </div>
+    </div>
     </div>
   </section>
 
