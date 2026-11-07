@@ -166,11 +166,17 @@ const descOf = b => {
   t = out.replace(/\(\s*$/, '').trim();
   return t.length > 520 ? t.slice(0, 517).replace(/\s+\S*$/, '') + '…' : t;
 };
+// <source> Google News kadang berisi URL (https://www.situs.id/) bukan nama media → jadikan hostname rapi
+const cleanPub = v => {
+  v = String(v || '').trim();
+  if (/^(https?:)?\/\//i.test(v) || /^www\./i.test(v)) { try { return new URL(/^www\./i.test(v) ? 'https://' + v : v).hostname.replace(/^www\./i, ''); } catch (e) { return ''; } }
+  return v;
+};
 function parseFeed(xml) {
   const out = [];
   for (const m of xml.matchAll(/<item[\s>]([\s\S]*?)<\/item>/gi)) {
     const b = m[1], title = tag(b, 'title'), url = tag(b, 'link') || tag(b, 'guid'), d = tag(b, 'pubDate');
-    if (title && url) out.push({ title, url, ts: d ? Date.parse(d) || 0 : 0, img: feedImage(b), pub: tag(b, 'source') || '', desc: descOf(b) });
+    if (title && url) out.push({ title, url, ts: d ? Date.parse(d) || 0 : 0, img: feedImage(b), pub: cleanPub(tag(b, 'source')), desc: descOf(b) });
   }
   for (const m of xml.matchAll(/<entry[\s>]([\s\S]*?)<\/entry>/gi)) {
     const b = m[1], l = b.match(/<link[^>]*href="([^"]+)"/i) || b.match(/<link[^>]*>([^<]+)<\/link>/i), d = tag(b, 'updated') || tag(b, 'published');
@@ -1652,7 +1658,7 @@ async function thumbFromHtml(rawHtml, article) {
     const dim = await probeImage(img, article).catch(() => null);
     return dim ? { img, w: dim.w, h: dim.h, src: article, score: imageScore(c, dim) } : null;
   };
-  const passes = p => p && p.w >= 600 && ogReuse(host, p.img, article) < 1;
+  const passes = p => p && p.w >= 600 && !rdJunkUrl(p.img) && !rdSmallHint(p.img) && !RD_IMG_JUNK.test(p.img.split('?')[0]) && ogReuse(host, p.img, article) < 1;
   // hero = urutan prioritas dokumen (ld+json → og → meta), bukan score tertinggi:
   // thumbnail harus konsisten dengan gambar yang sama yang dipakai reader
   const seenU = new Set();
@@ -1670,7 +1676,7 @@ async function thumbFromHtml(rawHtml, article) {
   if (!best) {
     const bs = await Promise.all(body.filter(c => !seenU.has(c.url)).slice(0, 8).map(probe));
     best = bs.filter(Boolean).sort((a, b) => b.score - a.score)
-      .find(p => p.w >= 600 && ogReuse(host, p.img, article) < 1) || null;
+      .find(p => p.w >= 600 && !rdJunkUrl(p.img) && !rdSmallHint(p.img) && !RD_IMG_JUNK.test(p.img.split('?')[0]) && ogReuse(host, p.img, article) < 1) || null;
   }
   const v = best ? { img: best.img, w: best.w, h: best.h, src: article } : { img: '', src: article };
   return v;
@@ -2456,6 +2462,10 @@ function rdExtract(html, finalURL) {
     paras = [rdInline(desc)];
     blk = { blocks: paras.map(t => ({ k: 'p', t })), paras, videos: [] };
   }
+  // fallback articleBody/desc dibuat SETELAH prune — bersihkan ulang (URL mentah, related, CTA)
+  blk.blocks = rdPruneNoise(blk.blocks, title);
+  blk.paras = blk.blocks.filter(b => b.k === 'p').map(b => b.t);
+  paras = blk.paras;
   // judul yang kebetulan jadi "paragraf" pertama → buang dari blok & paras
   const tnorm = rdInline(title).toLowerCase();
   if (tnorm) {

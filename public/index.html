@@ -125,13 +125,13 @@ a{color:inherit;text-decoration:none;text-underline-offset:2px}
   -webkit-mask-image:linear-gradient(90deg,transparent 0,#000 64px,#000 calc(100% - 64px),transparent 100%);
   mask-image:linear-gradient(90deg,transparent 0,#000 64px,#000 calc(100% - 64px),transparent 100%);
 }
-.tk-rail{display:flex;width:max-content;height:var(--tick);animation:tk-scroll linear infinite;will-change:transform}
+.tk-rail{display:flex;width:max-content;height:var(--tick);will-change:transform}
 .tk-rail .tk-set{display:flex;align-items:stretch;flex:none}
 @keyframes tk-scroll{to{transform:translateX(-50%)}}
 .tk-live{display:inline-flex;align-items:center;gap:8px;height:var(--tick);padding:0 18px 0 6px;flex:none;font:600 9px/1 var(--mono);letter-spacing:.16em;color:#ff6b70}
 .tk-live i{width:7px;height:7px;border-radius:50%;background:#ff3b41;box-shadow:0 0 9px rgba(255,59,65,.85);animation:livepulse 1.6s ease-in-out infinite}
 @keyframes livepulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.3;transform:scale(.7)}}
-.tk-sig{width:11px;height:11px;flex:none;color:#6f6f6f}
+.tk-sig{width:14px;height:14px;flex:none;color:#6f6f6f}
 .tk[data-cat="demo"] .tk-sig{color:#f1c21b}
 .tk[data-cat="fire"] .tk-sig{color:#ff6b70}
 .tk[data-cat="flood"] .tk-sig{color:#7aa9ff}
@@ -1174,10 +1174,18 @@ a{color:inherit;text-decoration:none;text-underline-offset:2px}
   .hdr{position:sticky;top:0;flex-wrap:wrap;height:auto;min-height:var(--hdr);padding:8px 12px;gap:8px}
   .brand-case{display:none}
   .hdr-tools{gap:12px;margin-left:0;width:100%;justify-content:space-between}
-  .ticker{grid-template-columns:auto auto minmax(0,1fr)}
+  /* breaking wire: label+fetch di baris 1, marquee full-width di baris 2 */
+  .ticker{height:auto;grid-template-columns:auto 1fr;grid-template-rows:var(--tick) var(--tick)}
   .tk-lbl{padding:0 8px 0 10px;gap:6px;letter-spacing:.1em}
-  .tk-fetch{padding:0 8px;gap:5px}
-  .tk-fetch-t{display:none}
+  .tk-fetch{padding:0 10px;gap:5px;border-right:0;justify-content:flex-end}
+  .tk-vp{grid-column:1/-1;grid-row:2;border-top:1px solid var(--border)}
+  .tk-fetch-t{display:inline}
+  /* market: IHSG & USD/IDR full-width, chips scroll di bawahnya */
+  .stk{flex:none}
+  .stk-r1,.stk-r2{flex:none;flex-direction:column}
+  .stk-ihsg{flex:none;width:100%;box-sizing:border-box;padding:10px 14px;border-right:0;border-bottom:1px solid var(--border)}
+  .stk-chips{flex:none;width:100%;-webkit-overflow-scrolling:touch;scroll-snap-type:x proximity}
+  .stk-chip{flex:0 0 150px;scroll-snap-align:start;padding:6px 14px}
   .tk-t{max-width:420px}
   .foot{height:auto;padding:8px 12px;flex-wrap:wrap;gap:6px 12px;white-space:normal}
   .foot .sp{margin-left:0}
@@ -1274,6 +1282,16 @@ a{color:inherit;text-decoration:none;text-underline-offset:2px}
   <symbol id="i-thcheck" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6.5" fill="currentColor" stroke="none"/><path d="M5.1 8.2 7.1 10.2l3.8-4.1" stroke="#fff" stroke-width="1.6" fill="none"/></symbol>
   <symbol id="i-x" viewBox="-2.5 -2.5 29 29"><path fill="currentColor" stroke="none" d="M18.901 1.153h3.68l-8.04 9.19L24 22.846h-7.406l-5.8-7.584-6.638 7.584H.474l8.6-9.83L0 1.154h7.594l5.243 6.932ZM17.61 20.644h2.039L6.486 3.24H4.298Z"/></symbol>
   <symbol id="i-news" viewBox="0 0 16 16"><rect x="2" y="2.5" width="12" height="11"/><path d="M5.5 2.5v11"/><path d="M2 5.5h3.5"/><path d="M8 7.2h4"/><path d="M8 9.6h4"/><path d="M8 12h2.6"/></symbol>
+  <symbol id="i-tk-demo" viewBox="0 0 16 16"><path d="M2 6.2v3.6h2.2l5.3 3.2V3L4.2 6.2H2Z"/><path d="M4.2 9.8 5 13.5h2l-.6-3.2"/><path d="M11.8 5.6a3.3 3.3 0 0 1 0 4.8"/><path d="M13.4 3.8a5.8 5.8 0 0 1 0 8.4"/></symbol>
+  <symbol id="i-tk-fire" viewBox="0 0 16 16"><path d="M8 1.5c.5 2.3 3.7 3.9 3.7 7.3A3.7 3.7 0 0 1 8 14.5a3.7 3.7 0 0 1-3.7-3.9c0-1.7.8-2.7 1.7-3.5.2 1.1.7 1.7 1.4 1.9C6.9 7.1 7.2 3.9 8 1.5Z"/><path d="M8 14.5c-1-.3-1.6-1.1-1.6-2.1 0-.9.6-1.5 1.6-2.4 1 .9 1.6 1.5 1.6 2.4 0 1-.6 1.8-1.6 2.1Z"/></symbol>
+  <symbol id="i-tk-flood" viewBox="0 0 16 16"><path d="M1.5 5.5c1.1-1 2.2-1 3.3 0s2.2 1 3.3 0 2.2-1 3.3 0 2.1 1 3.1 0"/><path d="M1.5 9c1.1-1 2.2-1 3.3 0s2.2 1 3.3 0 2.2-1 3.3 0 2.1 1 3.1 0"/><path d="M1.5 12.5c1.1-1 2.2-1 3.3 0s2.2 1 3.3 0 2.2-1 3.3 0 2.1 1 3.1 0"/><path d="M8 1.5v0"/></symbol>
+  <symbol id="i-tk-disaster" viewBox="0 0 16 16"><path d="M1 8h3l1.6-4.5 2.6 9 2-6.5 1 2H15"/></symbol>
+  <symbol id="i-tk-insiden" viewBox="0 0 16 16"><path d="M4.5 11.5V8a3.5 3.5 0 0 1 7 0v3.5"/><path d="M3 11.5h10v2.5H3z"/><path d="M8 1.5v1.4M2.6 3.8l1 1M13.4 3.8l-1 1"/></symbol>
+  <symbol id="i-tk-siber" viewBox="0 0 16 16"><rect x="3" y="7" width="10" height="7" rx="1.4"/><path d="M5.2 7V5.2a2.8 2.8 0 0 1 5.6 0V7"/><circle cx="8" cy="10.4" r=".9"/></symbol>
+  <symbol id="i-tk-kriminal" viewBox="0 0 16 16"><circle cx="5" cy="10.5" r="3.2"/><circle cx="11" cy="10.5" r="3.2"/><path d="M8 3.5v4"/><path d="M6.5 3.5h3"/></symbol>
+  <symbol id="i-tk-kesehatan" viewBox="0 0 16 16"><path d="M8 14S1.8 10.3 1.8 6.1A3.3 3.3 0 0 1 8 4.6a3.3 3.3 0 0 1 6.2 1.5C14.2 10.3 8 14 8 14Z"/><path d="M4.2 8h2l1-1.8 1.6 3.4L10 8h1.8"/></symbol>
+  <symbol id="i-tk-ekonomi" viewBox="0 0 16 16"><path d="M1.5 12l4.2-4.4 3 2.4 5-6"/><path d="M10.5 4h4v4"/><path d="M1.5 14.5h13"/></symbol>
+  <symbol id="i-tk-politik" viewBox="0 0 16 16"><path d="M2.5 8.5h11v5.5h-11z"/><path d="M6 8.5h4"/><path d="M5.2 6.8 4.6 2.5h6.8l-.6 4.3"/><path d="M6.6 5.2l1 1 2-2.2"/></symbol>
   <symbol id="i-sg-demo" viewBox="0 0 16 16"><path d="M1.8 6.4v3.2h2.2L9.6 13V3L4 6.4H1.8Z"/><path d="M11.2 5.8a3.2 3.2 0 0 1 0 4.4"/><path d="M12.4 4.4a4.8 4.8 0 0 1 0 7.2"/></symbol>
   <symbol id="i-sg-flood" viewBox="0 0 16 16"><path d="M8 2.2c2.7 3.2 4.3 5.4 4.3 7.2a4.3 4.3 0 0 1-8.6 0c0-1.8 1.6-4 4.3-7.2Z"/><path d="M6.3 9.7a1.8 1.8 0 0 0 1.5 1.9"/></symbol>
   <symbol id="i-sg-burst" viewBox="0 0 16 16"><circle cx="8" cy="8" r="2.1"/><path d="M8 1.4v2M8 12.6v2M1.4 8h2M12.6 8h2M3.2 3.2l1.4 1.4M11.4 11.4l1.4 1.4M12.8 3.2l-1.4 1.4M4.6 11.4l-1.4 1.4"/></symbol>
@@ -3195,7 +3213,7 @@ function newsHtml(h, full){
   const cat = h.cat || catOfTitle(h.title) || 'insiden';
   return `<a class="nw${full ? ' nw-full' : ''}" data-cat="${cat}" href="${esc(h.url)}" target="_blank" rel="noopener">
     <div class="nw-top"><span class="nw-cat">${CAT_LABEL[cat]}</span><time>${esc(h.ts ? wibTime(h.ts) : '')}</time></div>
-    <div class="nw-src">${esc(h.pub || h.src)}${isNew ? '<span class="new">Baru</span>' : ''}${h.n > 1 ? `<span class="dup-n" title="${esc([...h.srcs].filter(Boolean).join(', '))}">×${h.n} sumber</span>` : ''}</div>
+    <div class="nw-src">${esc(tkPub(h.pub) || h.src)}${isNew ? '<span class="new">Baru</span>' : ''}${h.n > 1 ? `<span class="dup-n" title="${esc([...h.srcs].filter(Boolean).join(', '))}">×${h.n} sumber</span>` : ''}</div>
     <h3>${esc(deEmoji(h.title))}</h3>
     ${h.desc && h.desc.length > 25 ? `<p class="nw-ex">${esc(deEmoji(h.desc))}</p>` : ''}
   </a>`;
@@ -3205,7 +3223,7 @@ const dayKey = ts => ts ? new Date(ts).toLocaleDateString('id-ID',
 function renderNews(){
   const items = mergedMedia().map(h => {
     let title = cleanTitle(h.title);
-    const pub = (h.pub || '').trim();   // buang ekor "- NamaSitus" yang mengulang publisher
+    const pub = tkPub(h.pub);   // buang ekor "- NamaSitus" yang mengulang publisher
     if (pub) {
       const pk = pub.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
       let q;
@@ -3314,43 +3332,35 @@ function setBreakState(s){
 function paintBreak(){
   $('#tk-meta').textContent = '00:' + String(breakRemain).padStart(2, '0');
 }
-const TK_SIG = { demo:'#i-sg-demo', fire:'#i-heat', flood:'#i-sg-flood', disaster:'#i-alert',
-  insiden:'#i-sg-burst', siber:'#i-sg-siber', kriminal:'#i-sg-kriminal',
-  kesehatan:'#i-sg-kesehatan', ekonomi:'#i-sg-ekonomi', politik:'#i-sg-politik' };
+const TK_SIG = { demo:'#i-tk-demo', fire:'#i-tk-fire', flood:'#i-tk-flood', disaster:'#i-tk-disaster',
+  insiden:'#i-tk-insiden', siber:'#i-tk-siber', kriminal:'#i-tk-kriminal',
+  kesehatan:'#i-tk-kesehatan', ekonomi:'#i-tk-ekonomi', politik:'#i-tk-politik' };
 let breakPrev = new Set();
+const tkPub = v => {
+  v = String(v || '').trim();
+  if (/^(https?:)?\/\//i.test(v) || /^www\./i.test(v)) { try { return new URL(/^www\./i.test(v) ? 'https://' + v : v).hostname.replace(/^www\./i, ''); } catch (e) { return ''; } }
+  return v;
+};
 const renderTk = (h, isNew) => {
   const cat = h.cat || catOfTitle(h.title) || 'insiden';
   return `<a class="tk${isNew ? ' tk-new' : ''}" data-cat="${cat}" href="${esc(h.url)}" target="_blank" rel="noopener" title="${esc(h.label || CAT_LABEL[cat])}">` +
     `<svg class="ic tk-sig" aria-hidden="true"><use href="${TK_SIG[cat] || '#i-pin'}"></use></svg>` +
     `<span class="tk-time">${esc(h.ts ? wibTime(h.ts) : '')}</span>` +
     `<span class="tk-t">${esc(deEmoji(h.title))}</span>` +
-    `<span class="tk-src">${esc(h.pub || h.src)}</span>` +
+    `<span class="tk-src">${esc(tkPub(h.pub) || h.src)}</span>` +
   `</a>`;
 };
 function buildTicker(force){
   const rail = tickTrack;
   if (!breakItems.length) {
     rail.innerHTML = '<span class="tk tk-empty">Menunggu item breaking…</span>';
-    rail.style.animation = 'none';
+    tkSetW = 0;
     breakSig = '';                       // wajib reset — kalau tidak, item lama yang kembali kena early-return dan placeholder nyangkut
     return;
   }
   const sig = breakItems.map(h => (h.url || '') + '|' + (h.title || '')).join('~');
   if (!force && sig === breakSig) return;
   breakSig = sig;
-
-  // progres scroll saat ini → restore setelah rebuild supaya marquee tidak reset
-  let prog = 0;
-  const oldSet = rail.querySelector('.tk-set');
-  const oldSetW = oldSet ? oldSet.getBoundingClientRect().width : 0;
-  if (oldSetW > 0) {
-    const m = getComputedStyle(rail).transform.match(/matrix.*\(([^)]+)\)/);
-    if (m) {
-      const parts = m[1].split(',').map(parseFloat);
-      const tx = parts.length >= 16 ? parts[12] : parts[4];   // matrix3d: tx di index 12
-      prog = (((-tx) % oldSetW) + oldSetW) % oldSetW / oldSetW;
-    }
-  }
 
   const fresh = new Set(breakItems.filter(h => !breakPrev.has(h.url || h.title)).map(h => h.url || h.title));
   breakPrev = new Set(breakItems.map(h => h.url || h.title));
@@ -3366,10 +3376,28 @@ function buildTicker(force){
     rail.innerHTML = `<div class="tk-set">${repHtml}</div><div class="tk-set">${repHtml}</div>`;
     setW = rail.firstElementChild.getBoundingClientRect().width;
   }
-  rail.style.animation = '';
-  const dur = (setW / TICK_PX_S).toFixed(2);
-  rail.style.animationDuration = dur + 's';
-  rail.style.animationDelay = (-prog * parseFloat(dur)).toFixed(2) + 's';
+  tkSetW = setW;      // offset px (tkX) sengaja TIDAK di-reset → tidak ada lompatan saat rebuild
+}
+/* Marquee digerakkan rAF dengan offset piksel persisten: rebuild/resize/fetch
+   tidak pernah me-restart animasi, dan wrap selalu tepat satu lebar set. */
+let tkX = 0, tkSetW = 0, tkLast = 0, tkHold = false;
+function tkFrame(t) {
+  const dt = tkLast ? Math.min(t - tkLast, 100) / 1000 : 0;
+  tkLast = t;
+  if (tkSetW > 0 && breakItems.length) {
+    if (!tkHold && !matchMedia('(prefers-reduced-motion:reduce)').matches) tkX += TICK_PX_S * dt;
+    if (tkX >= tkSetW) tkX %= tkSetW;
+    tickTrack.style.transform = 'translate3d(' + (-tkX).toFixed(2) + 'px,0,0)';
+  } else tickTrack.style.transform = '';
+  requestAnimationFrame(tkFrame);
+}
+requestAnimationFrame(tkFrame);
+if (matchMedia('(hover:hover)').matches) {
+  const tkEl = $('#ticker');
+  tkEl.addEventListener('mouseenter', () => tkHold = true);
+  tkEl.addEventListener('mouseleave', () => tkHold = false);
+  tkEl.addEventListener('focusin', () => tkHold = true);
+  tkEl.addEventListener('focusout', () => tkHold = false);
 }
 if ('ResizeObserver' in window) {
   new ResizeObserver(() => {
