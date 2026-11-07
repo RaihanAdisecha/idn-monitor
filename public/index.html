@@ -3419,16 +3419,16 @@ async function pullAlive(){
   if (API == null) return;
   try { aliveMap = (await getJson(API + '/api/cams', 60000)).alive; } catch (e) {}
 }
-let cctvMerged = false;
 async function pullCctv(){
-  if (API == null || cctvMerged) return;
+  if (API == null) return;
   try {
     const d = await getJson(API + '/api/cctv', 30000);
     if (!d || !Array.isArray(d.cams) || !d.cams.length) return;
-    const have = new Set(CAMS.map(c => c.s));
-    const add = d.cams.filter(c => c && c.s && c.n && !have.has(c.s));
-    if (!add.length) { cctvMerged = true; return; }
-    CAMS.push(...add); cctvMerged = true;
+    pullCctv.have = pullCctv.have || new Set(CAMS.map(c => c.s));
+    const add = d.cams.filter(c => c && c.s && c.n && !pullCctv.have.has(c.s));
+    if (!add.length) return;
+    add.forEach(c => pullCctv.have.add(c.s));
+    CAMS.push(...add);
     drawCityBar(); renderCams();
   } catch (e) {}
 }

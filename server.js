@@ -1876,32 +1876,59 @@ async function cctvBekasi(){
     e: '', la: null, lo: null, c: 'Kota Bekasi'
   }));
 }
-/* probe playlist tiap cam di background — yang upstream-nya kosong/404 dibuang dari catalog */
-const cctvProbe = { dead: new Set(), done: new Set(), running: false, last: 0 };
+/* probe 3 level: master playlist → variant/media playlist → segmen .ts pertama.
+   cam hanya "hidup" kalau segmen beneran ke-load — playlist 200 doang tidak cukup. */
+const cctvProbe = { alive: new Set(), done: new Set(), running: false, last: 0 };
+const HLS_UA = { 'user-agent': UA, referer: 'https://bpjt.pu.go.id/' };
+function hlsLines(t){ return t.split('\n').map(s => s.trim()).filter(s => s && !s.startsWith('#')); }
+async function probeHls(url, depth){
+  if (depth > 3) return false;
+  try {
+    const r = await get(url, { headers: HLS_UA }, 7000);
+    if (!r.ok) return false;
+    const t = await r.text();
+    if (!t.includes('#EXTM3U')) return false;
+    const lines = hlsLines(t);
+    if (!lines.length) return false;
+    const first = lines[0];
+    if (/\.ts(\?|$)/i.test(first) || first.startsWith('http') && /\.(ts|m4s)(\?|$)/i.test(first)) {
+      // ini media playlist — cek segmen pertama bisa di-fetch
+      try {
+        const seg = new URL(first, url).href;
+        const sr = await get(seg, { headers: HLS_UA, method: 'GET' }, 8000);
+        if (!sr.ok) return false;
+        const buf = await sr.arrayBuffer();
+        return buf.byteLength > 1000;
+      } catch (e) { return false; }
+    }
+    // master playlist → recurse ke variant pertama
+    return await probeHls(new URL(first, url).href, depth + 1);
+  } catch (e) { return false; }
+}
 async function warmCctv(){
-  if (cctvProbe.running || Date.now() - cctvProbe.last < 1200000) return;
+  if (cctvProbe.running || Date.now() - cctvProbe.last < 1500000) return;
   cctvProbe.running = true; cctvProbe.last = Date.now();
+  const next = { alive: new Set(), done: new Set() };
   try {
     const cams = await cctvBpjt().catch(() => []);
-    cctvProbe.dead.clear(); cctvProbe.done.clear();
     let i = 0;
     await Promise.all(Array.from({ length: 24 }, async () => { while (i < cams.length) { const c = cams[i++];
-      try {
-        const r = await get(c.s, { headers: { 'user-agent': UA, referer: 'https://bpjt.pu.go.id/' } }, 7000);
-        const t = r.ok ? await r.text() : '';
-        cctvProbe.done.add(c.s);
-        if (!t.includes('#EXTM3U')) cctvProbe.dead.add(c.s);
-      } catch (e) { cctvProbe.done.add(c.s); cctvProbe.dead.add(c.s); }
+      const ok = await probeHls(c.s, 0);
+      next.done.add(c.s);
+      if (ok) next.alive.add(c.s);
     } }));
-    console.log('[cctv] probe selesai:', cams.length - cctvProbe.dead.size, '/', cams.length, 'hidup');
+    cctvProbe.alive = next.alive; cctvProbe.done = next.done;
+    console.log('[cctv] probe selesai:', next.alive.size, '/', cams.length, 'cam playable');
   } catch (e) {} finally { cctvProbe.running = false; }
 }
-const cctvCatalog = () => memo('cctvcat', 600000, async () => {
+const cctvCatalog = () => memo('cctvcat', 300000, async () => {
   const rs = await Promise.allSettled([cctvBpjt(), cctvBekasi()]);
   let cams = rs.flatMap(r => r.status === 'fulfilled' ? r.value : []);
-  if (cctvProbe.dead.size)   // probe sudah jalan → buang yang confirmed mati, unprobed tetap ikut
-    cams = cams.filter(c => !cctvProbe.dead.has(c.s));
-  return { ok: true, cams, at: Date.now() };
+  const bpjt = cams.filter(c => /jasamarga|hk-opt|jtd|mms-corp|kkdm|hutama|waskita/i.test(c.s));
+  const other = cams.filter(c => !/jasamarga|hk-opt|jtd|mms-corp|kkdm|hutama|waskita/i.test(c.s));
+  // BPJT: hanya yang probe-confirmed playable. Sebelum probe selesai → kosong (jujur, bukan asal pasang)
+  const verified = cctvProbe.done.size ? bpjt.filter(c => cctvProbe.alive.has(c.s)) : [];
+  return { ok: true, cams: [...other, ...verified], bpjt_alive: cctvProbe.alive.size, bpjt_total: bpjt.length, probing: cctvProbe.running, at: Date.now() };
 });
 
 /* ---------- READ: ekstrak teks halaman buat panel baca (bukan iframe) ---------- */
