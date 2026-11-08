@@ -359,7 +359,7 @@ const cleanPub = v => {
 };
 // domain/sumber yang dilarang — item langsung dibuang dari semua feed.
 // kompasiana = platform opini/blog, bukan berita; masuk lewat agregat Google News.
-const BANNED_SRC = /infopublik\.id|infopublik|kompasiana|mediacenter\.palangkaraya\.go\.id|viva\.co\.id\/foto|nokenlive|polreskedirikota|korankaltim|pelakita|cilegon\.go\.id|twaslnews/i;
+const BANNED_SRC = /infopublik\.id|infopublik|kompasiana|mediacenter\.palangkaraya\.go\.id|viva\.co\.id\/foto|nokenlive|polreskedirikota|korankaltim|pelakita|cilegon\.go\.id|twaslnews|kilangbara\.com/i;
 function parseFeed(xml) {
   const out = [];
   for (const m of xml.matchAll(/<item[\s>]([\s\S]*?)<\/item>/gi)) {
@@ -3985,7 +3985,7 @@ async function rdWaybackRaw(u) {
     return s && s.url ? String(s.url).replace(/\/web\/(\d+)/, '/web/$1id_') : null;
   } catch (e) { return null; }
 }
-async function rdRead(raw) {
+async function rdRead(raw, bg) {
   const x = publicURL(raw);
   if (!x) throw new Error('URL tidak valid');
   const yid = ytIdOf(raw);
@@ -4047,7 +4047,7 @@ async function rdRead(raw) {
     // Jina reader — markdown, bukan html → thumb() fallback di rdFinish
     let raceSettled = false;   // true begitu ada job yang menang — Jina antrean batal
     jobs.push({ via: 'jina', p: (async () => {
-      const { r } = await jinaGet('https://r.jina.ai/' + target, Math.min(10000, left()), { accept: 'text/plain' }, () => !raceSettled, true);
+      const { r } = await jinaGet('https://r.jina.ai/' + target, Math.min(10000, left()), { accept: 'text/plain' }, () => !raceSettled, !bg);
       if (!r.ok) throw new Error('HTTP ' + r.status);
       const txt = await mediaText(r, 5 << 20);
       if (!txt || txt.length <= 200) throw new Error('jina kosong');
@@ -4641,24 +4641,27 @@ http.createServer(async (req, res) => {
     if (u.pathname === '/img') return await img(u.searchParams.get('u') || '', res);
     if (u.pathname === '/api/read') {
       const raw = u.searchParams.get('u') || '';
+      // bg=1: panggilan background (lead image fallback, prefetch) — tidak
+      // menaikkan rdActive (tanpa prioritas media), Jina antrean normal, dan
+      // kegagalan TIDAK menulis neg-cache supaya tidak meracuni klik user.
+      const bg = u.searchParams.get('bg') === '1';
       const fh = readFail.get(raw);
       if (fh && Date.now() - fh.at < READ_FAIL_TTL)
         return json({ ok: false, err: fh.err, cached: true });
-      rdActive++;
+      if (!bg) rdActive++;
       try {
-        const d = await rdRead(raw);
+        const d = await rdRead(raw, bg);
         readFail.delete(raw);
         return json(d);
       } catch (e) {
         const msg = String(e.message || e).slice(0, 400);
         let h = ''; try { h = new URL(raw).hostname; } catch (_) {}
-        console.log('[read] FAIL', h || '-', msg.slice(0, 160));
-        readFail.set(raw, { at: Date.now(), err: msg });
-        lruCap(readFail, 300);
+        console.log('[read]' + (bg ? ' bg' : '') + ' FAIL', h || '-', msg.slice(0, 160));
+        if (!bg) { readFail.set(raw, { at: Date.now(), err: msg }); lruCap(readFail, 300); }
         const out = { ok: false, err: msg };
         if (e && e.attempts) out.attempts = e.attempts;
         return json(out);
-      } finally { rdActive--; }
+      } finally { if (!bg) rdActive--; }
     }
     if (u.pathname === '/api/thumb') {
       rdActive++;
