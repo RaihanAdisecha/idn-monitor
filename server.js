@@ -39,6 +39,10 @@ const NEWS = [
   ['TEMPO', 'https://rss.tempo.co/'],
   ['LIPUTAN6', 'https://feed.liputan6.com/rss/news'],
   ['REPUBLIKA', 'https://www.republika.co.id/rss'],
+  ['BBC INDONESIA', 'https://feeds.bbci.co.uk/indonesia/rss.xml'],
+  ['DW INDONESIA', 'https://rss.dw.com/rdf/rss-ind-all'],
+  ['ABC INDONESIA', 'https://www.abc.net.au/indonesian/feed/51120/rss.xml'],
+  ['CNA INDONESIA', 'https://www.channelnewsasia.com/api/v1/rss-outbound-feed?_format=xml&category=10416'],
   ['TRIBUN', 'https://www.tribunnews.com/rss'],
   ['CNBC ID', 'https://www.cnbcindonesia.com/news/rss'],
   ['GNEWS · DEMO', gn('demo OR "unjuk rasa" OR "aksi massa"')],
@@ -356,7 +360,7 @@ const BANNED_SRC = /infopublik\.id|infopublik|kompasiana|mediacenter\.palangkara
 function parseFeed(xml) {
   const out = [];
   for (const m of xml.matchAll(/<item[\s>]([\s\S]*?)<\/item>/gi)) {
-    const b = m[1], title = tag(b, 'title'), url = tag(b, 'link') || tag(b, 'guid'), d = tag(b, 'pubDate');
+    const b = m[1], title = tag(b, 'title'), url = tag(b, 'link') || tag(b, 'guid'), d = tag(b, 'pubDate') || tag(b, 'dc:date');   // dc:date = RSS 1.0/RDF (DW)
     const isGN = /^https?:\/\/news\.google\.com\//i.test(url);
     const srcUrl = (b.match(/<source[^>]*url="([^"]+)"/i) || [])[1] || '';   // GN bungkus domain asli di atribut source url — tanpa ini BANNED_SRC buta
     const bid = title + ' ' + url + ' ' + tag(b, 'source') + ' ' + srcUrl;
@@ -450,7 +454,14 @@ const CATS = [
   { id:'ekonomi', label:'Ekonomi', sev:0.5, geo:false, re:/(phk|rupiah|kurs dollar|inflasi|defisit|apbn|apbd|ihsg|bursa efek|saham|emiten|dividen|stock split|buyback|right issue|utang negara|subsidi|\bbbmm?\b|pertamax|solar(?!\s*panel)|listrik padam|padam listrik|pemadaman listrik|pertamina|\bpln\b|ojk|bank indonesia|umk\b|ump\b|thr\b|belanja negara|bea cukai|ekspor|impor|suku bunga|bappebti|kripto|bitcoin|pinjol|fintech|paylater|harga (cabai|beras|daging|minyak|emas))/i },
   { id:'politik', label:'Politik', sev:0.55, geo:false, re:/(pilpres|pilkada|pilgub|pilbup|pilgici|pemilu|\bkpu\b|kpud|bawaslu|capres|cawapres|partai politik|caleg|capil|\bdpr\b|\bdprd\b|parlemen|fraksi|koalisi|oposisi|pelantikan|menteri|wakil presiden|\bistana\b|senayan|bansos|rapat paripurna|mahkamah konstitusi|impeachment|majelis kehormatan|reshuffle|menko|kadin|\bperang\b|\bkonflik\b|\binvasi\b|aneksasi|pendudukan|gencatan senjata|ultimatum|kudeta|pemberontakan|separatis|genosida|blokade|embargo|sandera|pertempuran|peluru kendali|\brudal\b|\bdron\b|serangan udara|perjanjian damai|perundingan damai|program mbg|makan bergizi)/i }
 ];
-const SKIP_RE = /(pascabencana|pascagempa|pascabanjir|mitigasi|kesiapsiagaan|potensi bencana|rawan bencana|risiko bencana|kajian risiko|simulasi|edukasi|sosialisasi|pelatihan|antisipasi|siaga bencana|hadapi bencana|menghadapi bencana|peringatan dini|early warning|asuransi|operasi patuh|imbau|himbau|ingatkan|waspada|waspadai|ranperda|perda|godok|korupsi|dana bencana|tas bencana|go[- ]?bag|pusdalops|kebutuhan darurat|peralatan bencana|salurkan bantuan|menyalurkan|penyaluran|modus|ruu|boikot dirinya|perang harga|perang dagang|joget|liga|top skor|voli|sepak bola|piala|kualifikasi|gaun|mahalini|fashion|film|sinema|bioskop|trailer|teaser|poster|nonton|netflix|zombie|mayat hidup|hantu|sekuel|layar lebar|sinetron|sinetrik|penghargaan|jasa raharja|warisan|turun-temurun|sepanjang 20\d\d|berdampak ke ekonomi|brasil|brazil|amerika serikat|filipina|thailand|malaysia|korea|jepang|tiongkok|china|inggris|prancis|perancis|paris|jerman|australia|india|pakistan|iran|israel|palestina|ukraina|rusia|gaza|poland|polandia|polonia|krakow|warsaw|warszawa|lublin|czechia|ceko|prague|austria|wina|vienna|finland|finlandia|singapura|singapore|suriah|syria|irak|iraq|mesir|egypt|libya|libia|maroko|morocco|aljazair|algeria|tunisia|sudan|ethiopia|kenya|ghana|myanmar|kamboja|cambodia|laos|srilanka|sri lanka|bangladesh|lebanon|yordania|jordan|yaman|yemen|oman|qatar|uea|hungaria|hungary|rumania|romania|bulgaria|serbia|kroasia|croatia|slowakia|slovakia|slovenia|belgia|belgium|irlandia|ireland|estonia|latvia|lithuania|belarus|mongolia|maladewa|maldives|timor leste|selandia baru|new zealand|kuba|cuba|jamaika|jamaica|haiti|nikaragua|kosta rika|costa rica|kolombia|colombia|venezuela|bolivia|ekuador|ecuador|peru|paraguay|uruguay|congo|rwanda|uganda|tanzania|zambia|zimbabwe|mozambique|angola|namibia|botswana|lesotho|madagascar|mauritius|somalia|eritrea|djibouti|afghanistan|bhutan|brunei|albania|armenia|azerbaijan|cyprus|iceland|kosovo|luxembourg|malta|moldova|montenegro|san marino|vatikan|vatican|monako|monaco|georgia|jordan|panama|senegal|cameroon|gambia|guinea|sierra leone|liberia|mauritania|burkina faso|tokyo|seoul|beijing|shanghai|hong kong|taipei|bangkok|hanoi|manila|kualalumpur|kathmandu|moskwa|moscow|berlin|rome|roma|madrid|amsterdam|brussels|zurich|stockholm|oslo|copenhagen|helsinki|dublin|budapest|bucharest|sofia|belgrade|zagreb|vilnius|riga|tallinn|minsk|kiev|kyiv|istanbul|ankara|tehran|baghdad|beirut|riyadh|cairo|tunis|algiers|rabat|tripoli|khartoum|nairobi|kampala|kigali|lusaka|harare|pretoria|mogadishu|bamako|dakar|abuja|lagos|accra|kinshasa|bangui|yaounde|conakry|lome|cotonou|abidjan|nouakchott|maseru|mbabane|gaborone|windhoek|maputo|antananarivo|moroni|port louis|sao paulo|rio de janeiro|brasilia|buenos aires|bogota|caracas|la paz|asuncion|montevideo|kingston|havana|santo domingo|port-au-prince|nassau|bridgetown|castries|paramaribo|managua|tegucigalpa|san salvador|san jose|guatemala city|mexico city|sucre|guayaquil)/i;
+// SKIP_JUNK = konten non-insiden (mitigasi/imbau/hiburan/olahraga) — veto universal.
+// Nama negara/kota SENGAJA tidak ikut: filter letak geografis crude dan membunuh
+// berita relevan ("WNI dievakuasi dari Tokyo"). Berita luar boleh tampil di wire;
+// pencegahan pin tetap structural via gazetteer Indonesia-only + scope foreign.
+const SKIP_JUNK = /(pascabencana|pascagempa|pascabanjir|mitigasi|kesiapsiagaan|potensi bencana|rawan bencana|risiko bencana|kajian risiko|simulasi|edukasi|sosialisasi|pelatihan|antisipasi|siaga bencana|hadapi bencana|menghadapi bencana|peringatan dini|early warning|asuransi|operasi patuh|imbau|himbau|ingatkan|waspada|waspadai|ranperda|perda|godok|korupsi|dana bencana|tas bencana|go[- ]?bag|pusdalops|kebutuhan darurat|peralatan bencana|salurkan bantuan|menyalurkan|penyaluran|modus|ruu|boikot dirinya|perang harga|perang dagang|joget|liga|top skor|voli|sepak bola|piala|kualifikasi|gaun|mahalini|fashion|film|sinema|bioskop|trailer|teaser|poster|nonton|netflix|zombie|mayat hidup|hantu|sekuel|layar lebar|sinetron|sinetrik|penghargaan|jasa raharja|warisan|turun-temurun|sepanjang 20\d\d|berdampak ke ekonomi)/i;
+// SKIP_RE = junk + geo — hanya untuk jalur sosial/tren yang memang mau fokus Indonesia.
+const SKIP_FOREIGN = /(brasil|brazil|amerika serikat|filipina|thailand|malaysia|korea|jepang|tiongkok|china|inggris|prancis|perancis|paris|jerman|australia|india|pakistan|iran|israel|palestina|ukraina|rusia|gaza|poland|polandia|polonia|krakow|warsaw|warszawa|lublin|czechia|ceko|prague|austria|wina|vienna|finland|finlandia|singapura|singapore|suriah|syria|irak|iraq|mesir|egypt|libya|libia|maroko|morocco|aljazair|algeria|tunisia|sudan|ethiopia|kenya|ghana|myanmar|kamboja|cambodia|laos|srilanka|sri lanka|bangladesh|lebanon|yordania|jordan|yaman|yemen|oman|qatar|uea|hungaria|hungary|rumania|romania|bulgaria|serbia|kroasia|croatia|slowakia|slovakia|slovenia|belgia|belgium|irlandia|ireland|estonia|latvia|lithuania|belarus|mongolia|maladewa|maldives|timor leste|selandia baru|new zealand|kuba|cuba|jamaika|jamaica|haiti|nikaragua|kosta rika|costa rica|kolombia|colombia|venezuela|bolivia|ekuador|ecuador|peru|paraguay|uruguay|congo|rwanda|uganda|tanzania|zambia|zimbabwe|mozambique|angola|namibia|botswana|lesotho|madagascar|mauritius|somalia|eritrea|djibouti|afghanistan|bhutan|brunei|albania|armenia|azerbaijan|cyprus|iceland|kosovo|luxembourg|malta|moldova|montenegro|san marino|vatikan|vatican|monako|monaco|georgia|jordan|panama|senegal|cameroon|gambia|guinea|sierra leone|liberia|mauritania|burkina faso|tokyo|seoul|beijing|shanghai|hong kong|taipei|bangkok|hanoi|manila|kualalumpur|kathmandu|moskwa|moscow|berlin|rome|roma|madrid|amsterdam|brussels|zurich|stockholm|oslo|copenhagen|helsinki|dublin|budapest|bucharest|sofia|belgrade|zagreb|vilnius|riga|tallinn|minsk|kiev|kyiv|istanbul|ankara|tehran|baghdad|beirut|riyadh|cairo|tunis|algiers|rabat|tripoli|khartoum|nairobi|kampala|kigali|lusaka|harare|pretoria|mogadishu|bamako|dakar|abuja|lagos|accra|kinshasa|bangui|yaounde|conakry|lome|cotonou|abidjan|nouakchott|maseru|mbabane|gaborone|windhoek|maputo|antananarivo|moroni|port louis|sao paulo|rio de janeiro|brasilia|buenos aires|bogota|caracas|la paz|asuncion|montevideo|kingston|havana|santo domingo|port-au-prince|nassau|bridgetown|castries|paramaribo|managua|tegucigalpa|san salvador|san jose|guatemala city|mexico city|sucre|guayaquil)/i;
+const SKIP_RE = new RegExp('(?:' + SKIP_JUNK.source.slice(1, -1) + ')|(?:' + SKIP_FOREIGN.source.slice(1, -1) + ')', 'i');
 const catMeta = id => CATS.find(c => c.id === id) || { id:'', label:'Insiden', sev:0.5, geo:true };
 const assessNews = t => SOC.socAssess(t);
 // assessNews (socAssess) mahal dan dipanggil 2-3x per judul yang sama (kategori,
@@ -464,15 +475,23 @@ const assessCycle = () => {
     return a;
   };
 };
+// Scope foreign yang andal untuk display/agregat: findings ada → ada finding
+// foreign dan tidak ada yang Indonesia (mixed_scope = bukan foreign murni);
+// findings kosong → classifyScope langsung dari judul.
+const foreignOf = (t, a) => {
+  const fs = (a && a.findings) || [];
+  if (fs.length) return fs.some(f => f.scope === 'foreign') && !fs.some(f => f.scope === 'Indonesia');
+  return ASSESS.classifyScope(t, null).scope === 'foreign';
+};
 const catOf = (t, a) => {
   a = a || assessNews(t);
   // Feed categorization = topic relevance, BUKAN signal eligibility.
   // events[] hanya untuk alarm/klaster; headline berita jarang punya EVENT_ACTION
   // jadi events kosong untuk sebagian besar judul legit.
-  if (!a.topics.length || SKIP_RE.test(t)) return '';
-  // konflik/perang internasional memang scope foreign — tetap masuk tab Politik
-  // (geo:false, topik naratif). Topik geo lain tetap dibuang saat semua foreign.
-  if (a.findings.length && a.findings.every(f => f.scope === 'foreign') && !a.topics.some(tp => tp === 'konflik' || ASSESS.CATEGORY[tp] === 'siber')) return '';
+  if (!a.topics.length || SKIP_JUNK.test(t)) return '';
+  // Scope foreign TIDAK membuang kategori: berita luar boleh berlabel (badge +
+  // flag 'foreign' → UI tandai Global). Pencegahan geo tetap structural di
+  // incidents()/situation()/breaking() via foreignOf — bukan di sini.
   // FEED_ONLY (olahraga/transport/pendidikan/hukum/dst) = topik kurasi feed
   // sosial, bukan kategori insiden — jangan sampai "Timnas menang" berlabel Insiden.
   const ids = new Set(a.topics.filter(tp => !ASSESS.FEED_ONLY.has(tp)).map(tp => ASSESS.CATEGORY[tp]).filter(Boolean));
@@ -497,6 +516,10 @@ const breaking = () => memo('breaking', 25000, async () => {
       const a = aOf(it.title);
       const cat = catOf(it.title, a);
       if (!cat || catMeta(cat).geo === false) continue;
+      // Berita luar boleh masuk breaking hanya untuk kategori sev tinggi
+      // (gempa/letusan/kebakaran besar) — sisanya cukup di news wire.
+      const fr = foreignOf(it.title, a);
+      if (fr && catMeta(cat).sev < 0.9) continue;
       const k = breakNorm(it.title).slice(0, 48);
       if (!k || seen.has(k)) continue;
       seen.add(k);
@@ -505,7 +528,7 @@ const breaking = () => memo('breaking', 25000, async () => {
       if (!Number.isFinite(it.ts) || it.ts <= 0 || it.ts > now || age > 24 * 3600e3) continue;
       const recency = Math.max(0.12, Math.exp(-age / (16 * 3600e3)));
       const meta = catMeta(cat);
-      items.push({ ...it, assessment: a, src: s.id, cat, label: meta.label, score: +(meta.sev * recency).toFixed(3) });
+      items.push({ ...it, assessment: a, src: s.id, cat, label: meta.label, score: +(meta.sev * recency).toFixed(3), foreign: fr || undefined });
     }
   }
   // Kandidat diambil stabil: per kategori terbaru, dedupe tajuk (content-key, bukan URL mentah).
@@ -1403,6 +1426,10 @@ const incidents = () => memo('incidents', 55000, async () => {
       // lolos (mis. "penembakan di Alun-alun Krakow Polandia" → desa Alun-Alun).
       const sc = a;
       if (sc.findings.length && sc.findings.every(f => f.scope !== 'Indonesia')) continue;
+      // findings kosong (topik tanpa laporan): scope belum dievaluasi — cek
+      // langsung supaya berita luar tetap tidak bisa pin lewat nama tempat
+      // yang kebetulan cocok gazetteer Indonesia.
+      if (!sc.findings.length && foreignOf(it.title, a)) continue;
       // semua topik feed-only (olahraga/hukum/pendidikan/dst = kurasi feed,
       // BUKAN laporan insiden): nama kabupaten yang kebetulan disebut dalam
       // konteks non-insiden bukan lokasi kejadian → jangan di-pin.
@@ -1466,7 +1493,7 @@ const situation = () => memo('situation', 45000, async () => {
   const srcs = await news(), now = Date.now(), items = [], seen = new Set(), aOf = assessCycle();
   const stats = {}; for (const c of CATS) stats[c.id] = 0;
   const regions = new Map();
-  let located = 0;
+  let located = 0, foreignN = 0;
   for (const s of srcs) {
     if (!s.ok) continue;
     for (const it of s.items) {
@@ -1481,10 +1508,14 @@ const situation = () => memo('situation', 45000, async () => {
       const place = placeOf(it.title);
       const recency = Math.max(0.12, Math.exp(-age / (24 * 3600e3)));
       const meta = catMeta(cat);
+      // stats = situasi lokal/domestik: item terkonfirmasi foreign tetap masuk
+      // daftar items (dengan flag) tapi tidak menghitung chip kategori.
+      const fr = foreignOf(it.title, a);
+      if (fr) foreignN++;
       items.push({ title: it.title, url: it.url, src: s.id, ts: it.ts, assessment: a,
-        cat, label: meta.label, place: place ? place.name : '',
+        cat, label: meta.label, place: place ? place.name : '', foreign: fr || undefined,
         weight: +(meta.sev * recency).toFixed(3) });
-      stats[cat]++;
+      if (!fr) stats[cat]++;
       // guard scope yang sama dengan incidents(): judul all-non-Indonesia tidak
       // boleh ikut menghitung wilayah — TAPI hanya untuk regions/located;
       // stats & item tetap menghitung semua kategori seperti sebelumnya.
@@ -1496,7 +1527,7 @@ const situation = () => memo('situation', 45000, async () => {
   items.sort((a, b) => b.weight - a.weight || (b.ts || 0) - (a.ts || 0));
   const regionRows = [...regions.entries()].map(([name, n]) => ({ name, n }))
     .sort((a, b) => b.n - a.n).slice(0, 20);
-  return { ok: true, classifierVersion: SOC.CLASSIFIER_VERSION, stats, total: items.length, located, items: items.slice(0, 60), regions: regionRows,
+  return { ok: true, classifierVersion: SOC.CLASSIFIER_VERSION, stats, total: items.length, located, items: items.slice(0, 60), regions: regionRows, foreign: foreignN,
     sources: srcs.map(s => ({ id: s.id, ok: s.ok, n: s.items.length, err: s.err || '', at: s.at || 0 })), at: now };
 });
 
@@ -2610,17 +2641,26 @@ async function thumbFromJina(article) {
     const w = 'https://images.weserv.nl/?url=' + encodeURIComponent(u.replace(/^https?:\/\//, ''));
     return probeImage(w, article).catch(() => null);
   };
-  let probed = 0;
+  // probe semua kandidat non-junk (maks 6, paralel) lalu pilih score tertinggi —
+  // dulu first-match by document order: badge/label situs yang kebetulan jadi
+  // <img> pertama (mis. verifikasi-right.png Ketik, 1338x910) menang dari hero.
+  const list = [];
   for (const u of cands) {
     const img = upgradeImage(u);
     if (rdJunkUrl(img) || rdSmallHint(img) || RD_IMG_JUNK.test(img.split('?')[0])) continue;
-    if (++probed > 6) break;
-    const dim = await probeAny(img);
-    if (!dim) continue;
-    const p = { img, w: dim.w, h: dim.h, src: article };
-    if (strictOK(p)) return p;
+    list.push(img);
+    if (list.length >= 6) break;
   }
-  return { img: '', src: article };
+  const rs = await Promise.all(list.map(async img => ({ img, dim: await probeAny(img) })));
+  let best = null, bestSc = -Infinity;
+  for (const { img, dim } of rs) {
+    if (!dim) continue;
+    const p = { img, w: dim.w, h: dim.h, kind: 'body', src: article };
+    if (!strictOK(p)) continue;
+    const sc = imageScore({ kind: 'body', url: img }, dim);
+    if (sc > bestSc) { bestSc = sc; best = p; }
+  }
+  return best ? { img: best.img, w: best.w, h: best.h, src: article } : { img: '', src: article };
 }
 
 // in-flight dedup: /api/thumb + rdFinish bisa miss bersamaan untuk URL sama —
@@ -4282,6 +4322,36 @@ async function descForUrl(reqUrl) {
     }
   }
   if (!html) {
+    // Host di balik Cloudflare (jpnn/tempo/dll) menolak direct+proxy — Jina
+    // reader tetap bisa fetch (pola sama dengan thumbFromJina/rdRead).
+    // Ambil blok paragraf lede dari markdown sebagai desc.
+    try {
+      const { r } = await jinaGet('https://r.jina.ai/' + target, 12000, { accept: 'text/plain' });
+      if (r.ok) {
+        const txt = await mediaText(r, 1 << 20);
+        // Jina markdown: header meta + nav menu raksasa dulu, baru konten artikel.
+        // Scan semua blok; skip yang link-dense (menu), meta, atau terlalu pendek.
+        for (const b of String(txt || '').split(/\n\s*\n/).slice(0, 80)) {
+          let linkChars = 0;
+          const txtOnly = b.replace(/!?\[([^\]]*)\]\(([^)]*)\)/g, (m, t, u) => { linkChars += u.length + 4; return t; });
+          const plain = txtOnly
+            .replace(/^[#>\s*_`-]+/gm, '')
+            .replace(/\s+/g, ' ').trim();
+          if (plain.length < 60 || plain.length > 1200) continue;
+          if (/^(https?:|title:|url:|published|author:|markdown content)/i.test(plain)) continue;
+          if (/!?\[[^\]]*\]\(|!\[|\bimage \d+:/i.test(plain)) continue;   // sisa syntax markdown / blok gambar
+          if (linkChars > plain.length) continue;   // syntax link > teks = nav/menu, bukan paragraf
+          const d = FEEDTEXT.descFrom({ description: plain }, '');
+          if (d) {
+            descHostAt.set(host, Date.now());
+            if (descHostAt.size > 500) descHostAt.delete(descHostAt.keys().next().value);
+            release();
+            descRemember([reqUrl, target], d);
+            return d;
+          }
+        }
+      }
+    } catch (e) {}
     descHostAt.set(host, Date.now());
     if (descHostAt.size > 500) descHostAt.delete(descHostAt.keys().next().value);
     descRemember([reqUrl, target], '');
@@ -4403,7 +4473,11 @@ http.createServer(async (req, res) => {
         return { classifierVersion: SOC.CLASSIFIER_VERSION, sources: srcs.map(s => ({ ...s, items: s.items.map(i => {
           const a = aOf(i.title);
           const cat = catOf(i.title, a);
-          return { ...i, cat, feedTopic: feedCatOf(s.id), assessment: a, label: cat ? catMeta(cat).label : '' };
+          // place: dipakai client untuk toast dari DELTA wire. Tanpa ini notifikasi
+          // harus menunggu /api/situation (60 item, weight-sorted) dan selalu kalah
+          // cepat dari kartu newswire yang sudah tampil.
+          const pl = cat ? placeOf(i.title) : null;
+          return { ...i, cat, place: pl ? pl.name : '', feedTopic: feedCatOf(s.id), assessment: a, label: cat ? catMeta(cat).label : '', foreign: foreignOf(i.title, a) || undefined };
         }) })), at: Date.now() };
       });
       return json(payload, 200, 'newsresp', 25000);
