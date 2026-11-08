@@ -46,7 +46,13 @@ def main():
     consec_rl = 0      # kegagalan 429/403 beruntun
 
     try:
-        client = Threads(cookies=auth)
+        # Dual-mode: search SELALU logged-out — SERP logged-in di-render lazy
+        # via GraphQL dan HTML-nya cuma embed ~1 hasil (terbukti: auth "banjir"
+        # = 1 post vs logged-out = 20). Profil tetap pakai auth: paginasi
+        # GraphQL butuh session (walau logged-out kebetulan masih jalan,
+        # auth lebih stabil & dapat jatah akun, bukan anon).
+        search_client = Threads()
+        profile_client = Threads(cookies=auth) if auth else search_client
 
         def add(p, q):
             if not isinstance(p, dict):
@@ -81,7 +87,7 @@ def main():
                     errs.append({"q": q2, "err": "skipped: rate-limit"})
                 break
             try:
-                found = client.search(q, limit=20)
+                found = search_client.search(q, limit=20)
             except ScrapeError as exc:
                 errs.append({"q": q, "err": str(exc)})
                 if note_rl(exc):
@@ -105,7 +111,7 @@ def main():
                     errs.append({"q": "@" + u2, "err": "skipped: rate-limit"})
                 break
             try:
-                found = client.posts(u, 80)   # posts() punya paginasi — 80 post/profil per siklus
+                found = profile_client.posts(u, 80)   # posts() punya paginasi — 80 post/profil per siklus
             except ScrapeError as exc:
                 errs.append({"q": "@" + u, "err": str(exc)})
                 if note_rl(exc):
