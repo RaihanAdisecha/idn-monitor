@@ -687,7 +687,7 @@ a{color:inherit;text-decoration:none;text-underline-offset:2px}
 .lead-sk-title.short{width:62%;height:13px;margin-bottom:13px}
 .lead-sk-desc{height:8px;width:96%;margin:0 0 7px}
 .lead-sk-desc.mid{width:79%}
-.nw-sk-card{min-width:0;min-height:116px;padding:12px 13px 11px;background:var(--bg)}
+.nw-sk-card{min-width:0;min-height:172px;padding:12px 13px 11px;background:var(--bg)}
 .nw-sk-meta{width:44%;height:8px;margin:0 0 13px}
 .nw-sk-src{width:55%;height:7px;margin:0 0 12px}
 .nw-sk-title{height:9px;width:94%;margin:0 0 7px}
@@ -696,7 +696,7 @@ a{color:inherit;text-decoration:none;text-underline-offset:2px}
 .nw-sk-desc.short{width:57%}
 @media(prefers-reduced-motion:reduce){.nw-sk-line{animation:none;background-position:0 0}}
 .nw{
-  display:flex;flex-direction:column;min-width:0;padding:12px 13px 11px;background:var(--bg);
+  display:flex;flex-direction:column;min-width:0;min-height:172px;padding:12px 13px 11px;background:var(--bg);
   transition:background .12s;
 }
 .nw:hover{background:#1b1b1b}
@@ -708,6 +708,7 @@ a{color:inherit;text-decoration:none;text-underline-offset:2px}
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
 }
 .nw-cat{flex:none;display:inline-block;padding:2px 4px;border:1px solid var(--border2);font:600 7.5px/1 var(--disp);letter-spacing:.07em;color:var(--text3)}
+.nw-cat.glob,.lead-cat.glob{color:var(--text2);border-color:var(--border2);letter-spacing:.1em}
 .nw[data-cat="demo"] .nw-cat{color:#f1c21b;border-color:rgba(241,194,27,.45)}
 .nw[data-cat="fire"] .nw-cat{color:#ff6168;border-color:rgba(218,30,40,.5)}
 .nw[data-cat="flood"] .nw-cat{color:#7aa9ff;border-color:rgba(69,137,255,.45)}
@@ -1466,6 +1467,10 @@ button.mp-src{background:none;border-top:0;border-left:0;border-right:0;cursor:p
   text-transform:uppercase;color:var(--text3);cursor:pointer;
 }
 .cl-tmore:hover{color:var(--text);border-color:var(--text3)}
+/* digest: >3 klaster dalam satu tick digabung satu kartu — klik buka lead, bukan 3 timer antre */
+.cl-toast.cl-digest{background:rgba(24,24,24,.86);border-color:var(--text3)}
+.cl-toast.cl-digest .cl-tk{color:var(--text2)}
+.cl-toast.cl-digest .cl-th{color:var(--text2)}
 .cl-toasts .cl-toast:nth-of-type(n+7){display:none}
 .cl-toasts.open .cl-toast:nth-of-type(n+7){display:block}
 @media (hover:hover){   /* desktop: hover stack = expand deck via .hov (JS debounce — anti flicker) */
@@ -1652,7 +1657,7 @@ button.mp-src{background:none;border-top:0;border-left:0;border-right:0;cursor:p
       </div>
       <div class="cl-h" id="cl-h">Klaster aktif</div>
       <div class="cl-list" id="cl-list"></div>
-      <div class="cl-toasts" id="cl-toasts"></div>
+      <div class="cl-toasts" id="cl-toasts" role="status" aria-live="polite" aria-atomic="false"></div>
       <div class="segwrap" id="segwrap">
         <div class="seg-h" id="seg-h" role="button" tabindex="0" aria-expanded="true">
           <span>Detail situasi</span><i class="chev" aria-hidden="true"></i>
@@ -2056,7 +2061,7 @@ const CAT_RE = {
   ekonomi:/(phk|rupiah|kurs dollar|inflasi|defisit|apbn|apbd|ihsg|bursa efek|saham|emiten|dividen|stock split|buyback|right issue|utang negara|subsidi|\bbbmm?\b|pertamax|solar(?!\s*panel)|listrik padam|padam listrik|pemadaman listrik|pertamina|\bpln\b|ojk|bank indonesia|umk\b|ump\b|thr\b|belanja negara|bea cukai|ekspor|impor|suku bunga|bappebti|kripto|bitcoin|pinjol|fintech|paylater|harga (cabai|beras|daging|minyak|emas))/i,
   politik:/(pilpres|pilkada|pilgub|pilbup|pilgici|pemilu|\bkpu\b|kpud|bawaslu|capres|cawapres|partai politik|caleg|capil|\bdpr\b|\bdprd\b|parlemen|fraksi|koalisi|oposisi|pelantikan|menteri|wakil presiden|\bistana\b|senayan|bansos|rapat paripurna|mahkamah konstitusi|impeachment|majelis kehormatan|reshuffle|menko|kadin|\bperang\b|\bkonflik\b|\binvasi\b|aneksasi|pendudukan|gencatan senjata|ultimatum|kudeta|pemberontakan|separatis|genosida|blokade|embargo|sandera|pertempuran|peluru kendali|\brudal\b|\bdron\b|serangan udara|perjanjian damai|perundingan damai|program mbg|makan bergizi)/i
 };
-const CAT_SKIP = /(pascabencana|pascagempa|pascabanjir|mitigasi|kesiapsiagaan|potensi bencana|rawan bencana|risiko bencana|kajian risiko|simulasi|edukasi|sosialisasi|pelatihan|antisipasi|siaga bencana|hadapi bencana|menghadapi bencana|peringatan dini|early warning|asuransi|operasi patuh|imbau|himbau|ingatkan|waspada|waspadai|ranperda|perda|godok|korupsi|dana bencana|modus|ruu|boikot dirinya|perang harga|perang dagang|joget|cooking demo|demo (masak|memasak|kuliner|spesial)|liga|top skor|voli|sepak bola|piala|kualifikasi|gaun|mahalini|fashion|film|sinema|bioskop|trailer|teaser|poster|nonton|netflix|zombie|mayat hidup|hantu|sekuel|layar lebar|sinetron|sinetrik|penghargaan|jasa raharja|warisan|turun-temurun|sepanjang 20\d\d|berdampak ke ekonomi|brasil|brazil|amerika serikat|filipina|thailand|malaysia|korea|jepang|tiongkok|china|inggris|prancis|perancis|paris|jerman|australia|india|pakistan|iran|israel|palestina|ukraina|rusia|gaza)/i;
+const CAT_SKIP = /(pascabencana|pascagempa|pascabanjir|mitigasi|kesiapsiagaan|potensi bencana|rawan bencana|risiko bencana|kajian risiko|simulasi|edukasi|sosialisasi|pelatihan|antisipasi|siaga bencana|hadapi bencana|menghadapi bencana|peringatan dini|early warning|asuransi|operasi patuh|imbau|himbau|ingatkan|waspada|waspadai|ranperda|perda|godok|korupsi|dana bencana|modus|ruu|boikot dirinya|perang harga|perang dagang|joget|cooking demo|demo (masak|memasak|kuliner|spesial)|liga|top skor|voli|sepak bola|piala|kualifikasi|gaun|mahalini|fashion|film|sinema|bioskop|trailer|teaser|poster|nonton|netflix|zombie|mayat hidup|hantu|sekuel|layar lebar|sinetron|sinetrik|penghargaan|jasa raharja|warisan|turun-temurun|sepanjang 20\d\d|berdampak ke ekonomi)/i;
 const catOfTitle = t => {
   if (CAT_SKIP.test(t)) return '';
   for (const c of CAT_ORDER) if (CAT_RE[c] && CAT_RE[c].test(t)) return c;
@@ -2081,7 +2086,7 @@ const cleanTitle = t => {
 };
 let SIT = null, SIT_STALE = false;
 let openCluster = '', openAlert = '', SIG_GROUPS = [];
-let clSeen = null, clSeeded = false; const clToastQ = new Map(), clToastOrder = []; let clToastActiveEl = null;   // diff id klaster per refresh → toast "klaster baru"
+const clToastQ = new Map(), clToastOrder = []; let clToastActiveEl = null;   // deck toast notifikasi (dipicu delta wire)
 let PULSE = [], DIS_PULSE = [], globeReady = false, globeCtx = null, globeIdn = null, globeProv = null, globeRaf = 0, globeLast = 0, globePoints = [], globeNodePoints = [], globeProj = null, globeCenter = [118, 0];
 let globeActInc = '', globeActNode = '';   // id titik/node yang lagi di-hover — digambar sebagai ring highlight di canvas
 let globeShakeX = 0, globeShakeY = 0;       // offset screen shake — render digeser, hit-test harus ikut
@@ -3057,8 +3062,11 @@ function clusterHtml(g, i){
     </div>
   </div>`;
 }
+/* --- render daftar klaster. Toast TIDAK lagi dipicu dari sini: notifikasi lahir
+   dari delta /api/news (lihat noteWire) supaya muncul di tick yang sama dengan
+   kartu newswire-nya, bukan setelah /api/situation yang cuma mengirim 60 item. --- */
 function renderClusters(groups){
-  groups = groups || (SIT ? buildClusters() : []);   // tanpa arg = re-render (toggle) — diff toast hanya lewat renderSituation
+  groups = groups || (SIT ? buildClusters() : []);
   const shown = groups.slice(0, 5).map((g, i) => clusterHtml(g, i)).join('');
   const more = groups.length > 5 ? `<div class="empty">+${groups.length - 5} klaster lain</div>` : '';
   $('#cl-list').innerHTML = shown + more ||
@@ -3071,51 +3079,208 @@ $('#cl-list').addEventListener('click', e => {
   openCluster = openCluster === id ? '' : id;
   renderClusters();
 });
-/* --- toast "klaster baru": dipanggil HANYA dari renderSituation (refresh data),
-   bukan dari re-render toggle — jadi diff id tidak dobel --- */
-function noteNewClusters(groups){
-  if (!groups.length) return;
-  if (!clSeeded){                        // poll pertama: seed diam-diam — backlog bukan "baru"
-    clSeen = new Set(groups.map(g => g.id));
-    clSeeded = true;
+/* --- toast notifikasi: dipicu dari DELTA WIRE, bukan dari snapshot klaster.
+   Alasan: /api/situation hanya mengirim 60 item ter-sort bobot dan mewajibkan
+   assessment.events, jadi mayoritas kabar tidak pernah membentuk klaster dan
+   notifikasinya selalu kalah cepat dari kartu newswire. Delta wire memakai
+   payload yang SAMA dengan yang dirender, jadi keduanya muncul di tick yang sama. --- */
+const CL_TTL = 6000;                   // umur satu kartu (dulu 10s: antrean 6 kartu = 1 menit)
+const CL_DIGEST_AT = 3;                // ≥3 grup dalam satu tick → satu kartu digest (bukan 3 kartu antre)
+const CL_KEY_GAP = 6 * 3600e3;         // cat|tempat yang sama disebut "klaster baru" lagi setelah jeda ini
+const WIRE_SEEN_TTL = 12 * 3600e3;
+let wireSeen = new Map();              // "cat|place|judul" → ts terlihat
+let wireKeys = new Map();              // "cat|place" → ts terakhir aktif
+let wireSeeded = false;
+
+// Grup (cat|place) di-rebuild dari set judul: ts item terakhir = kapan grup itu
+// terakhir aktif. Dipakai setelah reload DAN setelah seeding poll pertama —
+// tanpa ini semua item baru di sesi pertama disebut "Klaster baru".
+function rebuildWireKeys(){
+  wireKeys = new Map();
+  for (const [k, t] of wireSeen){
+    const i = k.indexOf('|'); if (i < 0) continue;
+    const j = k.indexOf('|', i + 1); if (j < 0) continue;
+    const gk = k.slice(0, j);
+    if (t > (wireKeys.get(gk) || 0)) wireKeys.set(gk, t);
+  }
+}
+function loadWireSeen(){
+  try {
+    const raw = JSON.parse(sessionStorage.getItem('sit:wire') || '[]');
+    const cut = Date.now() - WIRE_SEEN_TTL;
+    wireSeen = new Map(raw.filter(r => Array.isArray(r) && r[1] >= cut));
+  } catch (e) { wireSeen = new Map(); }
+  rebuildWireKeys();
+  // reload dalam sesi yang sama: jangan seed ulang dari nol — set lama dipakai
+  // supaya poll pertama tetap bisa toast item yang benar-benar baru.
+  wireSeeded = wireSeen.size > 0;
+}
+function saveWireSeen(){
+  const cut = Date.now() - WIRE_SEEN_TTL;
+  for (const [k, t] of wireSeen) if (t < cut) wireSeen.delete(k);
+  while (wireSeen.size > 3000) wireSeen.delete(wireSeen.keys().next().value);   // jaga kuota sessionStorage
+  try { sessionStorage.setItem('sit:wire', JSON.stringify([...wireSeen])); } catch (e) {}
+}
+const wireKeyOf = it => it.cat + '|' + (it.place || (it.foreign ? 'global' : ''));
+// Identitas item untuk dedupe: judul ternormalisasi, BUKAN URL. Satu peristiwa
+// sering dikirim 3-4 feed dengan URL berbeda (dan URL Google News berputar),
+// pakai URL = toast dobel untuk kabar yang sama. cleanTitle() membuang suffix penerbit.
+const wireIdOf = it => {
+  const t = String(cleanTitle(it.title || '')).toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim().slice(0, 90);
+  return wireKeyOf(it) + '|' + (t || it.url);
+};
+// Label "klaster" hanya jujur kalau item-nya memang bisa jadi klaster di panel:
+// buildClusters() mensyaratkan assessment.events yang category-nya cocok.
+const clusterCapable = it => Array.isArray(it.assessment && it.assessment.events) &&
+  it.assessment.events.some(e => e.category === it.cat);
+
+function noteWire(d){
+  if (!d || !d.sources) return;
+  const now = Date.now(), batch = new Map();
+  for (const s of d.sources){
+    if (!s.ok) continue;
+    for (const it of s.items || []){
+      if (!it.cat || !it.url || !it.ts) continue;
+      if (it.foreign) continue;                            // panel & stats domestik; item global tidak di-toast
+      if (it.ts > now + 5 * 60e3) continue;                // pubDate masa depan = jam bohong di kartu
+      if (now - it.ts > 90 * 60e3) continue;               // toast hanya untuk kabar segar, bukan backlog 24 jam
+      const k = wireIdOf(it);
+      if (wireSeen.has(k)) continue;
+      wireSeen.set(k, now);
+      const gk = wireKeyOf(it);
+      if (!batch.has(gk)) batch.set(gk, []);
+      batch.get(gk).push(it);
+    }
+  }
+  if (!wireSeeded){                                        // poll pertama: seed diam-diam
+    wireSeeded = true;
+    rebuildWireKeys();
+    saveWireSeen();
     return;
   }
-  const fresh = groups.filter(g => !clSeen.has(g.id));
-  groups.forEach(g => clSeen.add(g.id));   // id yang hilang tetap 'seen' — reappear tidak re-toast
-  fresh.slice(0, 6).forEach(clToastPush);  // groups sudah ter-sort; >3 tampil via chip +N
+  if (!batch.size){ saveWireSeen(); return; }
+  saveWireSeen();
+
+  // tidak ada token-bucket: poll 120s sendiri sudah jadi rate limiter, dedupe
+  // per judul mencegah pengulangan, dan deck dibatasi 3 kartu / 6 kartu total.
+  // Membuang notifikasi karena kuota 5 menit justru bisa menyembunyikan kejadian nyata.
+  const groups = [...batch.entries()]
+    .map(([gk, items]) => ({ gk, items: items.sort((a, b) => b.ts - a.ts) }))
+    .sort((a, b) => b.items[0].ts - a.items[0].ts);
+
+  // isNew dihitung untuk SEMUA grup (bukan hanya 4 yang ditampilkan): digest
+  // melaporkan total grup, jadi nNew harus punya basis yang sama.
+  const all = groups.map(g => ({
+    ...g,
+    isNew: (!wireKeys.has(g.gk) || now - wireKeys.get(g.gk) > CL_KEY_GAP) && g.items.some(clusterCapable)
+  }));
+  const cards = all.slice(0, 4);
+  all.forEach(c => wireKeys.set(c.gk, now));   // semua grup ditandai aktif, termasuk yang hanya masuk hitungan digest
+  const nNew = all.filter(c => c.isNew).length;
+
+  if (cards.length >= CL_DIGEST_AT || groups.length > cards.length) clToastDigest(cards, groups.length, nNew, [...new Set(all.map(c => c.items[0].place).filter(Boolean))]);
+  else cards.forEach(clToastCard);
 }
-function clToastPush(g){
+
+function clToastCard(c){
   const box = $('#cl-toasts'); if (!box) return;
-  if (clToastOrder.length >= 6) { clToastSyncMore(); return; }   // cap stack — sisa tetap ada di list
-  const lead = g.items[0] || {};
+  if (clToastOrder.length >= 6) { clToastSyncMore(); return; }   // cap deck, sisa tetap ada di wire
+  const lead = c.items[0], n = c.items.length;
   const el = document.createElement('div');
   el.className = 'cl-toast';
-  el.dataset.cid = g.id;
   el.dataset.url = lead.url || '';
-  el.style.setProperty('--tc', CAT_COLOR[g.cat] || '#8d8d8d');
+  el.style.setProperty('--tc', CAT_COLOR[lead.cat] || '#8d8d8d');
   el.innerHTML =
     `<i class="cl-c ptl"></i><i class="cl-c ptr"></i><i class="cl-c pbl"></i><i class="cl-c pbr"></i>` +
-    `<div class="cl-tk"><i></i>Klaster baru · ${esc(g.latest ? wibTime(g.latest) : '')}</div>` +
+    `<div class="cl-tk"><i></i>${c.isNew ? 'Klaster baru' : 'Kabar baru'} · ${esc(wibTime(lead.ts))}</div>` +
     `<div class="cl-th">${esc(deEmoji(lead.title || ''))}</div>` +
-    `<div class="cl-tf"><span>${esc(g.place || 'Wilayah belum pasti')} · ${g.sources.size} sumber` +
-    `${g.earliest && g.latest && g.latest > g.earliest ? ` · ${esc(wibTime(g.earliest))}-${esc(wibTime(g.latest))}` : ''}</span></div>` +
+    // n>1 hanya bermakna kalau ada wilayah: tanpa place, grup = cat|'', jadi
+    // "2 kabar" bisa menggabung dua kejadian berbeda di dua tempat.
+    `<div class="cl-tf"><span>${esc(lead.place || (lead.foreign ? 'Global' : 'Wilayah belum pasti'))}` +
+    ` · ${esc(CAT_LABEL[lead.cat] || 'Insiden')}${n > 1 && lead.place ? ' · ' + n + ' kabar' : ''}</span></div>` +
     `<i class="cl-cd"></i>`;
-  box.prepend(el);   // toast baru di BELAKANG deck — yang pertama tetap front card
+  clToastMount(box, el);
+}
+
+function clToastDigest(cards, total, nNew, placesAll){
+  const box = $('#cl-toasts'); if (!box || !cards.length) return;
+  if (clToastOrder.length >= 6) { clToastSyncMore(); return; }   // deck penuh: jangan buat kartu ke-7 yang disembunyikan CSS
+  const lead = cards[0].items[0];
+  // tempat unik dihitung dari SEMUA grup (bukan hanya 4 kartu pertama): digest
+  // melaporkan total grup, jadi "+N wilayah" harus punya basis yang sama.
+  const places = placesAll || [...new Set(cards.map(c => c.items[0].place).filter(Boolean))];
+  // nNew dari noteWire = seluruh grup (termasuk yang tidak masuk 4 kartu pertama);
+  // fallback ke cards kalau dipanggil manual tanpa argumen ketiga.
+  if (typeof nNew !== 'number') nNew = cards.filter(c => c.isNew).length;
+  const head = !nNew ? `${total} kabar baru`
+    : nNew === total ? `${total} klaster baru`
+    : `${total} kabar baru · ${nNew} klaster`;
+  const placeTxt = places.length > 2
+    ? `${places.slice(0, 2).join(' · ')} · +${places.length - 2} wilayah`
+    : (places.join(' · ') || 'beberapa wilayah');
+  const el = document.createElement('div');
+  el.className = 'cl-toast cl-digest';
+  el.dataset.url = lead.url || '';
+  el.style.setProperty('--tc', CAT_COLOR[lead.cat] || '#8d8d8d');
+  el.innerHTML =
+    `<i class="cl-c ptl"></i><i class="cl-c ptr"></i><i class="cl-c pbl"></i><i class="cl-c pbr"></i>` +
+    `<div class="cl-tk"><i></i>${head} · ${esc(wibTime(lead.ts))}</div>` +
+    `<div class="cl-th">${esc(deEmoji(lead.title || ''))}</div>` +
+    `<div class="cl-tf"><span>${esc(placeTxt)}</span></div>` +
+    `<i class="cl-cd"></i>`;
+  clToastMount(box, el);
+}
+
+function clToastMount(box, el){
+  el.tabIndex = 0;
+  el.setAttribute('role', 'button');            // kartu = pintu masuk reader, bukan sekadar hiasan
+  const tk = el.querySelector('.cl-tk')?.textContent || '';
+  const tf = el.querySelector('.cl-tf')?.textContent || '';
+  el.setAttribute('aria-label', [tk, tf].filter(Boolean).join('. ') || 'Kabar baru');
+  box.prepend(el);
   el.style.setProperty('--ch', el.offsetHeight + 'px');   // tinggi aktual utk hitung overlap deck
   clToastOrder.push(el);
-  clToastQ.set(el, { t: 0, left: 10000, t0: 0, active: false, paused: false, barPct: 100 });
-  clToastActivate();
+  clToastQ.set(el, { t: 0, left: CL_TTL, t0: 0, active: false, paused: false, barPct: 100 });
+  clToastPromote(el);
   clToastSyncMore();
 }
-/* dismiss sequential: hanya 1 toast 'active' yg countdown — berikutnya mulai setelah ini keluar */
+/* Kartu baru langsung jadi bintang: sisa waktu kartu aktif dipotong jadi 1.2s supaya
+   kartu yang kelihatan (teratas) tidak membeku menunggu kartu lama yang ketutup. */
+function clToastPromote(el){
+  const cur = clToastActiveEl;
+  const hov = clToastsEl && clToastsEl.classList.contains('hov');
+  if (hov){
+    if (cur && cur !== el && cur.isConnected && !cur.classList.contains('k-out')) return;   // user sedang baca kartu lama
+    // tidak ada kartu aktif (mis. deck baru saja kosong) → jalankan lalu langsung pause,
+    // supaya mouseleave/focusout yang memulai timer. Tanpa ini kartu baru yatim tanpa timer.
+    clToastActivate();
+    if (clToastActiveEl === el) clToastPause(el);
+    return;
+  }
+  if (cur && cur !== el && cur.isConnected && !cur.classList.contains('k-out')){
+    const st = clToastQ.get(cur);
+    if (st){
+      clearTimeout(st.t);
+      st.left = 1200; st.t0 = Date.now();
+      clToastBar(cur, 1200, st.barPct);
+      st.t = setTimeout(() => clToastOut(cur), 1200);
+    }
+    return;   // clToastOut(cur) → clToastActivate() → kartu baru dapat timer penuh
+  }
+  clToastActivate();
+}
+/* dismiss sequential: satu kartu menghitung mundur dalam satu waktu.
+   LIFO — kartu TERATAS (paling kelihatan) yang dihitung. Versi lama memakai find()
+   dari depan array, jadi timer 10s jalan di kartu paling bawah yang ketutup kartu
+   baru, sementara kartu yang terlihat progress bar-nya beku. */
 function clToastActivate(){
   if (clToastActiveEl && clToastActiveEl.isConnected && !clToastActiveEl.classList.contains('k-out')) return;
-  const el = clToastOrder.find(x => x.isConnected && !x.classList.contains('k-out'));
+  const el = [...clToastOrder].reverse().find(x => x.isConnected && !x.classList.contains('k-out'));
   clToastActiveEl = el || null;
   if (!el) return;
   const st = clToastQ.get(el); if (!st) return;
-  st.active = true; st.paused = false; st.t0 = Date.now();
-  clToastBar(el, st.left, st.barPct);
+  st.left = CL_TTL; st.active = true; st.paused = false; st.t0 = Date.now();
+  clToastBar(el, st.left, 100);
   st.t = setTimeout(() => clToastOut(el), st.left);
   if (clToastsEl && clToastsEl.classList.contains('hov')) clToastPause(el);   // stack sedang di-hover → toast baru langsung pause
 }
@@ -3161,32 +3326,61 @@ function clToastSyncMore(){
   const lim = mobile ? 1 : 6;   // mobile: chip = expand deck; desktop: chip hanya kalau >6
   if (n <= lim){ if (chip) chip.remove(); box.classList.remove('open'); return; }
   const c = chip || document.createElement('button');
-  if (!chip){ c.type = 'button'; c.className = 'cl-tmore'; box.appendChild(c); }
+  if (!chip){
+    c.type = 'button'; c.className = 'cl-tmore';
+    c.setAttribute('aria-live', 'off');   // chip di dalam role=status: jangan dibacakan setiap sync
+    box.appendChild(c);
+  }
+  c.setAttribute('aria-expanded', box.classList.contains('open') ? 'true' : 'false');
   c.textContent = box.classList.contains('open') ? 'tutup' : (mobile ? 'buka' : `+${n - 6}`);
 }
 const clToastsEl = $('#cl-toasts');
+loadWireSeen();
 if (clToastsEl){
   clToastsEl.addEventListener('click', e => {
     if (e.target.closest('.cl-tmore')){
       clToastsEl.classList.toggle('open'); clToastSyncMore(); return;
     }
     const card = e.target.closest('.cl-toast');
-    if (card) clToastOut(card);   // klik card = dismiss item itu saja
+    if (card) clToastOpen(card);
   });
-  // hover stack: expand deck + pause countdown — debounce 220ms supaya
+  // keyboard: kartu adalah role=button — Enter/Space harus sama dengan klik
+  clToastsEl.addEventListener('keydown', e => {
+    if (e.key !== 'Enter' && e.key !== ' ') return;
+    const card = e.target.closest('.cl-toast');
+    if (!card || e.target.closest('.cl-tmore')) return;
+    e.preventDefault();
+    clToastOpen(card);
+  });
+  // hover/focus stack: expand deck + pause countdown — debounce 220ms supaya
   // cursor yang lewat gap antar-kartu tidak bikin state hover kedip (rubber-band)
   let clHovT = 0;
-  clToastsEl.addEventListener('mouseenter', () => {
+  const clHold = () => {
     clearTimeout(clHovT);
     clToastsEl.classList.add('hov');
     if (clToastActiveEl) clToastPause(clToastActiveEl);
-  });
-  clToastsEl.addEventListener('mouseleave', () => {
+  };
+  const clRelease = () => {
     clHovT = setTimeout(() => {
+      // mouse keluar tapi fokus keyboard masih di deck (atau sebaliknya) → jangan
+      // hidupkan timer yang baru dipause; user masih membaca/menargetkan kartu.
+      if (clToastsEl.matches(':hover') || clToastsEl.contains(document.activeElement)) return;
       clToastsEl.classList.remove('hov');
+      clToastActivate();                              // kartu yatim (mount saat deck kosong) diberi timer
       if (clToastActiveEl) clToastResume(clToastActiveEl);
     }, 220);
-  });
+  };
+  clToastsEl.addEventListener('mouseenter', clHold);
+  clToastsEl.addEventListener('mouseleave', clRelease);
+  // fokus keyboard = sama dengan hover: timer berhenti supaya 6s auto-dismiss
+  // tidak menghapus kartu tepat saat user hendak menekan Enter.
+  clToastsEl.addEventListener('focusin', clHold);
+  clToastsEl.addEventListener('focusout', e => { if (!clToastsEl.contains(e.relatedTarget)) clRelease(); });
+}
+function clToastOpen(card){
+  const url = card.dataset.url;
+  clToastOut(card);
+  if (url) rdOpen(url);   // toast = pintu masuk ke reader; trigger tidak dipakai karena kartunya ikut dilepas
 }
 addEventListener('pagehide', () => {
   clToastQ.forEach(s => clearTimeout(s.t)); clToastQ.clear(); clToastOrder.length = 0; clToastActiveEl = null;
@@ -3211,7 +3405,6 @@ function renderSituation(){
   $('#sit-sync-state').textContent = SIT_STALE ? 'stale' : 'live';
   $('#sit-sync-time').textContent = (SIT.at ? wibTime(SIT.at) : '') + ' WIB';
   const groups = SIT ? buildClusters() : [];
-  noteNewClusters(groups);
   renderClusters(groups);
   updateDistress();
   renderAlerts();
@@ -4053,7 +4246,7 @@ function leadHtml(h, imageUrl = '', isLatest = true){
   const desc = h.desc && h.desc.length > 200 ? h.desc.slice(0, 200).replace(/\s+\S*$/, '') + '…' : h.desc;
   return `<a class="lead" data-cat="${cat}" href="${esc(h.url)}" target="_blank" rel="noopener">
     ${imageUrl ? `<div class="lead-img"><img src="${esc(imageUrl)}" alt="" loading="eager" decoding="async" referrerpolicy="no-referrer" onerror="this.parentNode.remove()"></div>` : ''}
-    <div class="lead-t">${cat ? `<span class="lead-cat">${CAT_LABEL[cat]}</span>` : ''}<span class="lead-live">${isLatest ? 'Terbaru' : 'Sorotan'}</span><span class="lead-meta-r"><span class="lead-by">${esc(h.pub || h.src)}</span><time>${esc(h.ts ? wibTime(h.ts) : '')} WIB</time></span></div>
+    <div class="lead-t">${cat ? `<span class="lead-cat">${CAT_LABEL[cat]}</span>` : ''}${h.foreign ? '<span class="lead-cat glob">Global</span>' : ''}<span class="lead-live">${isLatest ? 'Terbaru' : 'Sorotan'}</span><span class="lead-meta-r"><span class="lead-by">${esc(h.pub || h.src)}</span><time>${esc(h.ts ? wibTime(h.ts) : '')} WIB</time></span></div>
     <h3>${esc(deEmoji(h.title))}</h3>
     ${desc && desc.length > 25 ? `<p class="lead-ex">${esc(deEmoji(desc))}</p>` : descPending(h) ? `<p class="lead-ex-sk nw-ex-sk" aria-hidden="true"><span class="nw-sk-line"></span><span class="nw-sk-line"></span><span class="nw-sk-line"></span></p>` : ''}
   </a>`;
@@ -4116,9 +4309,14 @@ async function renderLead(h, isLatest = true){
     if (imageUrl) break;
   }
   // Reader bisa punya og:image/body image yang resolver thumbnail ketatnya tolak.
+  // bg=1: ini fetch background — tanpa prioritas, dan gagalnya tidak boleh
+  // meracuni neg-cache untuk klik user berikutnya. Cek rdCache dulu: artikel
+  // yang sudah pernah dibuka user tidak perlu di-fetch ulang.
   if (!imageUrl && API != null) {
     try {
-      const article = await getJson(API + '/api/read?u=' + encodeURIComponent(h.url), 20000, 0);
+      const cd = rdCache.get(h.url);
+      const article = cd && cd.ok ? cd
+        : await getJson(API + '/api/read?u=' + encodeURIComponent(h.url) + '&bg=1', 20000, 0);
       if (article && article.ok && article.img && !candidates.includes(article.img)) {
         imageUrl = await preloadLeadImage(article.img);
       }
@@ -4140,7 +4338,7 @@ function newsHtml(h, full){
   const cat = newsCat(h);
   // kartu list tanpa thumbnail — gambar hanya untuk lead hero
   return `<a class="nw${full ? ' nw-full' : ''}" data-cat="${cat}" href="${esc(h.url)}" target="_blank" rel="noopener">
-    <div class="nw-top">${cat ? `<span class="nw-cat">${CAT_LABEL[cat]}</span>` : ''}<time>${esc(h.ts ? wibTime(h.ts) : '')}</time></div>
+    <div class="nw-top">${cat ? `<span class="nw-cat">${CAT_LABEL[cat]}</span>` : ''}${h.foreign ? '<span class="nw-cat glob">Global</span>' : ''}<time>${esc(h.ts ? wibTime(h.ts) : '')}</time></div>
     <div class="nw-src">${esc(tkPub(h.pub) || h.src)}${isNew ? '<span class="new">Baru</span>' : ''}${h.n > 1 ? `<span class="dup-n" title="${esc([...h.srcs].filter(Boolean).join(', '))}">×${h.n} artikel</span>` : ''}</div>
     <h3>${esc(deEmoji(h.title))}</h3>
     ${h.desc && h.desc.length > 25 ? `<p class="nw-ex">${esc(deEmoji(h.desc))}</p>` : descPending(h) ? `<p class="nw-ex-sk" aria-hidden="true"><span class="nw-sk-line"></span><span class="nw-sk-line"></span></p>` : ''}
@@ -4286,6 +4484,8 @@ function renderNews(){
   const q = ($('#fq').value || '').toLowerCase();
   const list = items.filter(h => (!onlyTopic || topicOK(h)) && (catFilter === 'semua' || h.cat === catFilter) &&
     (!q || (h.title + ' ' + h.src + ' ' + (h.pub || '')).toLowerCase().includes(q)));
+  // lokal dulu, foreign di bawah — masing-masing tetap kronologis
+  list.sort((a, b) => (a.foreign ? 1 : 0) - (b.foreign ? 1 : 0) || (b.ts || 0) - (a.ts || 0));
   const scope = catFilter + '|' + onlyTopic + '|' + q;
   newsList = list;
   if (!list.length && !mediaLoaded) return; // filter saat fetch pertama tidak menghapus skeleton
@@ -4821,7 +5021,8 @@ function startCell(cell){
   const v = vid(cell);
   if (p.h) {
     if (p.h !== 'native') { try { p.h.startLoad(-1); } catch (e) {} }
-    p.stopped = false; p.loading = !p.loaded; if (!p.loaded) p.t0 = Date.now();
+    p.stopped = false; p.loading = !p.loaded; p.nerr = p.merr = 0;
+    if (!p.loaded) { p.t0 = Date.now(); badge(cell, 'wait', 'Memuat'); }
     v.play().catch(() => {}); return;
   }
   p.loading = true; p.t0 = Date.now(); badge(cell, 'wait', 'Memuat');
@@ -4962,11 +5163,14 @@ const kickCams = () => setTimeout(() => {
     try { vio.unobserve(c); vio.observe(c); } catch (e) {}   // paksa IO re-deliver state benar
     if (!p.vis) return;
     const v = vid(c);
+    // Watchdog loading (t0) hanya di-reset SEKALI per periode hidden — kickCams
+    // dipanggil visibilitychange+pageshow+focus, reset tiap call membuat sel
+    // blackhole tidak pernah kena kill dan memakan slot MAXL selamanya.
+    if (!p.loaded && !p.kickDone) { p.t0 = Date.now(); p.kickDone = true; }
     if (p.loading && Date.now() - p.t0 > 25000) { kill(c); return; }   // catch-up watchdog yang ke-throttle saat hidden
     if (p.h && p.h !== 'native') {
       // resume load untuk SEMUA state — !loaded dapat budget timer baru ( throttle
       // sempat membekukan mereka), loaded tetap startLoad supaya live edge lanjut
-      if (!p.loaded) p.t0 = Date.now();
       try { p.h.startLoad(-1); } catch (e) {}
     }
     if (p.h === 'native' && !p.loaded && v) { try { v.load(); } catch (e) {} }   // Safari native: retry manifest
@@ -4986,7 +5190,10 @@ const kickCams = () => setTimeout(() => {
   }
   pump();
 }, 400);
-document.addEventListener('visibilitychange', () => { if (!document.hidden) kickCams(); });
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) P.forEach(p => { p.kickDone = false; });   // periode hidden baru → watchdog boleh reset lagi saat kembali
+  else kickCams();
+});
 window.addEventListener('pageshow', kickCams);
 window.addEventListener('focus', kickCams);
 const vio = new IntersectionObserver(es => es.forEach(e => {
@@ -6980,6 +7187,7 @@ async function pullMedia(){
       mediaLoaded = true;
       markFresh();
       renderNews();
+      noteWire(d);   // notifikasi dari payload yang BARU SAJA dirender, bukan dari /api/situation
       return;
     } catch (e) { /* server mati: mode browser */ }
   }
@@ -7372,7 +7580,7 @@ function rdPrefetch(url) {
   if (API == null || !/^https?:/i.test(url) || isSocialPost(url)) return;
   if (rdCache.has(url) || rdPrefetching.has(url)) return;
   rdPrefetching.add(url);
-  getJson(API + '/api/read?u=' + encodeURIComponent(url), 45000, 0)   // retries 0 — server sudah fallback internal; retry getJson = read kedua penuh
+  getJson(API + '/api/read?u=' + encodeURIComponent(url) + '&bg=1', 45000, 0)   // bg: tanpa prioritas Jina/media + gagal tidak menulis neg-cache
     .then(d => {
       if (d && d.ok) {
         rdCache.set(url, d);
@@ -7384,15 +7592,9 @@ function rdPrefetch(url) {
 }
 const RD_PREF_SEL = 'a.lead, a.nw, a.si, a.tk, a.th-link, a.srcl, a.tw-txt a, a.th-txt a';
 const rdPrefetchAnchor = a => { if (a && a.href && a.target === '_blank') rdPrefetch(a.href); };
-document.addEventListener('pointerover', e => {
-  const a = e.target.closest && e.target.closest(RD_PREF_SEL);
-  rdPrefetchAnchor(a);
-});
-document.addEventListener('focusin', e => {
-  const a = e.target.closest && e.target.closest(RD_PREF_SEL);
-  rdPrefetchAnchor(a);
-});
-// touch tidak punya hover — prefetch saat jari menyentuh, ~100-300ms sebelum click
+// Hanya pointerdown (intent nyata ~100-300ms sebelum klik) + rdPrefetchVisible.
+// Hover/focus prefetch dihapus: tiap anchor yang dilewati mouse memicu ladder
+// fetch penuh di server — di feed ramai ini memenuhi antrean Jina dan mediaSem.
 document.addEventListener('pointerdown', e => {
   const a = e.target.closest && e.target.closest(RD_PREF_SEL);
   rdPrefetchAnchor(a);
