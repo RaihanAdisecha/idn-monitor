@@ -3678,7 +3678,7 @@ $('#catbar').addEventListener('click', e => {
 });
 
 // mirror BANNED_SRC di server.js — GN feed bisa narik blog/opini (kompasiana dll)
-const NEWS_BANNED = /infopublik|kompasiana|mediacenter\.palangkaraya\.go\.id|viva\.co\.id\/foto|nokenlive/i;
+const NEWS_BANNED = /infopublik|kompasiana|mediacenter\.palangkaraya\.go\.id|viva\.co\.id\/foto|nokenlive|polreskedirikota/i;
 function parseRss(xmlText, srcId){
   const doc = new DOMParser().parseFromString(xmlText, 'text/xml');
   const out = [];
@@ -6809,7 +6809,7 @@ function rdPrefetch(url) {
   if (API == null || !/^https?:/i.test(url) || isSocialPost(url)) return;
   if (rdCache.has(url) || rdPrefetching.has(url)) return;
   rdPrefetching.add(url);
-  getJson(API + '/api/read?u=' + encodeURIComponent(url), 45000)
+  getJson(API + '/api/read?u=' + encodeURIComponent(url), 45000, 0)   // retries 0 — server sudah fallback internal; retry getJson = read kedua penuh
     .then(d => {
       if (d && d.ok) {
         rdCache.set(url, d);
@@ -6870,7 +6870,7 @@ async function rdOpen(url, trigger, push = true, hero = '') {
   try {
     let d = rdCache.get(url);
     if (!d) {
-      d = await getJson(API + '/api/read?u=' + encodeURIComponent(url), 45000);
+      d = await getJson(API + '/api/read?u=' + encodeURIComponent(url), 45000, 0);
       if (d && d.ok) {
         rdCache.set(url, d);
         if (rdCache.size > 80) rdCache.delete(rdCache.keys().next().value);

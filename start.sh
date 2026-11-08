@@ -10,4 +10,7 @@ if command -v python3 >/dev/null 2>&1 && [ ! -x .venv/bin/python ]; then
 fi
 
 mkdir -p data
+# threadpool lebih besar: dns.lookup (SSRF assert) + zlib gzip berbagi pool 4 thread
+# default — di bawah beban read burst, lookup DNS antre dan semua fetch ikut lambat
+export UV_THREADPOOL_SIZE=16
 exec node server.js

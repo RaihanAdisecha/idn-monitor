@@ -152,11 +152,21 @@ histLoad(path.join(HIST_DIR, 'x-history.json'), xHist);
 histLoad(path.join(HIST_DIR, 'threads-history.json'), tHist);
 histRetag(xHist, SOC.socKeepX); histRetag(tHist, SOC.socKeepTh);
 histAstroturf(xHist); histAstroturf(tHist);
+// byte cache untuk json() — key -> {at, plain:Buffer, gz:Buffer|null}
+const bodyCache = new Map(), BODY_CAP = 40;
 const memoRetry = new Map();   // k -> jumlah retry gagal beruntun
 // cache & memoRetry diisi key dari input user (read:, xq:, thq:, tt:*, yt:*, dst)
 // — tanpa batas bisa membengkak. Map menjaga insertion order → evict tertua.
 const MEMO_CAP = 600;
 const lruCap = (m, cap) => { while (m.size > cap) m.delete(m.keys().next().value); };
+// read:* entries berisi full article blocks (~20-100KB) — burst reader unik bisa
+// meng-evict feed n:* yang panas. Batasi jatah read: secara eksplisit.
+const READ_CAP = 250;
+const pruneReads = () => {
+  const ks = [];
+  for (const k of cache.keys()) if (k.startsWith('read:')) ks.push(k);
+  for (let i = 0; i < ks.length - READ_CAP; i++) cache.delete(ks[i]);
+};
 // good(v): predikat "payload ini layak jadi data". Hasil fetch yang resolve tapi
 // gagal (mis. {ok:false}) TIDAK boleh menghapus last-good — diperlakukan seperti throw.
 const memo = (k, ttl, fn, good) => {
@@ -176,18 +186,23 @@ const memo = (k, ttl, fn, good) => {
   const accept = v => {
     const cur = cache.get(k);
     if (cur && cur.v !== undefined && isGood(cur.v) && !isGood(v)) return fail();
-    cache.set(k, { at: Date.now(), v }); lruCap(cache, MEMO_CAP); memoRetry.delete(k); return v;
+    cache.set(k, { at: Date.now(), v }); lruCap(cache, MEMO_CAP); memoRetry.delete(k);
+    if (k.startsWith('read:')) pruneReads();
+    return v;
   };
   const c = cache.get(k);
   if (c && c.v !== undefined) {
+    cache.delete(k); cache.set(k, c);   // true-LRU: feed panas tidak ter-evict burst read
     if (Date.now() - c.at < ttl) return Promise.resolve(c.v);
     kick();
     return Promise.resolve(c.v);
   }
-  if (c && c.p) return c.p;
+  if (c && c.p) { cache.delete(k); cache.set(k, c); return c.p; }
   const p = fn().then(v => accept(v),
     e => { cache.delete(k); memoRetry.delete(k); throw e; });
-  cache.set(k, { at: 0, v: undefined, p }); lruCap(cache, MEMO_CAP); return p;
+  cache.set(k, { at: 0, v: undefined, p }); lruCap(cache, MEMO_CAP);
+  if (k.startsWith('read:')) pruneReads();
+  return p;
 };
 // semaphore kecil: batasi konkurensi ke upstream yang sama (X GraphQL, worker Threads).
 // Lazy fetch antre di slot yang sama dengan sweep utama — lebih baik menunggu daripada kena 429.
@@ -321,7 +336,7 @@ const cleanPub = v => {
 };
 // domain/sumber yang dilarang — item langsung dibuang dari semua feed.
 // kompasiana = platform opini/blog, bukan berita; masuk lewat agregat Google News.
-const BANNED_SRC = /infopublik\.id|infopublik|kompasiana|mediacenter\.palangkaraya\.go\.id|viva\.co\.id\/foto|nokenlive/i;
+const BANNED_SRC = /infopublik\.id|infopublik|kompasiana|mediacenter\.palangkaraya\.go\.id|viva\.co\.id\/foto|nokenlive|polreskedirikota/i;
 function parseFeed(xml) {
   const out = [];
   for (const m of xml.matchAll(/<item[\s>]([\s\S]*?)<\/item>/gi)) {
@@ -1994,7 +2009,18 @@ function imageScore(c, dim) {
 }
 
 const GN_PATH = /^\/rss\/articles\/|\/articles\/|\/read\//i;
-async function decodeGNews(u) {
+// in-flight dedup: decode GN = 2 fetch serial (page + batchexecute) — reader dan
+// thumb yang miss bersamaan untuk URL GN sama dulu masing-masing decode ulang.
+const gnBusy = new Map();
+const decodeGNews = u => {
+  const b = gnBusy.get(u);
+  if (b) return b;
+  const p = decodeGNewsRun(u);
+  gnBusy.set(u, p);
+  p.then(() => gnBusy.delete(u), () => gnBusy.delete(u));
+  return p;
+};
+async function decodeGNewsRun(u) {
   const x = publicURL(u);
   if (!x || !/(^|\.)news\.google\.com$/i.test(x.hostname) || !GN_PATH.test(x.pathname)) return u;
   const hit = gnCache.get(u);
@@ -2125,15 +2151,22 @@ async function thumbFromHtml(rawHtml, article) {
 
 // r.jina.ai free tier ~20 RPM — semua call site (thumb fallback + read race)
 // diserialkan dengan jarak minimum supaya burst read+thumb tidak 429 massal.
-let jinaChain = Promise.resolve(), jinaLast = 0;
-const jinaGet = (u, ms, h) => {
+let jinaChain = Promise.resolve(), jinaLast = 0, jinaPending = 0;
+// alive: predicate opsional — race /api/read memanggil Jina sebagai salah satu
+// job; begitu pemenang ditentukan, job Jina yang masih antre langsung batal
+// (dulu tetap fetch → bakar jatah ~20 RPM untuk hasil yang dibuang).
+const jinaGet = (u, ms, h, alive) => {
+  if (jinaPending >= 12) return Promise.reject(new Error('jina queue penuh'));
+  jinaPending++;
   const p = jinaChain.then(async () => {
+    if (alive && !alive()) throw new Error('jina dibatalkan');
     const wait = Math.max(0, jinaLast + 2500 - Date.now());
     if (wait) await sleep(wait);
     jinaLast = Date.now();
     return mediaGet(u, ms, h);
   });
   jinaChain = p.catch(() => {});
+  p.then(() => jinaPending--, () => jinaPending--);
   return p;
 };
 // Cloudflare-challenge hosts (jpnn dll): direct+proxy gagal total, tapi Jina
@@ -2176,7 +2209,18 @@ async function thumbFromJina(article) {
   return { img: '', src: article };
 }
 
-async function thumb(u) {
+// in-flight dedup: /api/thumb + rdFinish bisa miss bersamaan untuk URL sama —
+// dulu masing-masing menjalankan ladder direct→proxy→Jina penuh (stampede).
+const thumbBusy = new Map();
+const thumb = u => {
+  const b = thumbBusy.get(u);
+  if (b) return b;
+  const p = thumbRun(u);
+  thumbBusy.set(u, p);
+  p.then(() => thumbBusy.delete(u), () => thumbBusy.delete(u));
+  return p;
+};
+async function thumbRun(u) {
   const x = publicURL(u);
   if (!x) throw new Error('url tidak valid');
   const hit = thumbCache.get(u);
@@ -2690,7 +2734,10 @@ async function rdSafeGet(raw, ms) {
 // Di sini rdAssertPublic (DNS + rdPrivateIP) divalidasi ULANG di setiap hop
 // redirect, dan hostOK (bila diberikan) ikut dicek per hop. Redirect manual,
 // maks 5 hop — sama seperti rdSafeGet tapi tanpa header accept html.
-async function mediaGet(raw, ms, headers, hostOK) {
+// semaphore global untuk fetch media/upstream — tanpa ini N reader unik =
+// ~10N socket concurrent (race 6 job + ~20 image probe) di satu proses.
+const mediaSem = makeSem(24);
+async function mediaGetRaw(raw, ms, headers, hostOK) {
   let cur = raw;
   for (let i = 0; i < 5; i++) {
     await rdAssertPublic(cur);
@@ -2706,6 +2753,7 @@ async function mediaGet(raw, ms, headers, hostOK) {
   }
   throw new Error('terlalu banyak redirect');
 }
+const mediaGet = (raw, ms, headers, hostOK) => mediaSem(() => mediaGetRaw(raw, ms, headers, hostOK));
 // Baca body dengan cap byte: tolak cepat lewat content-length, lalu batalkan
 // stream begitu melewati batas (early-abort, tidak buffer penuh dulu).
 async function mediaBody(r, max) {
@@ -3466,7 +3514,7 @@ async function rdRead(raw) {
   // target dipakai juga oleh Jina/proxy/Firecrawl (bukan cuma rdSafeGet) —
   // pastikan resolve ke IP publik sebelum dikirim ke layanan pihak ketiga.
   await rdAssertPublic(target);
-  return memo('read:' + target, 600000, async () => {
+  return memo('read:' + target, 1800000, async () => {   // artikel tidak berubah — 30 mnt aman, memo() sudah SWR
     const t0 = Date.now();
     const left = () => Math.max(5000, 40000 - (Date.now() - t0));   // frontend timeout 45s
     let lastErr = null, metaD = null;
@@ -3515,8 +3563,9 @@ async function rdRead(raw) {
       return { d, html, url };
     })());
     // Jina reader — markdown, bukan html → thumb() fallback di rdFinish
+    let raceSettled = false;   // true begitu ada job yang menang — Jina antrean batal
     jobs.push((async () => {
-      const { r } = await jinaGet('https://r.jina.ai/' + target, Math.min(10000, left()), { accept: 'text/plain' });
+      const { r } = await jinaGet('https://r.jina.ai/' + target, Math.min(10000, left()), { accept: 'text/plain' }, () => !raceSettled);
       if (!r.ok) throw new Error('HTTP ' + r.status);
       const txt = await mediaText(r, 5 << 20);
       if (!txt || txt.length <= 200) throw new Error('jina kosong');
@@ -3543,7 +3592,7 @@ async function rdRead(raw) {
     })());
     const win = await new Promise(res => {
       let n = jobs.length, settled = false;
-      const done = v => { if (!settled) { settled = true; res(v); } };
+      const done = v => { if (!settled) { settled = true; raceSettled = true; res(v); } };
       for (const j of jobs) j.then(v => done(v), () => {}).finally(() => { if (--n === 0) done(null); });
     });
     if (win) { fetchMs = Date.now() - t0; return await fin(win.d, win.url, win.html, 'race'); }
@@ -3803,18 +3852,36 @@ async function descForUrl(reqUrl) {
 http.createServer(async (req, res) => {
   const u = new URL(req.url, 'http://x'), cors = { 'access-control-allow-origin': '*' };
   // gzip untuk payload besar (/api/news ~1.4MB, /api/x ~1MB) — browser accept-encoding
-  // otomatis; fallback plain text kalau compress gagal atau client tidak support
-  const json = (o, c = 200) => {
-    const body = JSON.stringify(o);
+  // otomatis; fallback plain text kalau compress gagal atau client tidak support.
+  // cacheKey+cacheTtl: endpoint yang poller-friendly (news/market/situation/x/threads)
+  // menyajikan byte yang sama ke semua klien dalam window — stringify+gzip tidak
+  // diulang per request. Ini penghemat CPU terbesar saat banyak user online.
+  const json = (o, c = 200, cacheKey = '', cacheTtl = 0) => {
+    const ae = /\bgzip\b/.test(req.headers['accept-encoding'] || '');
     const head = { ...cors, 'content-type': 'application/json', 'cache-control': 'no-store' };
-    if (body.length > 8192 && /\bgzip\b/.test(req.headers['accept-encoding'] || '')) {
+    if (cacheKey && cacheTtl) {
+      const hit = bodyCache.get(cacheKey);
+      if (hit && Date.now() - hit.at < cacheTtl) {
+        const gz = ae && hit.gz;
+        res.writeHead(c, gz ? { ...head, 'content-encoding': 'gzip', vary: 'accept-encoding' } : head);
+        return res.end(gz ? hit.gz : hit.plain);
+      }
+    }
+    const body = JSON.stringify(o);
+    const store = gz => {
+      if (!cacheKey || !cacheTtl) return;
+      bodyCache.set(cacheKey, { at: Date.now(), plain: Buffer.from(body), gz: gz || null });
+      while (bodyCache.size > BODY_CAP) bodyCache.delete(bodyCache.keys().next().value);
+    };
+    if (body.length > 8192 && ae) {
       zlib.gzip(body, (e, b) => {
-        if (e || !b) { res.writeHead(c, head); res.end(body); return; }
+        if (e || !b) { store(null); res.writeHead(c, head); res.end(body); return; }
+        store(b);
         res.writeHead(c, { ...head, 'content-encoding': 'gzip', vary: 'accept-encoding' }); res.end(b);
       });
       return;
     }
-    res.writeHead(c, head); res.end(body);
+    store(null); res.writeHead(c, head); res.end(body);
   };
   try {
     // Gate token untuk semua /api/* (kecuali /api/ping, dipakai frontend cek hidup)
@@ -3847,27 +3914,32 @@ http.createServer(async (req, res) => {
     if (u.pathname === '/signals.js' || u.pathname === '/wxicons.js' || u.pathname === '/wire-core.js') { res.writeHead(200, { 'content-type': 'application/javascript; charset=utf-8', 'cache-control': 'no-store' }); return res.end(fs.readFileSync(path.join(__dirname, 'public', u.pathname.slice(1)))); }
     if (u.pathname === '/api/ping') return json({ ok: true, x: xHas(), classifierVersion: SOC.CLASSIFIER_VERSION });
     if (u.pathname === '/api/news') {
-      const srcs = await news(), aOf = assessCycle();
-      { // gambar yang sama dipakai >1 headline berbeda = aset situs/placeholder → kosongkan semua
-        const cnt = new Map();
-        for (const s of srcs) for (const i of s.items) if (i.img) { const k = rdImgKey(i.img); if (!cnt.has(k)) cnt.set(k, new Set()); cnt.get(k).add(i.url); }
-        for (const s of srcs) for (const i of s.items) if (i.img && cnt.get(rdImgKey(i.img)).size > 1) i.img = '';
-      }
-      return json({ classifierVersion: SOC.CLASSIFIER_VERSION, sources: srcs.map(s => ({ ...s, items: s.items.map(i => {
-        const a = aOf(i.title);
-        const cat = catOf(i.title, a);
-        return { ...i, cat, feedTopic: feedCatOf(s.id), assessment: a, label: cat ? catMeta(cat).label : '' };
-      }) })), at: Date.now() });
+      // transform (assess ~2000 judul + dedupe img + stringify) dulunya per request —
+      // memo 25 dtk: feed sendiri refresh ~55 dtk, jadi hasil identik untuk semua klien
+      const payload = await memo('newsresp', 25000, async () => {
+        const srcs = await news(), aOf = assessCycle();
+        { // gambar yang sama dipakai >1 headline berbeda = aset situs/placeholder → kosongkan semua
+          const cnt = new Map();
+          for (const s of srcs) for (const i of s.items) if (i.img) { const k = rdImgKey(i.img); if (!cnt.has(k)) cnt.set(k, new Set()); cnt.get(k).add(i.url); }
+          for (const s of srcs) for (const i of s.items) if (i.img && cnt.get(rdImgKey(i.img)).size > 1) i.img = '';
+        }
+        return { classifierVersion: SOC.CLASSIFIER_VERSION, sources: srcs.map(s => ({ ...s, items: s.items.map(i => {
+          const a = aOf(i.title);
+          const cat = catOf(i.title, a);
+          return { ...i, cat, feedTopic: feedCatOf(s.id), assessment: a, label: cat ? catMeta(cat).label : '' };
+        }) })), at: Date.now() };
+      });
+      return json(payload, 200, 'newsresp', 25000);
     }
     if (u.pathname === '/api/breaking') {
       const c = cache.get('breaking');
       if (c && c.v) {
         if (!c.p && Date.now() - c.at > 25000) breaking().catch(() => {});
-        return json(c.v);                      // stale-while-revalidate: marquee tidak nunggu feed
+        return json(c.v, 200, 'breaking', 12000);  // stale-while-revalidate: marquee tidak nunggu feed
       }
-      return json(await breaking());
+      return json(await breaking(), 200, 'breaking', 12000);
     }
-    if (u.pathname === '/api/x') return json(socialResponse(await xposts(), xHist, SOC.socKeepX));
+    if (u.pathname === '/api/x') return json(socialResponse(await xposts(), xHist, SOC.socKeepX), 200, 'x', 12000);
     if (u.pathname === '/api/xdiag') {   // bandingkan bentuk query: mana yang dapat hasil basi di host ini
       const SQ = require('./social.js').socQueries('x', []); const tests = u.searchParams.get('all') ? SQ.map(e => e.q) : ['kebakaran', 'kebakaran lang:id', 'kebakaran -filter:replies', 'kebakaran lang:id -filter:replies', '(kebakaran OR damkar) lang:id -filter:replies', 'kebakaran since_time:' + Math.floor((Date.now() - 46 * 3600e3) / 1000)];
       const out = [];
@@ -3898,13 +3970,13 @@ http.createServer(async (req, res) => {
       const c = cache.get('threads');
       if (c && c.v) {
         if (!c.p && Date.now() - c.at > 90000) threads().catch(() => {});
-        return json(socialResponse(c.v, tHist, SOC.socKeepTh));
+        return json(socialResponse(c.v, tHist, SOC.socKeepTh), 200, 'threads', 12000);
       }
-      return json(socialResponse(await threads(), tHist, SOC.socKeepTh));
+      return json(socialResponse(await threads(), tHist, SOC.socKeepTh), 200, 'threads', 12000);
     }
     if (u.pathname === '/api/incidents') { if (u.searchParams.get('fresh')) cache.delete('incidents'); return json(await incidents()); }
-    if (u.pathname === '/api/situation') return json(await situation());
-    if (u.pathname === '/api/market') return json(await market());
+    if (u.pathname === '/api/situation') return json(await situation(), 200, 'situation', 12000);
+    if (u.pathname === '/api/market') return json(await market(), 200, 'market', 12000);
     if (u.pathname === '/api/closes') return json(await closes((u.searchParams.get('list') || '').split(',')));
     if (u.pathname === '/api/flights') return json({ ok: true, items: await flights(), at: Date.now() });
     if (u.pathname === '/api/ships') return json({ ok: true, items: await ships(), n: shipMap.size, live: !!(wsSock && !wsSock.destroyed), at: Date.now() });
