@@ -143,9 +143,18 @@ def clean_post(p):
 
 
 class Threads:
-    def __init__(self, proxy=None):
+    def __init__(self, proxy=None, cookies=None):
         # One Chrome-like session: the first page sets the cookies the later queries need.
         self.http = requests.Session(impersonate="chrome", proxies={"http": proxy, "https": proxy} if proxy else None)
+        # Hybrid auth: cookies opsional (mis. {"sessionid": "...", "csrftoken": "..."}).
+        # Logged-in → flag IsLoggedIn ON, header logged-out dimatikan, pagination
+        # search/profil ikut jatah akun, bukan anon ~20 hasil.
+        self.auth = False
+        if cookies:
+            for k, v in cookies.items():
+                if v:
+                    self.http.cookies.set(str(k), str(v), domain=".threads.com")
+            self.auth = bool(self.http.cookies.get("sessionid"))
 
     def _send(self, method, url, **kwargs):
         try:
@@ -232,7 +241,10 @@ class Threads:
             "allow_page_info_for_lox_user": True, "skipGhostPosts": False,
         }
         variables.update({f"__relay_internal__pv__{name}": True for name in FLAGS_ON})
-        variables.update({f"__relay_internal__pv__{name}": False for name in FLAGS_OFF})
+        flags_off = [f for f in FLAGS_OFF if f != "BarcelonaIsLoggedInrelayprovider" or not self.auth]
+        variables.update({f"__relay_internal__pv__{name}": False for name in flags_off})
+        if self.auth:
+            variables["__relay_internal__pv__BarcelonaIsLoggedInrelayprovider"] = True
         body = {"server_timestamps": "true", "doc_id": DOC_PROFILE_POSTS, "variables": json.dumps(variables, separators=(",", ":"))}
         headers = {
             "content-type": "application/x-www-form-urlencoded",
@@ -240,9 +252,11 @@ class Threads:
             "x-ig-app-id": APP_ID,
             "x-csrftoken": self.http.cookies.get("csrftoken") or "",  # must match the cookie
             "x-root-field-name": "xdt_api__v1__text_feed__user_id__profile__connection",
-            # Without this header Threads says "User not found" for real users.
-            "x-logged-out-threads-migrated-request": "true",
         }
+        # Tanpa header ini Threads bilang "User not found" untuk user asli —
+        # khusus mode logged-out; saat auth pakai session jangan dikirim.
+        if not self.auth:
+            headers["x-logged-out-threads-migrated-request"] = "true"
         data = self._send("POST", BASE + "/graphql/query", data=urlencode(body), headers=headers).json()
         feed = (data.get("data") or {}).get("mediaData")
         if not feed:

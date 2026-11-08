@@ -37,15 +37,16 @@ def main():
     if isinstance(spec, dict):
         queries = as_str_list(spec.get("searches"))
         profiles = as_str_list(spec.get("profiles"))
+        auth = spec.get("auth") if isinstance(spec.get("auth"), dict) else None
     else:
-        queries, profiles = as_str_list(spec), []
+        queries, profiles, auth = as_str_list(spec), [], None
 
     posts, seen, errs = [], set(), []
     halt = False       # rate-limit parah: lewati sisa queries DAN profiles
     consec_rl = 0      # kegagalan 429/403 beruntun
 
     try:
-        client = Threads()
+        client = Threads(cookies=auth)
 
         def add(p, q):
             if not isinstance(p, dict):

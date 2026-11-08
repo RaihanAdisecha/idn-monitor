@@ -21,7 +21,7 @@ const STUB = [
   '    pass',
   '',
   'class Threads:',
-  '    def __init__(self):',
+  '    def __init__(self, *a, **k):',
   '        if os.environ.get("STUB_FATAL"):',
   '            raise RuntimeError("stub ctor down")',
   '',

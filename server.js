@@ -795,6 +795,18 @@ const xqLazy = q => memo('xq:' + String(q).toLowerCase(), 600000, async () => {
 /* ---------- Threads: toolzerhub/threads-scraper (MIT) lewat worker Python ---------- */
 const { execFile } = require('child_process');
 const TH = CFG.threads || {};
+// Auth opsional untuk worker Threads: cookie sesi dari env (JANGAN taruh di
+// config.json — file itu ikut ter-commit). Isi lalu restart:
+//   TH_SESSIONID, TH_CSRFTOKEN, TH_DS_USER_ID, TH_MID, TH_RUR
+// Kosong = mode logged-out seperti sekarang (hybrid: search tetap jalan,
+// profil & pagination dapat jatah lebih banyak saat session valid).
+const TH_AUTH = (() => {
+  const env = { sessionid: 'TH_SESSIONID', csrftoken: 'TH_CSRFTOKEN', ds_user_id: 'TH_DS_USER_ID', mid: 'TH_MID', rur: 'TH_RUR' };
+  const ck = {};
+  for (const [k, v] of Object.entries(env)) { const val = process.env[v]; if (val) ck[k] = val; }
+  for (const [k, v] of Object.entries(TH.cookies || {})) if (v && !ck[k]) ck[k] = String(v);
+  return ck.sessionid ? ck : null;
+})();
 const PY_BIN = [
   TH.python,
   path.join(__dirname, '.venv', 'bin', 'python'),
@@ -874,7 +886,7 @@ const threads = () => memo('threads', 300000, async () => {
   searches.forEach((q, i) => chunks[i % 3].s.push(q));
   profiles.forEach((u, i) => chunks[i % 3].p.push(u));
   const rs = await Promise.allSettled(chunks.filter(c => c.s.length || c.p.length)
-    .map(c => runTh({ searches: c.s, profiles: c.p }, 150000)));
+    .map(c => runTh({ searches: c.s, profiles: c.p, auth: TH_AUTH }, 150000)));
   if (rs.every(r => r.status === 'rejected')) throw rs[0].reason;
   const { batch, errs, dropped } = thCollect(rs);
   histMerge(tHist, batch, HIST_MAX.th, path.join(HIST_DIR, 'threads-history.json'));
@@ -886,7 +898,10 @@ const threads = () => memo('threads', 300000, async () => {
 const thqLazy = q => memo('thq:' + String(q).toLowerCase(), 600000, async () => {
   if (!PY_BIN) throw new Error('Python tidak ditemukan');
   const tp = topicOf(q), extra = tp ? ADHOC : ADHOC.concat(SOC.socAdhoc([q]));
-  const r = await Promise.allSettled([runTh(tp ? tp.th : [String(q)], 90000)]);
+  const spec0 = tp ? tp.th : [String(q)];
+  const spec = (spec0 && typeof spec0 === 'object' && !Array.isArray(spec0))
+    ? { ...spec0, auth: TH_AUTH } : { searches: spec0, auth: TH_AUTH };
+  const r = await Promise.allSettled([runTh(spec, 90000)]);
   if (r[0].status === 'rejected') throw r[0].reason;
   const { batch } = thCollect(r, extra);
   histMerge(tHist, batch, HIST_MAX.th, path.join(HIST_DIR, 'threads-history.json'));
