@@ -851,11 +851,11 @@ const dynWatch = (now) => {
     const u = String(p.username || '').toLowerCase();
     if (u && histTs(p) > now - 24 * 3600e3) uc[u] = (uc[u] || 0) + 1;
   }
-  return Object.entries(uc).sort((a, b) => b[1] - a[1]).slice(0, 8).map(([u]) => u);
+  return Object.entries(uc).sort((a, b) => b[1] - a[1]).slice(0, 12).map(([u]) => u);
 };
 const thSeen = new Map();   // topik -> ts fetch terakhir
 let thTick = 0;
-const threads = () => memo('threads', 300000, async () => {
+const threads = () => memo('threads', 240000, async () => {
   if (!PY_BIN) throw new Error('Python tidak ditemukan. Jalankan: python3 -m venv .venv && .venv/bin/pip install curl_cffi');
   await adhocRefresh();
   const meta0 = socMeta(), now = Date.now();
@@ -878,8 +878,9 @@ const threads = () => memo('threads', 300000, async () => {
   for (const t of chosen) thSeen.set(t, now);
   const searches = [...new Set([...chosen].flatMap(t => byTopic.get(t)))];
   const watch = [...new Set(TH_WATCH.concat(dynWatch(now)))];
-  // profil watchlist: semua kalau ≤6, rotasi sisanya per siklus
-  const wN = Math.min(10, watch.length), wOff = watch.length ? (thTick - 1) % watch.length : 0;
+  // profil watchlist: semua kalau ≤15, rotasi sisanya per siklus —
+  // posts() paginate 40/profil, sumber post paling stabil tanpa search cap
+  const wN = Math.min(15, watch.length), wOff = watch.length ? (thTick - 1) % watch.length : 0;
   const profiles = watch.length <= wN ? watch.slice() :
     Array.from({ length: wN }, (_, i) => watch[(wOff + i) % watch.length]);
   const chunks = [{ s: [], p: [] }, { s: [], p: [] }, { s: [], p: [] }];
