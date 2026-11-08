@@ -307,7 +307,7 @@ function feedImage(b) {
   const u = feedImageRaw(b);
   if (!u) return '';
   const p = u.split('?')[0];
-  if (/\.(svg|gif|ico)$/i.test(p) || rdSmallHint(u) || rdJunkUrl(u) || /(logo|favicon|sprite|placeholder|avatar|icon|emoji|emoticon|default[-_]|no[-_]?image|blank|pixel)[^/]*$/i.test(p)) return '';
+  if (/\.(svg|gif|ico)$/i.test(p) || rdSmallHint(u) || rdJunkUrl(u) || /(logo|favicon|sprite|placeholder|avatar|icon|emoji|emoticon|default[-_]|no[-_]?image|blank|pixel|image[-_]?404|404[-_]?image|not[-_]?found)[^/]*$/i.test(p)) return '';
   return u;
 }
 function feedImageRaw(b) {
@@ -1844,7 +1844,7 @@ function addCandidate(out, raw, base, kind) {
     if (!/^https?:$/.test(x.protocol)) return;
     if (/\.(svg|gif)(\?|$)/i.test(x.pathname)) return;
     const fn = x.pathname.split('/').pop() || '';
-    if (/(logo|logotype|semangka|favicon|sprite|watermark|placeholder|avatar|icon|default)/i.test(fn)) return;   // aset situs, bukan foto berita
+    if (/(logo|logotype|semangka|favicon|sprite|watermark|placeholder|avatar|icon|default|image[-_]?404|404[-_]?image|no[-_]?image|not[-_]?found)/i.test(fn)) return;   // aset situs, bukan foto berita
     if (rdJunkUrl(x.href)) return;   // badge app-store, icon sosmed, tracker, foto wartawan, dll
     if (rdSmallHint(x.href)) return;   // thumb/24x24, ?w=100 — terlalu kecil untuk foto berita
     const url = x.href;
@@ -2828,11 +2828,11 @@ const RD_SKIP = /^(baca juga|simak juga|lihat juga|berita terkait|artikel terkai
 const RD_CREDIT = /\b(?:foto|istimewa|dok\.?)\s*:/i;
 const VID_IFRAME = /(?:youtube\.com\/(?:embed|shorts)\/|youtube-nocookie\.com\/(?:embed|shorts)\/|youtu\.be\/|player\.vimeo\.com\/|facebook\.com\/plugins\/video|\/embed\/|\/player\/|\/video-embed\/)/i;
 const VID_FILE = /\.(mp4|webm|mov|m4v|m3u8|mpd)(\?|#|$)/i;
-const RD_IMG_JUNK = /logo|icon|sprite|avatar|badge|placeholder|blank|pixel|spacer|advert|\/ads?\/|[-_/.]ads?[-_/.]|banner|emoji|button|share|loading|lazy\.|default[-_]|no[-_]?image|gravatar|thumb(?:nail)?s?\/small/i;
+const RD_IMG_JUNK = /logo|icon|sprite|avatar|badge|placeholder|blank|pixel|spacer|advert|\/ads?\/|[-_/.]ads?[-_/.]|banner|emoji|button|share|loading|lazy\.|default[-_]|no[-_]?image|gravatar|thumb(?:nail)?s?\/small|image[-_]?404|404[-_]?image/i;
 // blacklist URL gambar sampah (audit 12 feed): badge app-store, icon sosmed, tracker/pixel,
 // aset UI publisher, thumbnail youtube, foto wartawan — berlaku untuk hero (addCandidate)
 // maupun gambar body (pickImg), satu sumber kebenaran
-const RD_JUNK_URL = /appstore|playstore|googleplay|gettheapp|framebarasset|asset-template|(?:^|\/)slide[-_]|assets_frontend\/images|\/assets\/(?:img|images)\/(?:ui|icons?|buttons?|social)|share[-_ ]?preview|social[-_ ]?(?:share|card)|og[-_]?(?:default|image)\b|partials\/|widgets-nocache|analytics_page_request|inpicture_widget|wartawan|scorecard|criteo|doubleclick|googlesyndication|adservice|hotjar|facebook\.net|img\.youtube\.com|(^|\/)ic_[a-z0-9]|en-flag|id-flag|thumb_|\/mini\/|\/small\/|\/img\/site\/|foot[-_ ]?network|foto[-_/]bank(?!\/originals)|fotobank|\/(?:tautan|lampiran)\//i;
+const RD_JUNK_URL = /appstore|playstore|googleplay|gettheapp|framebarasset|asset-template|(?:^|\/)slide[-_]|assets_frontend\/images|\/assets\/(?:img|images)\/(?:ui|icons?|buttons?|social)|share[-_ ]?preview|social[-_ ]?(?:share|card)|og[-_]?(?:default|image)\b|partials\/|widgets-nocache|analytics_page_request|inpicture_widget|wartawan|scorecard|criteo|doubleclick|googlesyndication|adservice|hotjar|facebook\.net|img\.youtube\.com|(^|\/)ic_[a-z0-9]|en-flag|id-flag|thumb_|\/mini\/|\/small\/|\/img\/site\/|foot[-_ ]?network|foto[-_/]bank(?!\/originals)|fotobank|\/(?:tautan|lampiran)\/|image[-_]?404|404[-_]?image/i;
 const RD_JUNK_BASE = /^(google|gnews|googlenews|telegram|threads|bluesky|pinterest|line|ig|fb|twitter|x|tiktok|instagram|youtube|wa|whatsapp|linkedin|googleplay|appstore|playstore|en-flag|id-flag)([-_. ]|$)/i;
 function rdJunkUrl(u) {
   const path = String(u).split('?')[0];
@@ -3294,7 +3294,7 @@ function rdExtract(html, finalURL) {
   const desc = meta['og:description'] || meta['twitter:description'] || meta.description || '';
   let img = meta['og:image'] || meta['og:image:secure_url'] || meta['twitter:image'] || '';
   if (img) { try { img = new URL(img, finalURL).href; } catch (e) { img = ''; } }
-  if (!/^https?:/i.test(img) || rdJunkUrl(img) || /(logo|favicon|sprite|placeholder|default[-_]|no[-_]?image|avatar|icon)[^/]*\.(png|jpe?g|webp|ico|svg)$/i.test(img.split('?')[0]) || /\.(svg|gif|ico)(\?|$)/i.test(img)) img = '';
+  if (!/^https?:/i.test(img) || rdJunkUrl(img) || /(logo|favicon|sprite|placeholder|default[-_]|no[-_]?image|avatar|icon|image[-_]?404|404[-_]?image)[^/]*\.(png|jpe?g|webp|ico|svg)$/i.test(img.split('?')[0]) || /\.(svg|gif|ico)(\?|$)/i.test(img)) img = '';
   const byline = meta.author || meta['article:author'] || rdName(art.author) || '';
   const time = meta['article:published_time'] || meta['datepublished'] || art.datePublished || '';
   let blk = null;
@@ -3974,6 +3974,7 @@ http.createServer(async (req, res) => {
     }
     if (u.pathname === '/idn.geo.json' || u.pathname === '/idn-context.geo.json' || u.pathname === '/idn-prov.geo.json' || u.pathname === '/world110.geo.json') { res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store', 'access-control-allow-origin': '*' }); return res.end(fs.readFileSync(path.join(__dirname, 'public', u.pathname.slice(1)))); }
     if (u.pathname === '/signals.js' || u.pathname === '/wxicons.js' || u.pathname === '/wire-core.js') { res.writeHead(200, { 'content-type': 'application/javascript; charset=utf-8', 'cache-control': 'no-store' }); return res.end(fs.readFileSync(path.join(__dirname, 'public', u.pathname.slice(1)))); }
+    if (u.pathname === '/favicon.svg') { res.writeHead(200, { 'content-type': 'image/svg+xml', 'cache-control': 'public, max-age=86400' }); return res.end(fs.readFileSync(path.join(__dirname, 'public', 'favicon.svg'))); }
     if (u.pathname === '/api/ping') return json({ ok: true, x: xHas(), classifierVersion: SOC.CLASSIFIER_VERSION });
     if (u.pathname === '/api/news') {
       // transform (assess ~2000 judul + dedupe img + stringify) dulunya per request —
