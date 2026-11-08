@@ -1869,8 +1869,12 @@ function sourceImages(html, base, bodyHtml) {
     const a = attrs(m[0]);
     const k = (a.property || a.name || '').toLowerCase();
     if (!a.content) continue;
-    if (/^(og:image|og:image:secure_url|og:image:url|twitter:image|twitter:image:src|thumbnailurl)$/.test(k)) {
+    if (/^og:image(?::secure_url|:url)?$/.test(k)) {
       addCandidate(meta, a.content, base, 'og');
+    } else if (/^twitter:image(?::src)?$/.test(k)) {
+      addCandidate(meta, a.content, base, 'twitter');
+    } else if (k === 'thumbnailurl') {
+      addCandidate(meta, a.content, base, 'meta');
     }
   }
   for (const m of html.matchAll(/<link\b[^>]*>/gi)) {
@@ -2001,7 +2005,7 @@ function imageScore(c, dim) {
   if (dim.w >= 1000) s += 34; else if (dim.w >= 760) s += 26; else if (dim.w >= 600) s += 15; else s -= 35;
   const ar = dim.w / dim.h;
   if (ar >= 1.55) s += 24; else if (ar >= 1.25) s += 14; else if (ar >= 1.0) s += 4; else s -= 16;
-  if (c.kind === 'meta' || c.kind === 'og') s += 12;
+  if (c.kind === 'meta' || c.kind === 'og' || c.kind === 'twitter') s += 12;
   if (c.kind === 'og') s += 20;   // og:image = gambar yang sama dengan reader → konsisten
   if (/logo|icon|sprite|avatar|badge|placeholder|blank|pixel|advert|ads?|banner|header|footer|nav|share|whatsapp|facebook|twitter|instagram|youtube/i.test(c.url)) s -= 40;
   if (/foto|photo|image|img|news|berita|upload|media|visual|original/i.test(c.url)) s += 4;
@@ -2113,20 +2117,27 @@ async function thumbFromHtml(rawHtml, article) {
   const probe = async (c) => {
     const img = upgradeImage(c.url);
     const dim = await probeImage(img, article).catch(() => null);
-    return dim ? { img, w: dim.w, h: dim.h, src: article, score: imageScore(c, dim) } : null;
+    return dim ? { img, w: dim.w, h: dim.h, kind: c.kind, src: article, score: imageScore(c, dim) } : null;
   };
-  const strictOK = p => p && p.w >= 600 && !rdJunkUrl(p.img) && !rdSmallHint(p.img) && !RD_IMG_JUNK.test(p.img.split('?')[0]) && ogReuse(host, p.img, article) < 1;
+  // Ikon/logo situs kerap berbentuk ~1:1 dan tetap lolos gerbang w>=600 — tolak
+  // aspect persegi untuk kandidat meta saja (ld+json & body tetap boleh).
+  // looseOK di bawah tetap mengizinkan square sebagai jalan terakhir.
+  const squareMeta = p => p && /^(og|twitter|meta)$/.test(p.kind || '') && p.w / p.h > 0.85 && p.w / p.h < 1.2;
+  const strictOK = p => p && p.w >= 600 && !squareMeta(p) && !rdJunkUrl(p.img) && !rdSmallHint(p.img) && !RD_IMG_JUNK.test(p.img.split('?')[0]) && ogReuse(host, p.img, article) < 1;
   const looseOK = p => p && p.w >= 600 && !rdJunkUrl(p.img) && !rdSmallHint(p.img) && !RD_IMG_JUNK.test(p.img.split('?')[0]);
-  // hero = urutan prioritas dokumen (ld+json → og → meta), bukan score tertinggi:
-  // thumbnail harus konsisten dengan gambar yang sama yang dipakai reader
+  // hero = urutan prioritas dokumen (ld+json → og → twitter → meta), bukan score
+  // tertinggi: thumbnail harus konsisten dengan gambar yang sama yang dipakai reader.
+  // Di dalam satu tier tetap ambil score tertinggi supaya penalti icon/junk bekerja.
   const seenU = new Set();
   const dedupe = c => { if (seenU.has(c.url)) return false; seenU.add(c.url); return true; };
-  const tiers = [meta.filter(c => c.kind === 'ld'), meta.filter(c => c.kind === 'og'), meta.filter(c => c.kind === 'meta')]
+  const tiers = [meta.filter(c => c.kind === 'ld'), meta.filter(c => c.kind === 'og'),
+    meta.filter(c => c.kind === 'twitter'), meta.filter(c => c.kind === 'meta')]
     .map(t => t.filter(dedupe));
   const probeTier = async (tier, ok) => {
     const rs = await Promise.all(tier.slice(0, 4).map(probe));
-    for (const p of rs) if (ok(p)) return p;
-    return null;
+    let win = null;
+    for (const p of rs) if (ok(p) && (!win || p.score > win.score)) win = p;
+    return win;
   };
   let best = null;
   for (const tier of tiers) {
@@ -2186,7 +2197,9 @@ async function thumbFromJina(article) {
     seen.add(u); cands.push(u);
   }
   const host = new URL(article).hostname;
-  const strictOK = p => p && p.w >= 600 && !rdJunkUrl(p.img) && !rdSmallHint(p.img) && !RD_IMG_JUNK.test(p.img.split('?')[0]) && ogReuse(host, p.img, article) < 1;
+  // tolak ikon ~1:1 yang keburu lolos ke markdown Jina — lebih baik tanpa
+  // gambar daripada thumbnail logo situs
+  const strictOK = p => p && p.w >= 600 && !(p.w / p.h > 0.85 && p.w / p.h < 1.2) && !rdJunkUrl(p.img) && !rdSmallHint(p.img) && !RD_IMG_JUNK.test(p.img.split('?')[0]) && ogReuse(host, p.img, article) < 1;
   // Host gambar bisa kena challenge CF yang sama dengan halamannya — probe
   // direct gagal ≠ gambar jelek. Coba ulang lewat images.weserv.nl (fetch dari
   // IP lain) khusus untuk verifikasi dimensi; URL asli tetap dipakai display.
@@ -2819,7 +2832,7 @@ const RD_IMG_JUNK = /logo|icon|sprite|avatar|badge|placeholder|blank|pixel|space
 // blacklist URL gambar sampah (audit 12 feed): badge app-store, icon sosmed, tracker/pixel,
 // aset UI publisher, thumbnail youtube, foto wartawan — berlaku untuk hero (addCandidate)
 // maupun gambar body (pickImg), satu sumber kebenaran
-const RD_JUNK_URL = /appstore|playstore|googleplay|gettheapp|framebarasset|asset-template|(?:^|\/)slide[-_]|assets_frontend\/images|\/assets\/(?:img|images)\/(?:ui|icons?|buttons?|social)|share[-_ ]?preview|social[-_ ]?(?:share|card)|og[-_]?(?:default|image)\b|partials\/|widgets-nocache|analytics_page_request|inpicture_widget|wartawan|scorecard|criteo|doubleclick|googlesyndication|adservice|hotjar|facebook\.net|img\.youtube\.com|(^|\/)ic_[a-z0-9]|en-flag|id-flag|thumb_|\/mini\/|\/small\/|\/img\/site\/|foot[-_ ]?network|foto[-_/]bank(?!\/originals)|fotobank/i;
+const RD_JUNK_URL = /appstore|playstore|googleplay|gettheapp|framebarasset|asset-template|(?:^|\/)slide[-_]|assets_frontend\/images|\/assets\/(?:img|images)\/(?:ui|icons?|buttons?|social)|share[-_ ]?preview|social[-_ ]?(?:share|card)|og[-_]?(?:default|image)\b|partials\/|widgets-nocache|analytics_page_request|inpicture_widget|wartawan|scorecard|criteo|doubleclick|googlesyndication|adservice|hotjar|facebook\.net|img\.youtube\.com|(^|\/)ic_[a-z0-9]|en-flag|id-flag|thumb_|\/mini\/|\/small\/|\/img\/site\/|foot[-_ ]?network|foto[-_/]bank(?!\/originals)|fotobank|\/(?:tautan|lampiran)\//i;
 const RD_JUNK_BASE = /^(google|gnews|googlenews|telegram|threads|bluesky|pinterest|line|ig|fb|twitter|x|tiktok|instagram|youtube|wa|whatsapp|linkedin|googleplay|appstore|playstore|en-flag|id-flag)([-_. ]|$)/i;
 function rdJunkUrl(u) {
   const path = String(u).split('?')[0];
