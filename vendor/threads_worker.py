@@ -99,7 +99,7 @@ def main():
             if halt:
                 break
             try:
-                found = client.posts(u, 40)   # posts() punya paginasi — 40 post/profil per siklus
+                found = client.posts(u, 80)   # posts() punya paginasi — 80 post/profil per siklus
             except ScrapeError as exc:
                 errs.append({"q": "@" + u, "err": str(exc)})
                 if note_rl(exc):

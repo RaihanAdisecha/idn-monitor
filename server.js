@@ -878,17 +878,19 @@ const threads = () => memo('threads', 240000, async () => {
   const forced = new Set(ADHOC.map(a => a.id).concat(hotTop));
   const chosen = new Set();
   // throttle sejak siklus pertama: burst ~30 request langsung memicu 429 Threads
-  const N = 18, pri = t => ((now - (thSeen.get(t) || 0)) / 60000) * (1 + Math.min(heat(t), 60) / 15);
+  const N = 24, pri = t => ((now - (thSeen.get(t) || 0)) / 60000) * (1 + Math.min(heat(t), 60) / 15);
   const rest = [...byTopic.keys()].filter(t => !forced.has(t)).sort((a, b) => pri(b) - pri(a));
   let used = 0;
-  for (const t of forced) { chosen.add(t); used += byTopic.get(t).length; }
+  // forced bisa berisi id topik tanpa query (trending basi / ad-hoc yang sudah
+  // keluar registry) — sama seperti X, jangan sampai TypeError.
+  for (const t of forced) { if (!byTopic.has(t)) continue; chosen.add(t); used += byTopic.get(t).length; }
   for (const t of rest) { const n = byTopic.get(t).length; if (used + n > N) continue; chosen.add(t); used += n; }
   for (const t of chosen) thSeen.set(t, now);
   const searches = [...new Set([...chosen].flatMap(t => byTopic.get(t)))];
   const watch = [...new Set(TH_WATCH.concat(dynWatch(now)))];
-  // profil watchlist: semua kalau ≤15, rotasi sisanya per siklus —
-  // posts() paginate 40/profil, sumber post paling stabil tanpa search cap
-  const wN = Math.min(15, watch.length), wOff = watch.length ? (thTick - 1) % watch.length : 0;
+  // profil watchlist: semua kalau ≤25, rotasi sisanya per siklus —
+  // posts() paginate 80/profil, sumber post paling stabil tanpa search cap
+  const wN = Math.min(25, watch.length), wOff = watch.length ? (thTick - 1) % watch.length : 0;
   const profiles = watch.length <= wN ? watch.slice() :
     Array.from({ length: wN }, (_, i) => watch[(wOff + i) % watch.length]);
   const chunks = [{ s: [], p: [] }, { s: [], p: [] }, { s: [], p: [] }];
