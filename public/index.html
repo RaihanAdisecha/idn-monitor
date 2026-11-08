@@ -6,6 +6,7 @@
 <meta name="color-scheme" content="dark">
 <title>SITREP // LIVE · Indonesia OSINT</title>
 <meta name="description" content="Console OSINT: wire berita, X live, CCTV Jakarta, peta insiden, dan pemantauan demo, kebakaran, banjir, bencana, serta insiden di seluruh Indonesia. Auto-sync 2 menit.">
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..600&family=IBM+Plex+Mono:wght@400;500;600;700&family=Lexend:wght@600&family=Plus+Jakarta+Sans:wght@400;500;600&display=swap" rel="stylesheet">
@@ -3802,16 +3803,20 @@ function mergedMedia(){
 }
 function fallbackImgOK(u){
   if (!u || /news\.google\.com|lh3\.googleusercontent\.com/i.test(u)) return false;
+  let p = u.split('?')[0];
+  try { p = new URL(u, location.origin).pathname; } catch (e) {}
+  if (/\/(image[-_]?404|404[-_]?image|no[-_]?image|not[-_]?found)[^/]*$/i.test(p)) return false;
   const m = u.match(/[?&](?:w|width)=(\d{2,4})/i) || u.match(/\/(\d{2,4})x(\d{2,4})\//);
   return !(m && parseInt(m[1], 10) < 600);
 }
 function leadHtml(h, imageUrl = '', isLatest = true){
   const cat = newsCat(h);
+  const desc = h.desc && h.desc.length > 200 ? h.desc.slice(0, 200).replace(/\s+\S*$/, '') + '…' : h.desc;
   return `<a class="lead" data-cat="${cat}" href="${esc(h.url)}" target="_blank" rel="noopener">
     ${imageUrl ? `<div class="lead-img"><img src="${esc(imageUrl)}" alt="" loading="eager" decoding="async" referrerpolicy="no-referrer" onerror="this.parentNode.remove()"></div>` : ''}
     <div class="lead-t"><span class="lead-cat">${CAT_LABEL[cat]}</span><span class="lead-live">${isLatest ? 'Terbaru' : 'Sorotan'}</span><span class="lead-meta-r"><span class="lead-by">${esc(h.pub || h.src)}</span><time>${esc(h.ts ? wibTime(h.ts) : '')} WIB</time></span></div>
     <h3>${esc(deEmoji(h.title))}</h3>
-    ${h.desc && h.desc.length > 25 ? `<p class="lead-ex">${esc(deEmoji(h.desc))}</p>` : descPending(h) ? `<p class="lead-ex-sk nw-ex-sk" aria-hidden="true"><span class="nw-sk-line"></span><span class="nw-sk-line"></span><span class="nw-sk-line"></span></p>` : ''}
+    ${desc && desc.length > 25 ? `<p class="lead-ex">${esc(deEmoji(desc))}</p>` : descPending(h) ? `<p class="lead-ex-sk nw-ex-sk" aria-hidden="true"><span class="nw-sk-line"></span><span class="nw-sk-line"></span><span class="nw-sk-line"></span></p>` : ''}
   </a>`;
 }
 const leadSkeletonHtml = () => `<div class="lead lead-skeleton" aria-hidden="true">
