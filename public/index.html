@@ -2000,7 +2000,7 @@ let globeShakeX = 0, globeShakeY = 0;       // offset screen shake — render di
 const legendOn = Object.fromEntries(Object.keys(CAT_GEO).map(c => [c, true]));
 const REDUCED = matchMedia('(prefers-reduced-motion: reduce)').matches;
 const view = { lon: 118, lat: -2.5, zoom: 2.2 };
-const ZOOM_MAX = 60;   // dulu 7: titik se-centroid tidak pernah sempat melebar; radius & hit-area menyesuaikan (lihat zoomTaper)
+const ZOOM_MAX = 48;   // cukup dalam untuk inspeksi node/kab; zoomTaper + hit-floor menjaga dot & node tetap terlihat/terklik
 const clampN = (v, a, b) => Math.min(b, Math.max(a, v));
 let flyAnim = null, lastGestEnd = -1e9, globeSuppressClick = 0, gesture = null;
 let globePtrType = 'mouse';   // mobile: tap insiden → popup "Buka reader", tap node → fokus langsung
@@ -2049,6 +2049,7 @@ const easeInOutCubic = t => t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3
    sejauh θ−θ'. Titik di bawah kursor tetap di bawah kursor. */
 function zoomAt(cx, cy, factor){
   const c = $('#sit-globe'); if (!c || !globeProj) { view.zoom = clampN(view.zoom * factor, 0.9, ZOOM_MAX); return; }
+  flyAnim = null; globeVel = null;   // zoom manual = gesture — batalkan fly/inertia biar tidak di-snap balik caller
   const proj = globeProject();
   const rect = c.getBoundingClientRect();
   const z2 = clampN(view.zoom * factor, 0.9, ZOOM_MAX);
@@ -2076,7 +2077,7 @@ function zoomAt(cx, cy, factor){
   view.lon = Math.atan2(A[1] * sA + B[1] * sB, A[0] * sA + B[0] * sB) * 180 / Math.PI;
   view.lon = ((view.lon + 540) % 360) - 180;
 }
-function flyTo(lat, lon, zoom){
+function flyTo(lat, lon, zoom, kind){
   globeVel = null;
   // Delta lon dibungkus ke [-180,180]: view.lon bisa unbounded (drag/inertia
   // tidak pernah dinormalisasi) — interpolasi linear mentah bisa memutar globe
@@ -2084,8 +2085,12 @@ function flyTo(lat, lon, zoom){
   let dLon = lon - view.lon;
   while (dLon > 180) dLon -= 360;
   while (dLon < -180) dLon += 360;
+  // kind: 'home'|'focus'|'node' — menandai siapa yang memicu fly; 'home' yang
+  // selesai menandai focusedHome=true (lihat tickFly). Zoom target di-clamp
+  // supaya caller tidak bisa minta zoom di luar rentang render.
   flyAnim = { from: { lon: view.lon, lat: view.lat, zoom: view.zoom },
-    to: { lon: view.lon + dLon, lat, zoom: zoom || view.zoom }, start: performance.now(), dur: 1150 };
+    to: { lon: view.lon + dLon, lat, zoom: clampN(zoom || view.zoom, 0.9, ZOOM_MAX) },
+    start: performance.now(), dur: 1150, kind: kind || null };
 }
 function tickFly(now){
   if (!flyAnim) return;
@@ -2095,7 +2100,13 @@ function tickFly(now){
   view.lon = ((view.lon + 540) % 360) - 180;   // hasil animasi selalu [-180,180]
   view.lat = flyAnim.from.lat + (flyAnim.to.lat - flyAnim.from.lat) * e;
   view.zoom = flyAnim.from.zoom + (flyAnim.to.zoom - flyAnim.from.zoom) * e;
-  if (t >= 1) flyAnim = null;
+  // focusedHome baru final saat fly 'home' benar-benar mendarat —
+  // kalau fly dibatalkan (pointerdown/wheel/flyTo baru) flag tetap false dan
+  // goHome boleh retry. Dulu flag diset sebelum animasi → stuck permanen.
+  if (t >= 1) {
+    if (flyAnim.kind === 'home') focusedHome = true;
+    flyAnim = null;
+  }
 }
 const SEEN_KEY = 'sitrep.seenIds.ev2';   // versi baru: itemIdOf pindah url → eid, jangan warisi id lama
 const seenIds = new Set((() => { try { return JSON.parse(sessionStorage.getItem(SEEN_KEY) || '[]'); } catch (e) { return []; } })());
@@ -2142,7 +2153,8 @@ const focusSort = (a, b) => (focusRank(b) - focusRank(a)) || (b.ts || 0) - (a.ts
 function doFocus(t){
   lastAutoFocus = Date.now();
   focusedHome = false;
-  flyTo(t.la, t.lo, Math.max(view.zoom, 13));
+  // zoom fokus fixed 13 — cukup dekat untuk melihat konteks wilayah tanpa terlalu dalam
+  flyTo(t.la, t.lo, 13, 'focus');
   setLinkItem(t); showSitAlert(t);
 }
 function maybeFocusFresh(){
@@ -2166,6 +2178,7 @@ function maybeFocusFresh(){
   if (seenIds.size > 3000) { const keep = [...seenIds].slice(-3000); seenIds.clear(); keep.forEach(x => seenIds.add(x)); }
   saveSeen();
   if (document.hidden) return;                            // tab background: antrian tetap diisi, aksi fokus menunggu tab terlihat
+  if (mapOpen) return;                                   // panel peta insiden terbuka: render globe frozen — antrian tetap diisi, doFocus/toast menunggu tutup
   if (now < focusHoldUntil) return;                        // boot hold: antrian terisi, fokus menunggu
   if (performance.now() - lastGestEnd < 25000) return;   // jangan rebut globe dari user
   const cd = focusQueue.length ? 45000 : FOCUS_COOLDOWN;  // item antri didahulukan lebih cepat; spotlight rotasi di-throttle ROTATE_MS
@@ -2198,8 +2211,8 @@ function maybeFocusFresh(){
 function goHome(){
   if (focusedHome || !globeReady) return;
   if (performance.now() - lastGestEnd < 60000) return;   // pulang ke home butuh idle lebih lama — paling mengganggu
-  focusedHome = true;
-  flyTo(HOME_VIEW.lat, HOME_VIEW.lon, HOME_VIEW.zoom);
+  focusedHome = false;   // flag 'sudah di home' baru diset tickFly saat fly 'home' mendarat — interrupt = retry
+  flyTo(HOME_VIEW.lat, HOME_VIEW.lon, HOME_VIEW.zoom, 'home');
 }
 setInterval(() => {   // heartbeat: antrian diuras + rotasi jalan walau tidak ada fetch baru
   if (document.hidden || !globeReady) return;
@@ -2213,7 +2226,7 @@ function syncGlobeSoon(){
 }
 let linkItem = null;
 function setLinkItem(p){ linkItem = p; }
-let sitAlertTimer = 0, sitAlertUrl = '';
+let sitAlertTimer = 0, sitAlertTimer2 = 0, sitAlertUrl = '';
 function showSitAlert(p){
   const el = $('#sit-alert'); if (!el) return;
   const cat = p.kind || 'insiden';
@@ -2231,16 +2244,18 @@ function showSitAlert(p){
   sitAlertUrl = p.url || '';
   el.hidden = false;
   requestAnimationFrame(() => el.classList.add('show'));
-  clearTimeout(sitAlertTimer);
+  clearTimeout(sitAlertTimer); clearTimeout(sitAlertTimer2);   // timer2 = inner hide — toast baru tidak boleh di-hide sisa timer lama
   sitAlertTimer = setTimeout(() => {
     el.classList.add('hide');
-    setTimeout(() => {
+    sitAlertTimer2 = setTimeout(() => {
       el.hidden = true; el.classList.remove('hide','show'); setLinkItem(null);
-      // toast selesai → pulang ke overview, bukan zoom-out parsial — tapi hanya kalau
-      // queue kosong, user idle >10dtk, dan view masih hasil fokus otomatis
-      // (zoom >20 = user zoom in sengaja, jangan ditarik balik)
-      if (globeReady && !focusQueue.length && performance.now() - lastGestEnd > 10000 && view.zoom > 5 && view.zoom <= 20)
-        flyTo(HOME_VIEW.lat, HOME_VIEW.lon, HOME_VIEW.zoom);
+      // toast selesai → SELALU pulang ke HOME_VIEW (zoom default), bahkan kalau
+      // user baru saja zoom/manual navigate. Hanya skip kalau user SEDANG
+      // berinteraksi (drag/pinch aktif) atau panel peta terbuka — jangan
+      // merebut kontrol di tengah gesture.
+      if (globeReady && !mapOpen && ptrs.size === 0 && !gesture) {
+        flyTo(HOME_VIEW.lat, HOME_VIEW.lon, HOME_VIEW.zoom, 'home');
+      }
     }, 320);
   }, 10000);
 }
@@ -2369,7 +2384,9 @@ function drawGlobe(now){
   const tsNow = Date.now();
   // di zoom dalam spasi px sudah membesar ∝ zoom — dot jangan ikut membesar,
   // cukup taper supaya tetap kecil dan gampang diklik (anti-overlap).
-  const zoomTaper = view.zoom > 8 ? Math.min(1, 8 / view.zoom) : 1;
+  // Floor 0.45: di zoom ekstrem (mis. 48) dot/node tidak menyusut jadi titik
+  // tak terlihat; tetap cukup kecil untuk tidak overlap parah.
+  const zoomTaper = view.zoom > 8 ? Math.max(0.45, 8 / view.zoom) : 1;
   const zoomBoost = Math.min(4.5, (view.zoom - 1) * 0.55) * zoomTaper;   // dot ikut membesar pas zoom dalam — terasa "mendekat", bukan flat map
   const slotCount = {};
   const pts = [];
@@ -2378,7 +2395,10 @@ function drawGlobe(now){
   {
     const hot = new Set();
     for (const p of (PULSE || [])) if (!p.fixed && p.name) hot.add(p.name);
-    const nr = Math.max(0.6, (0.55 + Math.min(0.75, Math.max(0, view.zoom - 1) * 0.22)) * zoomTaper);   // lebih kecil dari semula — node itu konteks, bukan sinyal
+    // floor dinaikkan ke 1.0px: di zoom dalam node monitoring harus tetap
+    // terlihat sebagai titik abu-abu kecil; hit-test sudah punya radius min 8px
+    // jadi tetap gampang diklik meski visualnya kecil.
+    const nr = Math.max(1.0, (0.55 + Math.min(0.75, Math.max(0, view.zoom - 1) * 0.22)) * zoomTaper);   // lebih kecil dari semula — node itu konteks, bukan sinyal
     ctx.save();
     ctx.fillStyle = 'rgba(160,160,160,.30)';
     ctx.beginPath();
@@ -2576,7 +2596,16 @@ function globeLoop(now){
     }
     // gesture/inertia → render tiap rAF (60fps); idle → 33ms cukup untuk animasi ambient
     const busy = ptrs.size > 0 || !!flyAnim || !!globeVel || now - lastGestEnd < 250;
-    if (now - globeLast > (busy ? 4 : 33)) { globeLast = now; drawGlobe(now); }
+    if (now - globeLast > (busy ? 4 : 33)) {
+      globeLast = now;
+      const gc = $('#sit-globe');
+      // pane collapse (mobile): canvas 0px — skip seluruh drawGlobe (path geo
+      // ribuan vertex tetap mahal walau drawGlobe early-return). tickFly
+      // dipanggil manual supaya flyAnim tidak freeze — view tetap mendarat,
+      // render berikutnya (pane kebuka lagi) langsung menampilkan posisi akhir.
+      if (gc && (!gc.clientWidth || !gc.clientHeight)) { try { tickFly(now); } catch (e) {} }
+      else drawGlobe(now);
+    }
   }
   globeRaf = requestAnimationFrame(globeLoop);
 }
@@ -2700,7 +2729,7 @@ function bindGlobeEvents(){
     globePtrType = e.pointerType || 'mouse';
     try { c.setPointerCapture(e.pointerId); } catch (err) {}
     ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
-    flyAnim = null; globeVel = null;
+    flyAnim = null; globeVel = null;   // sentuh user membatalkan fly/inertia yang sedang berjalan
     if (ptrs.size === 1) {
       gesture = { mode: 'rotate', startLon: view.lon, startLat: view.lat, x: e.clientX, y: e.clientY, moved: 0 };
     } else if (ptrs.size === 2) {
@@ -2757,7 +2786,7 @@ function bindGlobeEvents(){
   let wheelAcc = 0, wheelT = 0;   // akumulasi deltaY per ~90ms — trackpad emit puluhan event kecil per gesture, tanpa ini satu swipe = loncat ke ZOOM_MAX
   c.addEventListener('wheel', e => {
     e.preventDefault();
-    flyAnim = null; globeVel = null;
+    flyAnim = null; globeVel = null;   // scroll user = gesture — batalkan fly/inertia
     wheelAcc += e.deltaY;
     const now = performance.now();
     if (now - wheelT < 90) { lastGestEnd = now; return; }
@@ -2782,7 +2811,17 @@ function bindGlobeEvents(){
     if (hit && hit.node) {   // node: tap/klik → fly ke wilayah node
       const n = hit.d.node;
       hideGlobeTip();
-      flyTo(n.la, n.lo, Math.max(view.zoom, 11));
+      // node click = gesture resmi: catat waktu supaya heartbeat tidak anggap idle,
+      // dan goHome tahu ada view non-home yang bisa dipulangkan nanti
+      lastGestEnd = performance.now();
+      focusedHome = false;
+      flyTo(n.la, n.lo, Math.max(view.zoom, 11), 'node');
+      return;
+    }
+    if (!hit && e.detail === 2) {   // double-click area kosong = reset ke overview
+      lastGestEnd = performance.now();
+      focusedHome = false;
+      flyTo(HOME_VIEW.lat, HOME_VIEW.lon, HOME_VIEW.zoom, 'home');
       return;
     }
     const inc = hit ? hit.d : null;
@@ -4044,6 +4083,7 @@ let newsList = [], curLead = null, curLeadScope = '';
 // full-width dihitung terhadap SELURUH list supaya akhir segmen ganjil benar.
 let nwState = null;
 const NW_BATCH = 80;
+let nwSentIO = null;   // SATU observer persistent untuk sentinel — IO baru per-append meninggalkan zombie observer tiap batch
 function renderNlist(){
   const list = newsList, leadPick = curLead;
   if (!list || !list.length || !leadPick) return;
@@ -4086,8 +4126,16 @@ function nwAppend(){
     box.insertAdjacentHTML('beforeend', '<div id="nw-sentinel" style="height:1px"></div>');
     const s = box.querySelector('#nw-sentinel');
     if (s && 'IntersectionObserver' in window) {
-      const io = new IntersectionObserver(es => { if (es[0].isIntersecting) { io.disconnect(); nwAppend(); } }, { rootMargin: '800px' });
-      io.observe(s);
+      if (!nwSentIO) nwSentIO = new IntersectionObserver(es => {
+        for (const e of es) {
+          if (!e.isIntersecting) continue;
+          const t = e.target;
+          nwSentIO.unobserve(t);              // sentinel hanya sekali tembak — lepas targetnya
+          if (t.isConnected) nwAppend();      // entry basi untuk sentinel yang sudah ter-detach → skip
+        }
+      }, { rootMargin: '800px' });
+      nwSentIO.disconnect();                 // lepas target sentinel lama (node-nya sudah di-remove) — observer yang sama dipakai ulang
+      nwSentIO.observe(s);
     } else { st.shown = st.rows.length; nwAppend(); }   // fallback tanpa IO: render semua
   }
   queueDescEnrich();   // kartu baru perlu di-observe untuk desc enrich
@@ -4231,6 +4279,11 @@ function runDescEnrich(){
   descTimer = 0;
   descDeadExpire();   // dead >12 mnt → eligible lagi (server neg-cache sudah expire)
   if (API == null || document.hidden || descBusy) return;
+  // pane berita collapse (mobile): .pb display:none → #nlist offsetParent null.
+  // Queue & observer state dibiarkan utuh — jangan fetch /api/desc untuk kartu
+  // yang tak terlihat; retry ringan tiap 5 dtk sampai pane kebuka lagi.
+  const nlBox = $('#nlist');
+  if (nlBox && !nlBox.offsetParent) { descTimer = setTimeout(runDescEnrich, 5000); return; }
   if (descTried.size >= DESC_MAX) { descQueue.length = 0; descQueued.clear(); return; }
   // kandidat: url dari observer dulu (kartu yang user benar-benar lihat),
   // lalu fallback scan newsList urutan display — jaring untuk viewport awal
@@ -4621,6 +4674,7 @@ function hideCell(cell){
   const p = P.get(cell); if (!p) return;
   clearTimeout(p.retry); clearTimeout(p.t);
   if (p.h && p.h !== 'native') { try { p.h.destroy(); } catch (e) {} }
+  const v = vid(cell); if (v) { try { v.pause(); } catch (e) {} v.removeAttribute('src'); v.load(); }   // native path juga: src hidup di elemen
   P.delete(cell); cell.remove();
   layout(); upd();
 }
@@ -4651,17 +4705,37 @@ let pumpT = 0; const pumpSoon = () => { clearTimeout(pumpT); pumpT = setTimeout(
    ke-kill massal dan balik ke "Antre". Pas visible lagi → kick semua sel yang
    visible: resume load, play video yang ke-pause, reset waitT, lalu pump. */
 const kickCams = () => setTimeout(() => {
+  if (camsRenderQueued) renderCams();   // grid sempat di-skip saat hidden → apply sekarang
   P.forEach((p, c) => {
+    // IntersectionObserver TIDAK re-fire saat tab kembali — p.vis bisa stale
+    // false (sel tampak "Antre" selamanya). Hitung ulang langsung dari geometri.
+    const r = c.getBoundingClientRect();
+    p.vis = !!(r.width && r.bottom > -200 && r.top < innerHeight + 200);
+    try { vio.unobserve(c); vio.observe(c); } catch (e) {}   // paksa IO re-deliver state benar
     if (!p.vis) return;
     const v = vid(c);
-    if (p.h && p.h !== 'native' && !p.loaded) { try { p.h.startLoad(-1); } catch (e) {} }
-    if (p.h && p.loaded && v && v.paused) v.play().catch(() => {});
+    if (p.loading && Date.now() - p.t0 > 25000) { kill(c); return; }   // catch-up watchdog yang ke-throttle saat hidden
+    if (p.h && p.h !== 'native') {
+      // resume load untuk SEMUA state — !loaded dapat budget timer baru ( throttle
+      // sempat membekukan mereka), loaded tetap startLoad supaya live edge lanjut
+      if (!p.loaded) p.t0 = Date.now();
+      try { p.h.startLoad(-1); } catch (e) {}
+    }
+    if (p.h === 'native' && !p.loaded && v) { try { v.load(); } catch (e) {} }   // Safari native: retry manifest
+    if (p.loaded && v && v.paused && !v._lbPaused) v.play().catch(() => {});
     if (p.waitT) {
       p.waitT = 0;
       if (p.h && p.h !== 'native') { try { p.h.stopLoad(); p.h.startLoad(-1); } catch (e) {} }
-      if (v) v.play().catch(() => {});
+      if (v && !v._lbPaused) v.play().catch(() => {});   // _lbPaused = sengaja pause oleh lightbox
     }
   });
+  // Live TV widget tidak punya lifecycle handler — resume di sini juga
+  if (tvOn) {
+    const tvv = $('#tv-video');
+    if (tvv && tvv.paused) tvv.play().catch(() => {});
+    if (tvHls) { try { tvHls.startLoad(-1); } catch (e) {} }
+    else if ($('#tv-body').dataset.state === 'load' && Date.now() - tvLoadAt > 20000) tvPlay();   // hang non-fatal → rebuild
+  }
   pump();
 }, 400);
 document.addEventListener('visibilitychange', () => { if (!document.hidden) kickCams(); });
@@ -4675,7 +4749,7 @@ const vio = new IntersectionObserver(es => es.forEach(e => {
 setInterval(() => {
   P.forEach((p, c) => {
     if (p.loading && Date.now() - p.t0 > 25000) return kill(c);
-    const v = vid(c); if (!p.h || !p.loaded || p.stopped || !p.vis || !v) return;
+    const v = vid(c); if (!p.h || !p.loaded || p.stopped || !p.vis || !v || v._lbPaused) return;   // _lbPaused bukan stall — video di-pause lightbox
     if (p.waitT && Date.now() - p.waitT > 15000 && p.h !== 'native') {
       p.waitT = 0; try { p.h.stopLoad(); p.h.startLoad(-1); } catch (e) {} v.play().catch(() => {});
     }
@@ -4715,8 +4789,14 @@ function wantList(){
   if (aliveMap) l.sort((a, b) => (aliveMap[b._i] !== false) - (aliveMap[a._i] !== false));
   return l;
 }
+let camsRenderQueued = false;
 function renderCams(){
-  P.forEach((p, c) => { clearTimeout(p.t); clearTimeout(p.retry); if (p.h && p.h !== 'native') { try { p.h.destroy(); } catch (e) {} } });
+  // pullAlive/pullCctv resolve saat tab hidden → JANGAN teardown grid di sana:
+  // semua Hls di-destroy, sel balik ke "Antre" dan antri ulang MAXL=8.
+  // Tunda render sampai visible — data (aliveMap/CAMS) tetap ter-update.
+  if (document.hidden) { camsRenderQueued = true; return; }
+  camsRenderQueued = false;
+  P.forEach((p, c) => { clearTimeout(p.t); clearTimeout(p.retry); if (p.h && p.h !== 'native') { try { p.h.destroy(); } catch (e) {} } const v = vid(c); if (v) { try { v.pause(); } catch (e) {} v.removeAttribute('src'); v.load(); } });   // wipe total — native path distop lewat src elemen
   P.clear(); vio.disconnect();
   camList = wantList();
   camGrid.innerHTML = camList.map(cellHtml).join('');
@@ -4740,15 +4820,15 @@ $('#cq').addEventListener('input', debounce(renderCams, 200));
 new ResizeObserver(debounce(layout, 120)).observe(camGrid);
 camGrid.addEventListener('click', e => {
   const cell = e.target.closest('.cam'); if (!cell) return;
-  const c = camList[+cell.dataset.i]; openLightbox(camStream(c), c.n, c.c, c.e, camSteps(c));
+  const c = camList[+cell.dataset.i]; openLightbox(camStream(c), c.n, c.c, c.e, camSteps(c), cell);
 });
 camGrid.addEventListener('keydown', e => {
   if (e.key !== 'Enter' && e.key !== ' ') return;
   const cell = e.target.closest('.cam'); if (!cell) return;
   e.preventDefault();
-  const c = camList[+cell.dataset.i]; openLightbox(camStream(c), c.n, c.c, c.e, camSteps(c));
+  const c = camList[+cell.dataset.i]; openLightbox(camStream(c), c.n, c.c, c.e, camSteps(c), cell);
 });
-let glbHls = null, glbSteps = [], glbStep = 0, glbErr = 0;
+let glbHls = null, glbSteps = [], glbStep = 0, glbErr = 0, lbTrigger = null;
 function glbPlay(){
   const v = $('#glb-video'), url = glbSteps[glbStep];
   if (glbHls) { try { glbHls.destroy(); } catch (e) {} glbHls = null; }
@@ -4766,9 +4846,12 @@ function glbPlay(){
     });
   } else { v.src = url; v.play().catch(() => {}); }
 }
-function openLightbox(url, nama, kota, embed, steps){
+function openLightbox(url, nama, kota, embed, steps, trigger){
   const lb = $('#lightbox');
   lb.hidden = false; document.body.style.overflow = 'hidden';
+  lbTrigger = trigger || null;
+  // grid CCTV ikut pause selama lightbox — video tetap mounted, tidak makan decode
+  camGrid.querySelectorAll('video').forEach(cv => { if (!cv.paused && !cv._lbPaused) { cv._lbPaused = true; try { cv.pause(); } catch (e) {} } });
   $('#glb-cap').innerHTML = `${esc(nama)} · ${esc(kota)}${embed ? ` · <a href="${esc(embed)}" target="_blank" rel="noopener">player JSC${ic('out')}</a>` : ''}`;
   glbSteps = (steps && steps.length ? steps : [url]); glbStep = 0; glbErr = 0;
   glbPlay();
@@ -4776,7 +4859,11 @@ function openLightbox(url, nama, kota, embed, steps){
 function closeLightbox(){
   $('#lightbox').hidden = true; document.body.style.overflow = '';
   if (glbHls) { try { glbHls.destroy(); } catch (e) {} glbHls = null; }
-  const v = $('#glb-video'); try { v.pause(); } catch (e) {} v.removeAttribute('src');
+  const v = $('#glb-video'); try { v.pause(); } catch (e) {} v.removeAttribute('src'); try { v.load(); } catch (e) {}
+  // resume sel CCTV yang ke-pause karena lightbox
+  camGrid.querySelectorAll('video').forEach(cv => { if (cv._lbPaused) { cv._lbPaused = false; try { cv.play().catch(() => {}); } catch (e) {} } });
+  const t = lbTrigger; lbTrigger = null;
+  if (t && t.focus) { try { t.focus({ preventScroll: true }); } catch (e) {} }
 }
 $('#glb-close').addEventListener('click', closeLightbox);
 $('#lightbox').addEventListener('click', e => { if (e.target.id === 'lightbox') closeLightbox(); });
@@ -4930,7 +5017,7 @@ const SAT_TILES = {
   'sat-wv': { param: 'WV', name: 'Water Vapor Enhanced', attribution: 'BMKG Himawari-9' },
   'sat-rain': { param: 'RP', name: 'Rainfall Potential', attribution: 'BMKG Himawari-9 · produk turunan' }
 };
-let satBasalRun = null, satModelRunAt = 0, satRunTs = 0, satRunLabel = '', wireSrcText = 'sumber —';
+let satBasalRun = null, satModelRunAt = 0, satRunTs = 0, satRunLabel = '', wireSrcText = 'sumber —', satBusy = false, satSeq = 0;
 function paintMapSrc(){
   const el = $('#map-src'); if (!el) return;
   const at = SAT_IDS.find(id => layerOn[id]);
@@ -4947,24 +5034,31 @@ function paintMapSrc(){
   el.textContent = wireSrcText;
 }
 async function initSatelliteLayers(){
+  if (satBusy) return;   // in-flight guard — call ganda (interval, toggle, refresh) aman
   if (!mapOpen || !map) return;
   // modelrun dicek maksimal tiap 5 mnt — fram Himawari ganti 10 mnt, fetch tiap
-  // pullInsiden (60s) cuma boros request ke BMKG
+  // siklus 60s cuma boros request ke BMKG
   if (Date.now() - satModelRunAt < 300000) return;
-  // BMKG WAF blok IP datacenter → fetch direct dari browser (ACAO:*), API hanya fallback
-  let d = null;
-  try { const r = await getJson('https://satellite.bmkg.go.id/api22/modelrun', 15000); if (r && Array.isArray(r.himawari9)) d = r; } catch (e) {}
-  if (!d && API != null) { try { d = await getJson(API + '/api/bmkg-modelrun', 15000); } catch (e) {} }
+  satBusy = true;
+  const seq = ++satSeq;   // respons basi dari call lama dibuang setelah tiap await
+  const firstLoad = !satRunTs;
+  if (firstLoad) { const el = $('#map-src'); if (el) el.textContent = 'sat memuat model…'; }
   try {
-    if (!d || !Array.isArray(d.himawari9) || !d.himawari9.length) return;
+    // BMKG WAF blok IP datacenter → fetch direct dari browser (ACAO:*), API hanya fallback.
+    // Paralel 8s: ambil yang resolve dengan data valid — tak perlu nunggu serial 15s+15s.
+    const fetchRun = u => getJson(u, 8000).then(r => (r && Array.isArray(r.himawari9) && r.himawari9.length) ? r : null).catch(() => null);
+    const [r1, r2] = await Promise.all([
+      fetchRun('https://satellite.bmkg.go.id/api22/modelrun'),
+      API != null ? fetchRun(API + '/api/bmkg-modelrun') : Promise.resolve(null)
+    ]);
+    if (seq !== satSeq) return;                    // ada call lebih baru — abaikan respons basi
+    if (!mapOpen || !map) { paintMapSrc(); return; }   // peta sudah ditutup saat fetch jalan
+    const d = r1 || r2;
+    if (!d) { if (firstLoad) paintMapSrc(); return; }   // gagal total — kembalikan teks wire, jangan stuck
     satModelRunAt = Date.now();   // throttle hanya saat sukses — gagal tetap retry di siklus berikut
     const basalRun = d.himawari9[0];
     if (basalRun === satBasalRun && satIrLayer) return;
     satBasalRun = basalRun;
-    // lepas layer lama dulu — basalRun baru tiap ~10 mnt, tanpa ini layer hantu
-    // numpuk di peta dan terus fetch tile untuk run yang sudah basi
-    for (const l of [satIrLayer, satNcLayer, satWvLayer, satRainLayer])
-      if (l && map.hasLayer(l)) map.removeLayer(l);
     const ts = new Date(basalRun);
     const timeLabel = isNaN(ts) ? basalRun : ts.toLocaleString('id-ID', {timeZone:'Asia/Jakarta'}) + ' WIB';
     satRunTs = isNaN(ts) ? 0 : ts.getTime();
@@ -4978,12 +5072,26 @@ async function initSatelliteLayers(){
       const SatTile = L.TileLayer.extend({
         createTile(coords, done){
           const img = L.TileLayer.prototype.createTile.call(this, coords, done);
+          const self = this;
           let tries = 0;
           img.addEventListener('error', function h(){
+            if (self._satGone) return;   // layer sudah di-remove — batalkan retry
             if (++tries > 4) { img.removeEventListener('error', h); return; }
-            setTimeout(() => { try { img.src = img.src; } catch (e) {} }, 1200 * tries);
+            img._satTimer = setTimeout(() => {
+              img._satTimer = 0;
+              if (self._satGone) return;
+              try { img.src = img.src; } catch (e) {}
+            }, 1200 * tries);
           });
           return img;
+        },
+        onAdd(map){ this._satGone = false; L.TileLayer.prototype.onAdd.call(this, map); },
+        onRemove(map){
+          // basalRun ganti tiap ~10 mnt — matikan retry tile lama supaya tidak
+          // terus fetch tile run yang sudah basi (removeTile menerima coords,
+          // bukan elemen img — flag level layer lebih andal)
+          this._satGone = true;
+          L.TileLayer.prototype.onRemove.call(this, map);
         }
       });
       return new SatTile(`https://satellite.bmkg.go.id/api22/tile/{z}/{x}/{y}.png?tiletype=himawari9&modelname=himawari9&param=${spec.param}&baserun=${encodeURIComponent(basalRun)}`, {
@@ -4992,9 +5100,27 @@ async function initSatelliteLayers(){
         attribution: `${spec.attribution} · obs ${timeLabel} · update ±10 mnt`
       });
     };
-    satIrLayer = mk('sat-ir'); satNcLayer = mk('sat-nc'); satWvLayer = mk('sat-wv'); satRainLayer = mk('sat-rain');
+    // staged swap basalRun: untuk id yang aktif, layer baru di-add SEBELUM yang
+    // lama dilepas — cold-render BMKG per baserun bisa lama, tanpa ini peta
+    // blank total selama tile baru warm-up. Non-aktif cukup ganti referensi.
+    const news = [mk('sat-ir'), mk('sat-nc'), mk('sat-wv'), mk('sat-rain')];
+    const olds = [satIrLayer, satNcLayer, satWvLayer, satRainLayer];
+    for (let i = 0; i < SAT_IDS.length; i++) {
+      if (!mapOpen || !map) return;   // ref global belum ditimpa — state tetap konsisten
+      const id = SAT_IDS[i], old = olds[i];
+      if (layerOn[id]) {
+        if (!map.hasLayer(news[i])) map.addLayer(news[i]);
+        if (old && map.hasLayer(old)) map.removeLayer(old);
+      } else if (old && map.hasLayer(old)) map.removeLayer(old);
+    }
+    if (!mapOpen || !map) return;
+    // referensi global hanya ditimpa setelah swap selesai — early-return di atas
+    // membuat state tetap menunjuk layer yang benar-benar masih di peta
+    satIrLayer = news[0]; satNcLayer = news[1]; satWvLayer = news[2]; satRainLayer = news[3];
     syncLayers();
-  } catch (e) {}
+  } catch (e) {
+    if (firstLoad) paintMapSrc();
+  } finally { satBusy = false; }
 }
 
 /* ---------- Hotspot karhutla: SiPongi Kemenhut utama, NASA FIRMS fallback ----------
@@ -5417,7 +5543,6 @@ async function pullIncidents(fresh){
       drawGlobe(performance.now());
       if (mapOpen) { ensureMap(); paintMap(); }   // data globe tetap update; DOM Leaflet hanya saat panel kebuka
       if (layerOn.peringatan && mapOpen) pullAlerts();
-      initSatelliteLayers();
     }
   } catch (e) {
     $('#map-meta').textContent = 'peta gagal';
@@ -5442,6 +5567,7 @@ function openMap(){
   wrap.setAttribute('aria-hidden', 'false');
   $('#btn-map').setAttribute('aria-expanded', 'true');
   mapOpen = true;
+  lastGestEnd = performance.now();   // buka panel ≠ gesture globe — tahan auto-focus/home ~25dtk supaya toast tidak muncul tepat saat user melihat peta
   setTimeout(() => { if (map) map.invalidateSize(); }, 380);
   pullIncidents();
   pullTomTomIncidents();
@@ -5474,7 +5600,12 @@ function closeMap(){
   mapOpen = false;
   clearInterval(ttIncInterval);
   stopRadarInterval();   // jeda playback frame radar — tile tidak terus di-fetch saat tertutup
+  // batalkan swap frame radar yang masih pending — timer/load tidak boleh
+  // addLayer/removeLayer saat panel hidden (pola sama seperti clearRadarCache)
+  if (radarSwapTimer) { clearTimeout(radarSwapTimer); radarSwapTimer = null; }
+  radarPendingLayer = null;   // done() pending cek radarPendingLayer!==next → batal promosi frame
   stopWindAnim();        // partikel angin pause; windData tetap, startWindAnim dipanggil ulang saat open
+  try { drawGlobe(); } catch (e) {}   // render frame langsung — jangan tunggu loop berikutnya
   $('#btn-map').focus();
 }
 $('#btn-map').addEventListener('click', () => { if (mapOpen) closeMap(); else openMap(); });
@@ -5520,7 +5651,11 @@ $$('.mly').forEach(b => b.addEventListener('click', () => {
   if (k === 'radar') { if (layerOn[k]) { pullRadar(); } else { stopRadarInterval(); clearRadarCache(); radarLayer = null; const ctrl=$('#radar-ctrl'); if(ctrl) ctrl.hidden=true; } }
   if (k === 'fires') { if (layerOn[k]) pullFires(); fireRefresh(); }
   if (k === 'air' && layerOn[k]) pullAir();
-  if (SAT_IDS.includes(k)) { setSatExclusive(layerOn[k] ? k : null); return; }
+  if (SAT_IDS.includes(k)) {
+    setSatExclusive(layerOn[k] ? k : null);
+    if (layerOn[k] && !satIrLayer) initSatelliteLayers();   // keempat layer dibuat bersama — belum ada = belum init
+    return;
+  }
   if (k === 'radarbmkg' && layerOn[k]) pullRadarBmkg();
   if (k === 'peringatan') { if (layerOn[k]) pullAlerts(); else if (peringatanLayer && map && map.hasLayer(peringatanLayer)) map.removeLayer(peringatanLayer); }  syncLayers();
   syncLayers();
@@ -5562,18 +5697,20 @@ const mkSize = () => { const s = Math.pow(1.32, (map ? map.getZoom() : 10) - 10)
 const busSize = () => { const s = Math.pow(1.2, (map ? map.getZoom() : 11) - 11); return Math.max(11, Math.min(26, Math.round(14 * s))); };
 const dirIc = (kind, hdg, color) => { const sz = kind === 'bus' ? busSize() : mkSize(); return L.divIcon({ className: 'mk-ic', iconSize: [sz, sz], iconAnchor: [sz / 2, sz / 2],
   html: `<div class="mk-rot mk-${kind}" style="transform:rotate(${hdg || 0}deg);color:${color || ''}">${{plane: PLANE_SVG, ship: SHIP_SVG, bus: BUS_SVG}[kind]}</div>` }); };
-/* tracking engine: lerp posisi antar poll supaya marker keliatan gerak */
-const movers = new Map();
+/* tracking engine: lerp posisi antar poll supaya marker keliatan gerak.
+   State lerp disimpan per-marker di moverFl (pesawat) & moverSh (kapal) —
+   moverSet mengisinya, cleanup pull* menghapus key-nya. */
 function moverTick(){
   if (!mapOpen || document.hidden) return;   // marker gerak hanya relevan saat panel terlihat
   const now = Date.now();
-  for (const v of movers.values()) {
-    if (!v.m) continue;
-    if (v.done) continue;
-    let k = (now - v.t0) / v.dur; if (k > 1) k = 1;
-    const e = k < .5 ? 2 * k * k : 1 - Math.pow(-2 * k + 2, 2) / 2;
-    v.m.setLatLng([v.fl + (v.tl - v.fl) * e, v.fo + (v.to - v.fo) * e]);
-    if (k >= 1) { v.fl = v.tl; v.fo = v.to; v.done = true; }
+  for (const store of [moverFl, moverSh]) {   // iterasi KEDUA map — dulu cuma `movers` yang kosong
+    for (const v of store.values()) {
+      if (!v.m || v.done) continue;
+      let k = (now - v.t0) / v.dur; if (k > 1) k = 1;
+      const e = k < .5 ? 2 * k * k : 1 - Math.pow(-2 * k + 2, 2) / 2;
+      v.m.setLatLng([v.fl + (v.tl - v.fl) * e, v.fo + (v.to - v.fo) * e]);
+      if (k >= 1) { v.fl = v.tl; v.fo = v.to; v.done = true; }
+    }
   }
 }
 setInterval(moverTick, 400);
@@ -6179,13 +6316,14 @@ function bindWarnPick(){
 
 $('#map-refresh').addEventListener('click', async () => {
   pullIncidents(true);
+  satModelRunAt = 0; initSatelliteLayers();   // fire-and-forget — jangan serial menunggu TomTom
   await checkTomTom();
   if (ttOk) pullTomTomIncidents();
-  satModelRunAt = 0; initSatelliteLayers();
 });
 $('#rp-go').addEventListener('click', calcRoute);
 setInterval(() => { if (mapOpen && !document.hidden && SAT_IDS.some(id => layerOn[id])) paintMapSrc(); }, 1000);   // countdown frame satelit
 setInterval(() => { if (mapOpen && !document.hidden) pullIncidents(); }, 60000);
+setInterval(() => { if (mapOpen && !document.hidden) initSatelliteLayers(); }, 60000);   // sat punya interval sendiri — decouple dari pullIncidents
 setInterval(() => { if (mapOpen && !document.hidden && layerOn.flight) pullFlights(); }, 30000);
 setInterval(() => { if (mapOpen && !document.hidden && layerOn.ship) pullShips(); }, 30000);
 setInterval(() => { if (mapOpen && !document.hidden && layerOn.transit) pullTransit(); }, 45000);
@@ -6233,7 +6371,7 @@ const TV_CH = [
   { n:'TRT World',          grp:'Internasional (Global)', badge:'TR', s:'https://tv-trtworld.medya.trt.com.tr/master.m3u8', src:'trt',
     pg:'https://www.trtworld.com/live' }
 ];
-let tvOn = false, tvIx = 0, tvHls = null, tvDrag = null, tvRz = null, tvIdleT = null, tvPx = false, tvTry = 0, tvRetryT = null;
+let tvOn = false, tvIx = 0, tvHls = null, tvDrag = null, tvRz = null, tvIdleT = null, tvPx = false, tvTry = 0, tvRetryT = null, tvLoadAt = 0;
 
 function renderTvMenu(){
   const menu = $('#tv-menu');
@@ -6297,7 +6435,7 @@ function tvPlay(){
   tvWake();
   tvStop();
   clearTimeout(tvRetryT); tvRetryT = null;
-  body.dataset.state = 'load';
+  body.dataset.state = 'load'; tvLoadAt = Date.now();
   $('#tv-msg-t').textContent = 'Menghubungkan…';
   v.muted = $('#tv-mute').getAttribute('aria-pressed') === 'true';
   const retryPx = () => {
@@ -6431,7 +6569,9 @@ document.addEventListener('click', e => {
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape') {
     const m = $('#tv-menu');
-    if (m && !m.hidden) tvToggleMenu(false);
+    // menu ditangani di sini; stopPropagation supaya global keydown (window)
+    // tidak ikut menutup TV — Escape cukup tutup menu dulu
+    if (m && !m.hidden) { tvToggleMenu(false); e.stopPropagation(); }
   }
 });
 $('#tv-mute').addEventListener('click', () => tvMute($('#tv-mute').getAttribute('aria-pressed') !== 'true'));
@@ -6670,7 +6810,7 @@ async function pullX(){
   } finally { xBusy = false; }
 }
 
-let busy = false, bgPending = 0, lastSyncAt = 0;
+let busy = false, bgPending = 0, lastSyncAt = 0, lastRefreshDone = 0;
 const paintSync = () => {
   const el = $('#lastsync');
   if (el) el.textContent = 'sync ' + (lastSyncAt ? wibTime(lastSyncAt) : '—') + ' WIB' + (bgPending ? ' · ' + bgPending + ' latar' : '');
@@ -6689,12 +6829,13 @@ async function refreshAll(manual){
     trackBg(pullAlive());
     trackBg(pullCctv());
     await Promise.all([pullMedia(), pullSituation(), pullStocks()]);
-    P.forEach((p, c) => { if (p.dead) { p.dead = false; p.tries = 0; badge(c, 'wait', 'Antre'); } });
+    P.forEach((p, c) => { if (p.dead) { p.dead = false; p.tries = 0; clearTimeout(p.retry); badge(c, 'wait', 'Antre'); } });   // clear retry lama — timer throttled bisa menembak state basi nanti
     pump();
     lastSyncAt = Date.now(); paintSync();   // label jujur: inti sync; sumber latar dilaporkan terpisah
   } finally {
     busy = false;
     remain = CYCLE; paintCountdown();
+    lastRefreshDone = Date.now();
     rdPrefetchVisible();
   }
   if (manual) {
@@ -6706,7 +6847,10 @@ async function refreshAll(manual){
 $('#btn-refresh').addEventListener('click', () => refreshAll(true));
 
 document.addEventListener('visibilitychange', () => {
-  if (!document.hidden && remain < CYCLE - 30) refreshAll(false);
+  // remain (countdown visible-time) tidak berdetak saat hidden — pakai timestamp:
+  // refresh catch-up tiap kembali kalau sudah >90dtk sejak refresh terakhir,
+  // berapapun lama tab disembunyikan
+  if (!document.hidden && Date.now() - lastRefreshDone > (CYCLE - 30) * 1000) refreshAll(false);
 });
 
 /* ============================================================
@@ -6758,7 +6902,19 @@ function rdLink(t) {
     return `<a href="${u}" target="_blank" rel="noopener noreferrer">${label.length > 50 ? label.slice(0, 50) + '…' : label}</a>`;
   });
 }
+// matikan semua media di rd-body: video di-pause + src dicabut (instance HLS
+// disimpan di v._hls oleh rdMountVideo), iframe dicabut dari DOM — iframe tidak
+// bisa di-pause, remove = satu-satunya cara menghentikan autoplay/audio-nya
+function rdStopMedia(){
+  const body = $('#rd-body'); if (!body) return;
+  body.querySelectorAll('video').forEach(v => {
+    try { if (v._hls) { v._hls.destroy(); v._hls = null; } } catch (e) {}
+    try { v.pause(); v.removeAttribute('src'); v.load(); } catch (e) {}
+  });
+  body.querySelectorAll('iframe').forEach(f => f.remove());
+}
 function rdError(url, msg) {
+  rdStopMedia();   // bersihkan media artikel sebelumnya sebelum render error
   $('#rd-body').innerHTML = `<div class="rd-err">
     <b>Tidak bisa membaca halaman</b>
     <p>${esc(msg)}</p>
@@ -6823,6 +6979,7 @@ function rdArticle(d, url) {
     if (!pl.length) outp.push(...vl);
     flow = `${note}${outp.join('') || '<p class="rd-p">Tidak ada teks yang bisa diekstrak.</p>'}`;
   }
+  rdStopMedia();   // video artikel lama harus mati sebelum innerHTML ditimpa
   $('#rd-body').innerHTML = `<article class="rd-art">
     <h1>${esc(d.title || 'Tanpa judul')}</h1>
     <div class="rd-meta">${meta.map(x => `<span>${esc(x)}</span>`).join('')}</div>
@@ -6838,8 +6995,9 @@ function rdMountVideo(v) {
   if (!v.hasAttribute('data-hls')) return;
   if (window.Hls && Hls.isSupported()) {
     const h = new Hls({ maxBufferLength: 30 });
+    v._hls = h;   // simpan di elemen — rdStopMedia butuh handle ini untuk destroy
     h.loadSource(v.getAttribute('src')); h.attachMedia(v);
-    v.addEventListener('error', () => { try { h.destroy(); } catch (e) {} }, { once: true });
+    v.addEventListener('error', () => { try { h.destroy(); v._hls = null; } catch (e) {} }, { once: true });
   }
 }
 // facade YouTube: klik → ganti thumbnail dengan iframe asli
@@ -6943,6 +7101,7 @@ async function rdOpenSocial(url, trigger, push) {
   $('#rd-host').textContent = rdHostOf(url);
   $('#rd-open').href = url;
   $('#rd-state').textContent = 'menarik…';
+  rdStopMedia();   // skeleton menimpa konten — video/iframe artikel sebelumnya ikut mati
   $('#rd-body').innerHTML = '<div class="rd-art"><div class="rd-sk t"></div><div class="rd-sk"></div><div class="rd-sk"></div><div class="rd-sk s"></div></div>';
   $('#rd-body').scrollTop = 0;
   if (!wasOpen) { try { $('#rd-close').focus({ preventScroll: true }); } catch (e) {} }
@@ -7019,6 +7178,7 @@ async function rdOpen(url, trigger, push = true, hero = '') {
   $('#rd-host').textContent = rdHostOf(url);
   $('#rd-open').href = url;
   $('#rd-state').textContent = 'menarik…';
+  rdStopMedia();   // skeleton menimpa konten — video/iframe artikel sebelumnya ikut mati
   $('#rd-body').innerHTML = '<div class="rd-art"><div class="rd-sk t"></div><div class="rd-sk"></div><div class="rd-sk"></div><div class="rd-sk s"></div><div class="rd-sk"></div><div class="rd-sk"></div><div class="rd-sk s"></div></div>';
   $('#rd-body').scrollTop = 0;
   if (!wasOpen) { try { $('#rd-close').focus({ preventScroll: true }); } catch (e) {} }
@@ -7085,6 +7245,7 @@ function rdPost(kind, p, trigger, push = true) {
       return `<img src="${esc(src)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">`;
     }).join('') + '</div>';
   }
+  rdStopMedia();   // post sebelumnya bisa punya video — matikan sebelum ditimpa
   $('#rd-body').innerHTML = `<div class="rd-post">${av}<div>
     <div class="rd-pn"><span>${esc(name)}</span>${vf}</div>
     <div class="rd-ph">${esc(handle)}${ts ? ' · ' + esc(wibFull(ts)) + ' WIB' : ''}</div>
@@ -7107,6 +7268,7 @@ function rdBack() {
 function rdClose() {
   if (!rdOn) return;
   rdSetOpen(false);
+  rdStopMedia();   // video/iframe artikel jangan bunyi terus setelah reader tutup
   rdCurrent = ''; rdCurrentView = null; rdStack = [];
   rdSyncBack();
   const t = rdTrigger; rdTrigger = null;
