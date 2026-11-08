@@ -48,6 +48,9 @@ const NEWS = [
   ['CNA INDONESIA', 'https://www.cna.id/api/v1/rss-outbound-feed?_format=xml&category=3321'],
   ['TRIBUN', 'https://www.tribunnews.com/rss'],
   ['CNBC ID', 'https://www.cnbcindonesia.com/news/rss'],
+  // JPNN di balik Cloudflare challenge — direct fetch mustahil, tapi RSS publik
+  // dan tiap item bawa <enclosure> foto → thumbnail wire langsung terisi.
+  ['JPNN', 'https://www.jpnn.com/rss'],
   ['GNEWS · DEMO', gn('demo OR "unjuk rasa" OR "aksi massa"')],
   ['GNEWS · KEBAKARAN', gn('kebakaran OR karhutla OR "kebakaran hutan"')],
   ['GNEWS · BANJIR', gn('banjir OR longsor OR "cuaca ekstrem"')],
@@ -421,7 +424,10 @@ const news = () => Promise.all(NEWS.map(([id, url]) => memo('n:' + id, 55000, as
     for (let i = 0; i < 2; i++) {
       if (Date.now() - t0 > 26000) break outer;   // deadline per feed: jangan biarkan satu feed macetkan semua
       try {
-        const r = await get(u, {}, 12000);
+        // jpnn.com di balik Cloudflare: UA browser dipancing challenge 403,
+        // tapi UA non-browser (Wget/curl/Googlebot) lolos — feed RSS bisa
+        // diambil langsung tanpa Jina. UA khusus hanya untuk feed JPNN.
+        const r = await get(u, id === 'JPNN' ? { headers: { 'user-agent': 'Wget/1.21' } } : {}, 12000);
         if (!r.ok) throw new Error('HTTP ' + r.status);
         const items = parseFeed(await r.text());
         if (!items.length) throw new Error('feed kosong');
@@ -2624,12 +2630,24 @@ async function thumbFromJina(article) {
   if (!r.ok) throw new Error('jina HTTP ' + r.status);
   const txt = await mediaText(r, 2 << 20);
   if (!txt) throw new Error('jina kosong');
+  // markdown Jina: ![alt](url) inline dan [![alt](img)](link) untuk gambar
+  // ter-link. Alt text dipakai filter — icon share sosmed ber-alt jelas.
   const seen = new Set(), cands = [];
-  for (const m of txt.matchAll(/!\[[^\]]*\]\((https?:\/\/[^)\s]+)\)/g)) {
+  // token judul dari slug URL — alt "Thumbnail Berita - <judul>" share banyak
+  // token dengannya; avatar, badge footer, dan thumbnail berita TERKAIT skornya ~0
+  const slugToks = new Set(String(new URL(article).pathname).toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ').split(' ').filter(w => w.length > 3));
+  for (const m of txt.matchAll(/\[!\[([^\]]*)\]\((https?:\/\/[^)\s]+)\)\]\([^)\s]*\)|!\[([^\]]*)\]\((https?:\/\/[^)\s]+)\)/g)) {
+    if (cands.length >= 80) break;
+    const alt = m[1] != null ? m[1] : (m[3] || '');
     let u;
-    try { u = new URL(m[1]).href; } catch { continue; }
+    try { u = new URL(m[2] || m[4]).href; } catch { continue; }
     if (seen.has(u)) continue;
-    seen.add(u); cands.push(u);
+    seen.add(u);
+    if (rdMdImgJunk(u, alt)) continue;
+    const aToks = new Set(String(alt).toLowerCase().replace(/[^a-z0-9]+/g, ' ').split(' ').filter(w => w.length > 3));
+    let tm = 0; for (const w of slugToks) if (aToks.has(w)) tm++;
+    cands.push({ u, same: rdSameSite(u, article), tm });
   }
   const host = new URL(article).hostname;
   // tolak ikon ~1:1 yang keburu lolos ke markdown Jina — lebih baik tanpa
@@ -2644,25 +2662,48 @@ async function thumbFromJina(article) {
     const w = 'https://images.weserv.nl/?url=' + encodeURIComponent(u.replace(/^https?:\/\//, ''));
     return probeImage(w, article).catch(() => null);
   };
-  // probe semua kandidat non-junk (maks 6, paralel) lalu pilih score tertinggi —
-  // dulu first-match by document order: badge/label situs yang kebetulan jadi
-  // <img> pertama (mis. verifikasi-right.png Ketik, 1338x910) menang dari hero.
-  const list = [];
-  for (const u of cands) {
-    const img = upgradeImage(u);
+  // probe semua kandidat non-junk (maks 10, paralel) lalu pilih score
+  // tertinggi — dulu first-match by document order: badge/label situs yang
+  // kebetulan jadi <img> pertama (mis. verifikasi-right.png Ketik, 1338x910)
+  // menang dari hero. Kandidat gagal probe di-retry sekali: CF challenge itu
+  // transient, 403 sesaat bukan bukti gambar mati.
+  const probeList = async list => {
+    if (!list.length) return { best: null, anyDim: false };
+    const rs = await Promise.all(list.map(async c => ({ c, dim: await probeAny(c.img) })));
+    const retry = rs.map((r, i) => r.dim ? -1 : i).filter(i => i >= 0).slice(0, 3);
+    if (retry.length) {
+      const rs2 = await Promise.all(retry.map(i => probeAny(rs[i].c.img)));
+      retry.forEach((i, j) => { if (rs2[j] && !rs[i].dim) rs[i].dim = rs2[j]; });
+    }
+    let best = null, bestSc = -Infinity, anyDim = false;
+    for (const { c, dim } of rs) {
+      if (dim) anyDim = true;
+      if (!dim) continue;
+      const p = { img: c.img, w: dim.w, h: dim.h, kind: 'body', src: article };
+      if (!strictOK(p)) continue;
+      // imageScore + bonus kecocokan judul (alt "Thumbnail Berita - <judul>")
+      // + bonus kecil same-site. Same-site SENGAJA bukan gerbang: hero CDN
+      // publisher (ketik-assets.kilatstorage, cloud.jpnn, dll) itu cross-domain
+      // tapi tetap gambar artikel — yang kalah adalah badge/footer/terkait.
+      const sc = imageScore({ kind: 'body', url: c.img }, dim) + Math.min(45, c.tm * 6) + (c.same ? 4 : 0);
+      if (sc > bestSc) { bestSc = sc; best = p; }
+    }
+    return { best, anyDim };
+  };
+  const pool = [];
+  for (const c of cands) {
+    const img = upgradeImage(c.u);
     if (rdJunkUrl(img) || rdSmallHint(img) || RD_IMG_JUNK.test(img.split('?')[0])) continue;
-    list.push(img);
-    if (list.length >= 6) break;
+    pool.push({ img, tm: c.tm, same: c.same });
   }
-  const rs = await Promise.all(list.map(async img => ({ img, dim: await probeAny(img) })));
-  let best = null, bestSc = -Infinity;
-  for (const { img, dim } of rs) {
-    if (!dim) continue;
-    const p = { img, w: dim.w, h: dim.h, kind: 'body', src: article };
-    if (!strictOK(p)) continue;
-    const sc = imageScore({ kind: 'body', url: img }, dim);
-    if (sc > bestSc) { bestSc = sc; best = p; }
-  }
+  // urutkan: kecocokan judul dulu, same-site hanya pemecah seri — bukan gate
+  pool.sort((a, b) => (b.tm - a.tm) || ((b.same ? 1 : 0) - (a.same ? 1 : 0)));
+  const { best, anyDim } = await probeList(pool.slice(0, 10));
+  // semua probe gagal (CF-flaky total) TAPI ada tepat satu kandidat non-junk
+  // → tetap pakai. Untuk JPNN hero memang satu-satunya kandidat berukuran
+  // konten; multi-kandidat ambigu tetap butuh probe.
+  if (!best && !anyDim && pool.length === 1)
+    return { img: pool[0].img, w: 0, h: 0, src: article };
   return best ? { img: best.img, w: best.w, h: best.h, src: article } : { img: '', src: article };
 }
 
@@ -3306,6 +3347,29 @@ function rdSmallHint(u) {
   const q = x.match(/[?&](?:w|width|size)=(\d{2,4})(?=&|$)/i); if (q && +q[1] < 400) return true;
   return false;
 }
+// host gambar "milik" artikel: hostname sama atau subdomain-nya
+// (cloud.jpnn.com ⊂ jpnn.com). Domain lain (images.genpi.co dsb) = jaringan
+// konten terkait publisher, BUKAN foto artikel — Jina menaruhnya di markdown.
+const rdSameSite = (imgUrl, articleUrl) => {
+  try {
+    const a = new URL(articleUrl).hostname.replace(/^www\./, '');
+    const h = new URL(imgUrl).hostname.replace(/^www\./, '');
+    return !!a && (h === a || h.endsWith('.' + a));
+  } catch (e) { return false; }
+};
+// alt text sampah pada markdown Jina: ikon share sosmed, logo, menu, dsb
+const RD_MD_ALT_JUNK = /whatsapp|facebook|twitter|telegram|pinterest|linkedin|share|logo|icon|menu|search|komunitas|verifikasi|badge|footer/i;
+// path aset UI publisher yang lolos regex umum — JPNN menaruh icon share di
+// /assets/medsos/i-*.png dan /assets/img/share-*.png
+const RD_MD_PATH_JUNK = /\/assets\/(?:medsos|img|icons?|images)\//i;
+function rdMdImgJunk(u, alt) {
+  const path = String(u).split('?')[0];
+  if (RD_IMG_JUNK.test(path) || rdJunkUrl(u) || rdSmallHint(u) || RD_MD_PATH_JUNK.test(path)) return true;
+  // icon share bernama i-facebook/i-whatsapp/dsb atau awalan sosmed (wa-komunitas.jpg)
+  if (/(?:^|\/)(?:i-(?:facebook|twitter|x|whatsapp|telegram|instagram|youtube|pinterest|linkedin|tiktok)|(?:wa|whatsapp|fb|ig|twitter|telegram|pinterest|linkedin|youtube|tiktok)[-_.])[^/]*$/i.test(path)) return true;
+  if (alt && RD_MD_ALT_JUNK.test(alt)) return true;
+  return false;
+}
 const rdProbeCache = new Map();
 async function rdProbeFull(u, referer) {
   if (rdProbeCache.has(u)) return rdProbeCache.get(u);
@@ -3393,7 +3457,14 @@ async function rdFinalGate(d, article) {
   (d.blocks || []).forEach((b, i) => { if (b.k === 'i' && b.img) slots.push({ url: b.img.url, idx: i }); });
   const res = await Promise.all(slots.slice(0, 10).map(async sl => {
     if (rdSmallHint(sl.url) || rdJunkUrl(sl.url)) return { sl, bad: true };
-    const pr = await rdProbeFull(sl.url, article);
+    let pr = await rdProbeFull(sl.url, article);
+    if (!pr) {
+      // host gambar kena challenge CF yang sama dengan artikelnya (jpnn/
+      // cloud.jpnn): probe direct gagal ≠ gambar mati — coba sekali via weserv
+      // (fetch dari IP lain), pola sama dengan probeAny di thumbFromJina.
+      const w = 'https://images.weserv.nl/?url=' + encodeURIComponent(String(sl.url).replace(/^https?:\/\//, ''));
+      pr = await rdProbeFull(w, article);
+    }
     if (!pr) return { sl, bad: !sl.hero };                  // gambar tak bisa dimuat server → buang (hero dibiarkan, browser yang coba)
     const ar = pr.w / pr.h;
     if (pr.w < 400 || pr.h < 200 || pr.bytes < 6000) return { sl, bad: true };
@@ -3812,10 +3883,46 @@ const RD_PROXIES = [
   u => 'https://proxy.corsfix.com/?' + encodeURIComponent(u)
 ];
 // Jina reader mengembalikan markdown; ubah jadi bentuk yang kompatibel rdExtract.
+// Gambar konten (![alt](url) dan kartu [![alt](img)](link)) dipertahankan sebagai
+// blok {k:'i'} di posisi alaminya — kontrak sama dengan rdBlocks/rdExtract, jadi
+// rdFinalGate + rdAssembleBlocks mengonsumsinya tanpa perubahan. Hanya gambar
+// same-site yang lolos: cross-domain di markdown Jina = jaringan konten terkait
+// (images.genpi.co dsb), bukan foto artikel.
 function rdJinaMd(text, url) {
-  const paras = [], seen = new Set();
-  let title = '';
+  const paras = [], seen = new Set(), blocks = [], imgSeen = new Set();
+  let title = '', done = false, nImg = 0;
+  const imgOk = (u, alt) => {
+    if (!rdSameSite(u, url) || rdMdImgJunk(u, alt)) return false;
+    const k = rdImgKey(u);
+    if (imgSeen.has(k) || nImg >= 6) return false;
+    imgSeen.add(k); nImg++;
+    return true;
+  };
+  // caption dari alt — "Image 12: Proyeksi..." → "Proyeksi..."; alt tak bermakna → ''
+  const capOf = alt => {
+    const c = rdInline(String(alt || '').replace(/^image\s+\d+\s*[:\-–—]?\s*|^image\s*[:\-–—]\s*/i, ''));
+    return c.length >= 4 && !RD_MD_ALT_JUNK.test(c) ? c.slice(0, 220) : '';
+  };
+  const IMG_MD = /\[!\[([^\]]*)\]\((https?:\/\/[^)\s]+)\)\]\([^)\s]*\)|!\[([^\]]*)\]\((https?:\/\/[^)\s]+)\)/g;
+  const emitP = txt => {
+    if (done) return;
+    txt = txt.replace(/!\[[^\]]*\]\([^)]*\)/g, '');   // sisa pola gambar non-http
+    let linkLen = 0;
+    for (const lm of txt.matchAll(/\[([^\]]*)\]\([^)]*\)/g)) linkLen += lm[1].length;
+    const stripped = txt.replace(/\[([^\]]*)\]\([^)]*\)/g, '$1');
+    if (linkLen / Math.max(1, stripped.length) >= 0.7) return;   // baris isinya link doang
+    const clean = stripped
+      .replace(/(\*\*|__|\*|_|`|~~)/g, '')
+      .replace(/\s+/g, ' ').trim();
+    if (clean.length < 60 || clean.length > 1600) return;
+    if (RD_SKIP.test(clean)) return;
+    const k = clean.toLowerCase().replace(/\W+/g, ' ').slice(0, 140);
+    if (seen.has(k)) return;
+    seen.add(k); paras.push(clean); blocks.push({ k: 'p', t: clean });
+    if (paras.length >= 45) done = true;
+  };
   for (const raw of String(text).split('\n')) {
+    if (done) break;
     const t = raw.trim();
     if (!t) continue;
     if (/^markdown content:/i.test(t)) continue;
@@ -3828,24 +3935,28 @@ function rdJinaMd(text, url) {
       else if (paras.length >= 2 && /terpopuler|terkait|baca juga|rekomendasi|berita lain|terbaru|trending|populer|lainnya|related|more (?:news|stories)|latest|you may|komentar|comments?/i.test(hd)) break;   // semua setelah heading ini = widget/footer
       continue;
     }
-    if (/^\[!\[/.test(t) || /^\[\s*\]\(/.test(t)) continue;   // kartu gambar+link
-    if (/^!\[/.test(t) || /^```/.test(t) || /^>/.test(t) || /^[-*]\s/.test(t) || /^\d+\.\s/.test(t)) continue;
-    const noImg = t.replace(/!\[[^\]]*\]\([^)]*\)/g, '');
-    let linkLen = 0; for (const lm of noImg.matchAll(/\[([^\]]*)\]\([^)]*\)/g)) linkLen += lm[1].length;
-    if (linkLen / Math.max(1, noImg.replace(/\[([^\]]*)\]\([^)]*\)/g, '$1').length) >= 0.7) continue;   // baris isinya link doang
-    const clean = t
-      .replace(/!\[[^\]]*\]\([^)]*\)/g, '')
-      .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
-      .replace(/(\*\*|__|\*|_|`|~~)/g, '')
-      .replace(/\s+/g, ' ').trim();
-    if (clean.length < 60 || clean.length > 1600) continue;
-    if (RD_SKIP.test(clean)) continue;
-    const k = clean.toLowerCase().replace(/\W+/g, ' ').slice(0, 140);
-    if (seen.has(k)) continue;
-    seen.add(k); paras.push(clean);
-    if (paras.length >= 45) break;
+    if (/^```/.test(t) || /^>/.test(t) || /^[-*]\s/.test(t) || /^\d+\.\s/.test(t)) continue;
+    // gambar di baris ini: teks tetap satu paragraf utuh (split di tengah
+    // gambar bisa memotong paragraf jadi dua fragmen <60 char yang terbuang),
+    // blok gambar disisipkan sebelum/sesudah paragraf sesuai posisi gambar.
+    const lineImgs = [];
+    const lt = t.replace(IMG_MD, (m, a1, u1, a2, u2, off) => {
+      const iu = rdAbs(u1 || u2, url);
+      const ia = a1 != null ? a1 : (a2 || '');
+      if (iu && imgOk(iu, ia)) lineImgs.push({ url: iu, cap: capOf(ia), off });
+      return ' ';
+    });
+    if (!lineImgs.length) { emitP(lt); continue; }
+    const pushImgs = () => { if (!done) for (const im of lineImgs) blocks.push({ k: 'i', img: { url: im.url, cap: im.cap } }); };
+    const txtLen = lt.replace(/\s+/g, ' ').trim().length;
+    // gambar di awal baris → blok dulu baru paragraf (pola hero+caption Jina);
+    // gambar di akhir/pertengahan → paragraf dulu
+    if (!txtLen || lineImgs[0].off <= Math.max(20, t.length * 0.4)) { pushImgs(); emitP(lt); }
+    else { emitP(lt); pushImgs(); }
   }
-  { const kept = rdPruneNoise(paras.map(t => ({ k: 'p', t })), title).map(b => b.t); paras.length = 0; paras.push(...kept); }
+  { const pruned = rdPruneNoise(blocks, title); blocks.length = 0; blocks.push(...pruned); }
+  paras.length = 0;
+  for (const b of blocks) if (b.k === 'p') paras.push(b.t);
   // Jina "title:" bawa ekor "– NamaSitus" mentah — strip sama seperti rdExtract
   if (title) {
     const host = rdHost(url);
@@ -3857,7 +3968,7 @@ function rdJinaMd(text, url) {
     }
   }
   return { ok: true, url, final: url, title: title || rdHost(url) || 'Tanpa judul',
-    site: rdHost(url), byline: '', time: '', img: '', desc: '', paras, thin: paras.length < 2, via: 'reader' };
+    site: rdHost(url), byline: '', time: '', img: '', desc: '', paras, thin: paras.length < 2, videos: [], blocks, via: 'reader' };
 }
 // video tanpa posisi (og:video/JSON-LD/Jina) → sebar merata di antara paragraf,
 // bukan numpuk di bawah hero image
