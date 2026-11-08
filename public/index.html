@@ -1862,7 +1862,7 @@ button.mp-src{background:none;border-top:0;border-left:0;border-right:0;cursor:p
   <div class="rd-b" id="rd-body"></div>
   <div class="rd-f">
     <span class="rd-state" id="rd-state">siap</span>
-    <a class="rd-open" id="rd-open" href="#" target="_blank" rel="noopener">Buka asli
+    <a class="rd-open" id="rd-open" href="#" target="_blank" rel="noopener">Buka sumber
       <svg class="ic" aria-hidden="true"><use href="#i-out"></use></svg>
     </a>
   </div>
@@ -6956,7 +6956,7 @@ function rdError(url, msg) {
   $('#rd-body').innerHTML = `<div class="rd-err">
     <b>Tidak bisa membaca halaman</b>
     <p>${esc(msg)}</p>
-    <p>Situs ini mungkin memblokir pembaca server, butuh login, atau menolak permintaan. Coba lagi atau pakai “Buka asli”.</p>
+    <p>Situs ini mungkin memblokir pembaca server, butuh login, atau menolak permintaan. Coba lagi atau pakai “Buka sumber”.</p>
     <button class="rp-btn" type="button" id="rd-retry" style="margin-top:10px">Coba lagi</button>
   </div>`;
   const rb = document.getElementById('rd-retry');
@@ -6999,7 +6999,7 @@ function rdArticle(d, url) {
   };
   const note = d.videoPage
     ? `<div class="rd-note">Halaman video — konten utama adalah video; teks artikel tidak tersedia.</div>`
-    : d.thin ? `<div class="rd-note">Halaman ini tidak mengirim teks penuh (login/JS). Ringkasan di bawah diambil dari metadata. Buka asli untuk lanjut.</div>` : '';
+    : d.thin ? `<div class="rd-note">Halaman ini tidak mengirim teks penuh (login/JS). Ringkasan di bawah diambil dari metadata. Buka sumber untuk lanjut.</div>` : '';
   let flow, hasBlocks = Array.isArray(d.blocks) && d.blocks.length > 0;
   if (hasBlocks) {
     let firstP = true;
