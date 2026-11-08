@@ -336,7 +336,7 @@ const cleanPub = v => {
 };
 // domain/sumber yang dilarang — item langsung dibuang dari semua feed.
 // kompasiana = platform opini/blog, bukan berita; masuk lewat agregat Google News.
-const BANNED_SRC = /infopublik\.id|infopublik|kompasiana|mediacenter\.palangkaraya\.go\.id|viva\.co\.id\/foto|nokenlive|polreskedirikota/i;
+const BANNED_SRC = /infopublik\.id|infopublik|kompasiana|mediacenter\.palangkaraya\.go\.id|viva\.co\.id\/foto|nokenlive|polreskedirikota|korankaltim/i;
 function parseFeed(xml) {
   const out = [];
   for (const m of xml.matchAll(/<item[\s>]([\s\S]*?)<\/item>/gi)) {
@@ -3765,6 +3765,30 @@ const descRemember = (keys, desc) => {
   for (const k of new Set(keys)) { descCache.delete(k); descCache.set(k, { desc, at: now }); }
   while (descCache.size > DESC_CAP) descCache.delete(descCache.keys().next().value);
 };
+// Baca stream untuk /api/desc: meta og:/description SERING berada setelah </head>
+// (template SSR menaruh meta di akhir body — kasus idntimes: og:desc di byte ~872rb
+// dari 874rb). Baca sampai </html> / cap 1MB, berhenti awal hanya kalau </head>
+// sudah lewat DAN minimal satu meta desc-ish sudah terlihat.
+async function mediaDesc(r) {
+  const reader = r.body && r.body.getReader ? r.body.getReader() : null;
+  if (!reader) {
+    const b = Buffer.from(await r.arrayBuffer());
+    return b.toString('utf8').slice(0, 1 << 20);
+  }
+  const chunks = []; let total = 0, scan = '';
+  const DESC_RE = /og:description|twitter:description|name=["']description|application\/ld\+json/i;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    chunks.push(Buffer.from(value)); total += value.length;
+    if (total > (1 << 20)) break;
+    scan += value.toString('utf8');
+    if (/<\/html>/i.test(scan)) break;
+    if (/<\/head>/i.test(scan) && DESC_RE.test(scan)) break;
+  }
+  try { await reader.cancel(); } catch (e) {}
+  return Buffer.concat(chunks).toString('utf8');
+}
 // Baca body stream hanya sampai </head> atau cap byte — meta og:/description semua ada di head,
 // halaman artikel bisa 1MB+. Early-abort: stream dibatalkan begitu cukup, tidak buffer penuh.
 async function mediaHead(r, max) {
@@ -3816,15 +3840,33 @@ async function descForUrl(reqUrl) {
   const waitHost = Math.max(0, (descHostAt.get(host) || 0) + DESC_HOST_GAP - Date.now());
   if (waitHost) await sleep(waitHost);   // tunggu slot host berikutnya — bukan skip, supaya kartu sehost tetap dapat desc
   let html = '';
-  try {
-    const { r } = await mediaGet(target, 8000, /(^|\.)news\.google\.com$/i.test(x.hostname)
-      ? { referer: 'https://news.google.com/' }
-      : { accept: 'text/html,application/xhtml+xml;q=0.9,*/*;q=0.8' });
+  const isGN = /(^|\.)news\.google\.com$/i.test(x.hostname);
+  const hdrs = isGN
+    ? { referer: 'https://news.google.com/' }
+    : { accept: 'text/html,application/xhtml+xml;q=0.9,*/*;q=0.8' };
+  const CH_RE = /just a moment|attention required|cf-chl|challenge-platform|verify you are|enable javascript and cookies/i;
+  const fetchHead = async u => {
+    const { r } = await mediaGet(u, 8000, hdrs);
     if (!r.ok) throw new Error('HTTP ' + r.status);
     const ct = r.headers.get('content-type') || '';
     if (ct && !/text\/html|application\/xhtml|text\/plain/i.test(ct)) throw new Error('bukan halaman HTML');
-    html = await mediaHead(r, 200 << 10);
+    const h = await mediaDesc(r);   // meta bisa setelah </head> — baca sampai </html>/1MB
+    // HTTP 200 tapi halaman challenge (Cloudflare dsb) → anggap gagal supaya proxy dicoba
+    if (h.length < 60000 && CH_RE.test(h.slice(0, 30000))) throw new Error('halaman challenge');
+    return h;
+  };
+  try {
+    html = await fetchHead(target);
   } catch (e) {
+    console.log('[desc] direct gagal', host, String(e && e.message || e).slice(0, 80));
+    // publisher di balik Cloudflare (Tempo/CNNID/Detik/dsb) menolak fetch langsung —
+    // coba proxy publik seperti yang sudah dipakai news() dan rdRead
+    for (const px of RD_PROXIES.slice(0, 2)) {
+      try { html = await fetchHead(px(target)); console.log('[desc] proxy OK', host); break; }
+      catch (e2) { console.log('[desc] proxy gagal', host, String(e2 && e2.message || e2).slice(0, 60)); }
+    }
+  }
+  if (!html) {
     descHostAt.set(host, Date.now());
     if (descHostAt.size > 500) descHostAt.delete(descHostAt.keys().next().value);
     descRemember([reqUrl, target], '');
@@ -3843,7 +3885,14 @@ async function descForUrl(reqUrl) {
   const ldArt = rdLd(html).find(n => /article|posting|news/i.test(String(n['@type'] || ''))) || {};
   const ldDesc = typeof ldArt.description === 'string' ? ldArt.description : '';
   const raw = meta['og:description'] || meta['twitter:description'] || meta.description || ldDesc;
-  const desc = raw ? FEEDTEXT.descFrom({ description: rdInline(raw) }, title || '') : '';
+  let desc = raw ? FEEDTEXT.descFrom({ description: rdInline(raw) }, title || '') : '';
+  if (!desc) {
+    // og:desc sering = judul (template situs) → descFrom menolak desc==title.
+    // Fallback: lede artikel — paragraf <p> pertama dari body, lewat jalur
+    // contentEncoded milik descFrom (ledeText + cleanDescText + floor 26).
+    const lede = (html.match(/<p[^>]*>[\s\S]*?<\/p>/gi) || []).slice(0, 6).join('');
+    if (lede) desc = FEEDTEXT.descFrom({ contentEncoded: lede }, title || '');
+  }
   const out = desc && Array.from(desc).length >= 26 ? desc : '';
   descRemember([reqUrl, target], out);
   return out;
