@@ -289,17 +289,25 @@ a{color:inherit;text-decoration:none;text-underline-offset:2px}
   position:absolute;z-index:6;max-width:230px;pointer-events:none;
   padding:2px 0;
 }
-/* SCRIM bersama (tooltip globe + toast fokus): gelap + blur progresif KIRI -> KANAN, atas/bawah tetap penuh */
-.sit-tip::before,.sit-tip::after,.sa-box::before,.sa-box::after{
+/* SCRIM bersama (tooltip globe + popup tap + toast fokus): gelap + blur progresif KIRI -> KANAN, atas/bawah tetap penuh */
+.sit-tip::before,.sit-tip::after,.sit-pop::before,.sit-pop::after,.sa-box::before,.sa-box::after{
   content:"";position:absolute;inset:-12px -48px -12px -16px;z-index:-1;pointer-events:none;
   -webkit-mask-image:linear-gradient(90deg,transparent 0,#000 8px,#000 52%,rgba(0,0,0,.86) 64%,rgba(0,0,0,.6) 76%,rgba(0,0,0,.3) 88%,transparent 100%),linear-gradient(180deg,transparent 0,#000 5px,#000 calc(100% - 5px),transparent 100%);mask-image:linear-gradient(90deg,transparent 0,#000 8px,#000 52%,rgba(0,0,0,.86) 64%,rgba(0,0,0,.6) 76%,rgba(0,0,0,.3) 88%,transparent 100%),linear-gradient(180deg,transparent 0,#000 5px,#000 calc(100% - 5px),transparent 100%);
   -webkit-mask-composite:source-in;mask-composite:intersect;
 }
-.sit-tip::before,.sa-box::before{-webkit-backdrop-filter:blur(16px) saturate(1.2);backdrop-filter:blur(16px) saturate(1.2)}
-.sit-tip::after,.sa-box::after{background:rgba(6,6,8,.88)}
-.sit-tip .tip-t{text-shadow:0 1px 6px rgba(0,0,0,.7)}
+.sit-tip::before,.sit-pop::before,.sa-box::before{-webkit-backdrop-filter:blur(16px) saturate(1.2);backdrop-filter:blur(16px) saturate(1.2)}
+.sit-tip::after,.sit-pop::after,.sa-box::after{background:rgba(6,6,8,.88)}
+.sit-tip .tip-t,.sit-pop .tip-t{text-shadow:0 1px 6px rgba(0,0,0,.7)}
 .tip-h{margin-top:7px;font:600 7.5px/1 var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--accent)}
-.sit-tip>div{position:relative}
+.sit-tip>div,.sit-pop>div{position:relative}
+/* popup aksi tap mobile: kartu kecil di atas titik — seluruh kartu = tombol Buka link */
+.sit-pop{
+  position:absolute;z-index:7;max-width:250px;isolation:isolate;cursor:pointer;
+  padding:10px 12px;pointer-events:auto;color:var(--text);
+}
+.pop-ft{display:flex;align-items:center;justify-content:flex-end;gap:10px;margin-top:8px;
+  padding-top:7px;border-top:1px solid rgba(255,255,255,.12)}
+.pop-go{font:600 8px/1 var(--mono);letter-spacing:.1em;text-transform:uppercase;color:#f4f4f4;opacity:.85}
 .sit-alert{
   position:absolute;z-index:7;top:50px;right:12px;
   width:max-content;max-width:min(280px,calc(100% - 24px));pointer-events:auto;cursor:pointer;
@@ -1550,6 +1558,7 @@ button.mp-src{background:none;border-top:0;border-left:0;border-right:0;cursor:p
         </div>
         <div class="sit-globe-tag">Globe · live</div>
         <div class="sit-tip" id="sit-tip" hidden></div>
+        <div class="sit-pop" id="sit-pop" hidden></div>
         <div class="sit-alert" id="sit-alert" hidden></div>
         <div class="sit-legend-left" id="sit-map-legend" role="group" aria-label="Filter kategori pada globe"></div>
         <div class="sit-legend-right" aria-hidden="true">
@@ -1994,7 +2003,7 @@ const view = { lon: 118, lat: -2.5, zoom: 2.2 };
 const ZOOM_MAX = 60;   // dulu 7: titik se-centroid tidak pernah sempat melebar; radius & hit-area menyesuaikan (lihat zoomTaper)
 const clampN = (v, a, b) => Math.min(b, Math.max(a, v));
 let flyAnim = null, lastGestEnd = -1e9, globeSuppressClick = 0, gesture = null;
-let globePtrType = 'mouse', tapKey = '', tapAt = 0;   // mobile: tap 1 = tooltip, tap 2 (titik sama) = reader
+let globePtrType = 'mouse';   // mobile: tap insiden → popup "Buka reader", tap node → fokus langsung
 const ptrs = new Map();
 
 const hexA = (hex, a) => {
@@ -2634,17 +2643,42 @@ function showNodeTip(e, d, touch){
   const n = d.node;
   tip.innerHTML = `<div class="tip-k" style="color:#8d8d8d">NODE PEMANTAUAN</div>
     <div class="tip-t">${esc(n.name || '')}</div>
-    <div class="tip-m">${esc(n.prov || '')} · ${touch ? 'ketuk lagi untuk fokus' : 'klik untuk fokus wilayah'}</div>`;
+    <div class="tip-m">${esc(n.prov || '')} · ${touch ? 'ketuk untuk fokus' : 'klik untuk fokus wilayah'}</div>`;
   tip.hidden = false;
   placeSitTip(e, touch);
 }
-const hideGlobeTip = () => { const tip = $('#sit-tip'); if (tip) tip.hidden = true; };
+// popup aksi mobile: tap sekali di insiden → kartu kecil dengan tombol
+// "Buka reader ↗" (pola footer .sa-ft toast). Seluruh kartu clickable.
+let sitPopUrl = '';
+function showGlobePop(e, d){
+  const pop = $('#sit-pop'); if (!pop) return;
+  const p = d.p || {};
+  sitPopUrl = p.url || '';
+  pop.innerHTML = `<div class="tip-k" style="color:${d.color}">${esc(p.label || CAT_LABEL[d.cat])}${p.name ? ' · ' + esc(p.name) : ''}</div>
+    <div class="tip-t">${esc(deEmoji(p.title || ''))}</div>
+    <div class="tip-m">${esc(p.src || '')} · ${esc(p.ts ? wibTime(p.ts) : '')} WIB${precTxt(p) ? ' · ' + esc(precTxt(p)) : ''}</div>
+    <div class="pop-ft"><span class="pop-go">Buka reader ↗</span></div>`;
+  pop.hidden = false;
+  const wrap = $('.sit-mapwrap').getBoundingClientRect();
+  const pw = pop.offsetWidth, ph = pop.offsetHeight;
+  let left = e.clientX - wrap.left - pw / 2, top = e.clientY - wrap.top - ph - 22;
+  if (top < 4) top = e.clientY - wrap.top + 22;   // tidak muat di atas → di bawah jari
+  if (left + pw > wrap.width - 6) left = wrap.width - pw - 8;
+  if (left < 4) left = 4;
+  if (top + ph > wrap.height - 6) top = e.clientY - wrap.top - ph - 10;
+  pop.style.left = Math.max(4, left) + 'px';
+  pop.style.top = Math.max(4, top) + 'px';
+}
+const hideGlobeTip = () => {
+  const tip = $('#sit-tip'); if (tip) tip.hidden = true;
+  const pop = $('#sit-pop'); if (pop) { pop.hidden = true; sitPopUrl = ''; }
+};
 function ptrEnd(e){
   ptrs.delete(e.pointerId);
   const c = $('#sit-globe');
   if (ptrs.size === 0) {
     if (gesture && gesture.moved > 8) {
-      globeSuppressClick = performance.now(); tapKey = '';
+      globeSuppressClick = performance.now();
       // lempar inertia dari velocity terakhir — flick keluar = globe terus muter halus
       if (gesture.mode === 'rotate' && gesture.vx !== undefined && Math.hypot(gesture.vx, gesture.vy) > 0.08)
         globeVel = { vx: -gesture.vx * 0.32, vy: gesture.vy * 0.30 };
@@ -2733,34 +2767,29 @@ function bindGlobeEvents(){
     lastGestEnd = now;
   }, { passive: false });
   c.addEventListener('mouseleave', () => { if (!ptrs.size) { hideGlobeTip(); globeActInc = globeActNode = ''; } });
+  // popup "Buka reader" — kartu itu sendiri tombolnya (pola toast .sa-go)
+  const pop = $('#sit-pop');
+  if (pop) pop.addEventListener('click', () => {
+    const u = sitPopUrl; sitPopUrl = '';
+    pop.hidden = true;
+    if (u) rdOpen(u, null, true, '').catch(() => window.open(u, '_blank', 'noopener'));
+  });
   c.addEventListener('click', e => {
     if (performance.now() - globeSuppressClick < 350) return;
     const rect = c.getBoundingClientRect();
     const touch = globePtrType === 'touch' || globePtrType === 'pen';
     const hit = pickGlobe(e.clientX - rect.left, e.clientY - rect.top, touch ? 22 : 9, false);   // klik → item yang sedang di-hover, bukan advance
-    if (hit && hit.node) {   // node: tap2/klik → fly ke wilayah node
-      const n = hit.d.node, key = 'node|' + (n.name || '');
-      if (touch) {
-        if (key === tapKey && performance.now() - tapAt < 9000) {
-          tapKey = ''; hideGlobeTip();
-          flyTo(n.la, n.lo, Math.max(view.zoom, 11));
-          return;
-        }
-        tapKey = key; tapAt = performance.now(); showNodeTip(e, hit.d, true); return;
-      }
-      flyTo(n.la, n.lo, Math.max(view.zoom, 11)); return;
+    if (hit && hit.node) {   // node: tap/klik → fly ke wilayah node
+      const n = hit.d.node;
+      hideGlobeTip();
+      flyTo(n.la, n.lo, Math.max(view.zoom, 11));
+      return;
     }
     const inc = hit ? hit.d : null;
     if (touch) {
-      if (!inc) { tapKey = ''; hideGlobeTip(); return; }
-      const key = String(inc.p.url || inc.p.title || '');
-      if (key && key === tapKey && performance.now() - tapAt < 9000) {   // tap kedua di titik yang sama
-        tapKey = ''; hideGlobeTip();
-        if (inc.p.url) rdOpen(inc.p.url, null, true, '').catch(() => window.open(inc.p.url, '_blank', 'noopener'));
-        return;
-      }
-      tapKey = key; tapAt = performance.now();
-      showGlobeTip(e, inc, true);
+      if (!inc || !inc.p || !inc.p.url) { hideGlobeTip(); return; }
+      hideGlobeTip();          // popup membawa info + aksi — tooltip tidak jadi perlu
+      showGlobePop(e, inc);
       return;
     }
     if (inc && inc.p && inc.p.url) rdOpen(inc.p.url, null, true, '').catch(() => window.open(inc.p.url, '_blank', 'noopener'));
