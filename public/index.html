@@ -551,6 +551,17 @@ a{color:inherit;text-decoration:none;text-underline-offset:2px}
 }
 .inp::placeholder{color:var(--text3)}
 .inp:focus{border-color:var(--text3);box-shadow:inset 0 -1px 0 var(--text3)}
+/* command-bar: tanpa box, prefix ">", garis bawah menyala accent saat fokus */
+.inp.cmd{
+  height:32px;padding:0 8px 0 24px;background:transparent;border:0;
+  font:400 12px/1 var(--mono);letter-spacing:.02em;color:var(--text);
+  caret-color:var(--accent);
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M6 3l5 5-5 5' fill='none' stroke='%238d8d8d' stroke-width='1.6'/%3E%3C/svg%3E");
+  background-repeat:no-repeat;background-position:8px center;background-size:10px;
+}
+.inp.cmd::placeholder{font:400 10px/1 var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--text3)}
+.inp.cmd:focus{outline:none;box-shadow:inset 0 -2px 0 var(--accent)}
+.inp.cmd::-webkit-search-cancel-button{filter:invert(.6)}
 .tgl{
   flex:none;height:30px;padding:0 9px;border:1px solid var(--border2);
   font:500 9px/1 var(--mono);letter-spacing:.07em;text-transform:uppercase;color:var(--text3);
@@ -1636,12 +1647,12 @@ button.mp-src{background:none;border-top:0;border-left:0;border-right:0;cursor:p
       <span class="ph-m" id="tmeta" hidden>—</span>
     </div>
     <div class="pb" id="pane-x" role="tabpanel" aria-labelledby="tab-x">
-      <div class="tools"><input class="inp" id="xq" type="search" placeholder="Cari post atau akun…" aria-label="Cari post X"></div>
+      <div class="tools"><input class="inp cmd" id="xq" type="search" placeholder="Cari post atau akun…" aria-label="Cari post X"></div>
       <div class="qchips" id="qchips"></div>
       <div id="xlist"><div class="empty">Menghubungkan ke X…</div></div>
     </div>
     <div class="pb" id="pane-th" role="tabpanel" aria-labelledby="tab-th" hidden>
-      <div class="tools"><input class="inp" id="tq" type="search" placeholder="Cari post Threads…" aria-label="Cari post Threads"></div>
+      <div class="tools"><input class="inp cmd" id="tq" type="search" placeholder="Cari post Threads…" aria-label="Cari post Threads"></div>
       <div class="qchips" id="qchips-th"></div>
       <div id="tlist"><div class="empty">Menghubungkan ke Threads…</div></div>
     </div>
@@ -1690,7 +1701,7 @@ button.mp-src{background:none;border-top:0;border-left:0;border-right:0;cursor:p
   <section class="pane" aria-label="CCTV Regional">
     <div class="ph"><span class="ph-k">05</span><h2 class="ph-t">CCTV · Regional</h2><span class="ph-m" id="ccount">—</span></div>
     <div class="pb">
-      <div class="tools"><input class="inp" id="cq" type="search" placeholder="Cari kamera…" aria-label="Cari kamera"></div>
+      <div class="tools"><input class="inp cmd" id="cq" type="search" placeholder="Cari kamera…" aria-label="Cari kamera"></div>
       <div class="citybar" id="citybar" role="tablist" aria-label="Wilayah kamera"></div>
       <div class="camgrid" id="camgrid"></div>
     </div>
