@@ -337,4 +337,20 @@ function descFrom(fields, title) {
   return '';
 }
 
-module.exports = { decodeEntities, htmlToText, descFrom };
+// ---- English-news detector -------------------------------------------------
+// Wire SITREP hanya memuat bahasa Indonesia. Item Inggris murni (feed salah
+// edisi, GN yang menyeret halaman EN) dibuang dari payload — beda dengan flag
+// `foreign` (berita Indonesia tentang luar negeri, tetap tampil bertanda
+// Global). Stopword dua arah, skor harus menang telak supaya judul Indonesia
+// berembedding istilah Inggris (loanword) tidak ikut terbuang.
+const EN_NEWS_STOP = new Set(('the and for are was were will would can could has have had not but they them their this that with from about after before between during into over under again then once here there when where why how all any both each more most other some such only own same than too very just also now says said new its our your his her we you he she it is in on at by or an be as to of').split(' '));
+const ID_NEWS_STOP = new Set(('yang dan di ke dari untuk dengan tidak ini itu pada akan sudah juga atau dalam adalah telah bisa ada seperti bagi kepada oleh mereka kami kita hingga serta tapi namun jadi hanya masih bahkan yaitu yakni saat setelah sebelum ketika antara atas bawah luar').split(' '));
+function newsEnglish(title, desc) {
+  const txt = String(title || '') + ' ' + String(desc || '').slice(0, 240);
+  const toks = txt.toLowerCase().match(/[a-z]{2,}/g) || [];
+  let en = 0, id = 0;
+  for (const w of toks) { if (EN_NEWS_STOP.has(w)) en++; else if (ID_NEWS_STOP.has(w)) id++; }
+  return en >= 3 && en >= id + 3;
+}
+
+module.exports = { decodeEntities, htmlToText, descFrom, newsEnglish };

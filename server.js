@@ -41,8 +41,11 @@ const NEWS = [
   ['REPUBLIKA', 'https://www.republika.co.id/rss'],
   ['BBC INDONESIA', 'https://feeds.bbci.co.uk/indonesia/rss.xml'],
   ['DW INDONESIA', 'https://rss.dw.com/rdf/rss-ind-all'],
-  ['ABC INDONESIA', 'https://www.abc.net.au/indonesian/feed/51120/rss.xml'],
-  ['CNA INDONESIA', 'https://www.channelnewsasia.com/api/v1/rss-outbound-feed?_format=xml&category=10416'],
+  // ABC Australia tidak punya edisi Bahasa Indonesia — feed /indonesian/feed/51120
+  // ternyata "Just In" Inggris (en-AU), 25 item Inggris masuk wire.
+  // CNA Indonesia ada di domain cna.id; category=3321 = feed bahasa Indonesia
+  // (category=10416 di channelnewsasia.com = "Latest News" Inggris Singapura).
+  ['CNA INDONESIA', 'https://www.cna.id/api/v1/rss-outbound-feed?_format=xml&category=3321'],
   ['TRIBUN', 'https://www.tribunnews.com/rss'],
   ['CNBC ID', 'https://www.cnbcindonesia.com/news/rss'],
   ['GNEWS · DEMO', gn('demo OR "unjuk rasa" OR "aksi massa"')],
@@ -4470,7 +4473,7 @@ http.createServer(async (req, res) => {
           for (const s of srcs) for (const i of s.items) if (i.img) { const k = rdImgKey(i.img); if (!cnt.has(k)) cnt.set(k, new Set()); cnt.get(k).add(i.url); }
           for (const s of srcs) for (const i of s.items) if (i.img && cnt.get(rdImgKey(i.img)).size > 1) i.img = '';
         }
-        return { classifierVersion: SOC.CLASSIFIER_VERSION, sources: srcs.map(s => ({ ...s, items: s.items.map(i => {
+        return { classifierVersion: SOC.CLASSIFIER_VERSION, sources: srcs.map(s => ({ ...s, items: s.items.filter(i => !FEEDTEXT.newsEnglish(i.title, i.desc)).map(i => {
           const a = aOf(i.title);
           const cat = catOf(i.title, a);
           // place: dipakai client untuk toast dari DELTA wire. Tanpa ini notifikasi

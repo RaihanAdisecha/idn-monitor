@@ -134,6 +134,15 @@ test('listing only suppresses FEED_ONLY topics; real incident topics survive', (
   assert.ok(r.topics.includes('kebakaran'), 'non-feed-only topic must survive listing detection');
 });
 
+test('BOM akronim Inggris (Bureau of Meteorology) bukan bahan peledak', () => {
+  const r = S.socAssess('After 63 years recording Mitta Mitta\'s weather, couple wants the BOM to replace them with a weather station');
+  assert.ok(!r.topics.includes('konflik'), 'BOM = akronim cuaca Australia, bukan "bom"');
+  assert.equal(r.topics.length, 0);
+  // bom bahan peledak dalam bahasa Indonesia tetap terdeteksi
+  const real = S.socAssess('Polisi menemukan bom di pasar');
+  assert.ok(real.topics.includes('konflik'), 'bom literal harus tetap jadi konflik');
+});
+
 test('geocode: street name "Bali Mester" does not outvote the Jatinegara POI', () => {
   const loc = GEO.locate('Lokasi rumah di Jalan Jatinegara Raya, Bali Mester, Jatinegara, ' +
     'punya akses ke Stasiun KRL Jatinegara TransJakarta Koridor 5 11 Mikrotrans JakLingko LT 66m LB 200m');

@@ -130,3 +130,18 @@ test('descFrom: empty/undefined fields → empty', () => {
   assert.equal(descFrom(undefined, 'T'), '');
   assert.equal(descFrom({ description: '', contentEncoded: '   ' }, 'T'), '');
 });
+
+test('newsEnglish: judul Inggris murni terdeteksi', () => {
+  const { newsEnglish } = require('../feedtext');
+  assert.equal(newsEnglish(
+    'Couple wants the BOM to replace them with a weather station',
+    'After six decades of recording rainfall data, Ernie and Merrillyn Cole want the Bureau of Meteorology to take over.'), true);
+  assert.equal(newsEnglish('NSW prisoners made more than 32,000 complaints in past year', ''), true);
+});
+
+test('newsEnglish: berita Indonesia tidak ikut terbuang', () => {
+  const { newsEnglish } = require('../feedtext');
+  assert.equal(newsEnglish('Heli water bombing jatuh di Sungai Barito, 2 selamat 1 meninggal', 'Kru helikopter pemadam karhutla...'), false);
+  assert.equal(newsEnglish('Rupiah menguat ke Rp18.250 per dolar AS', 'Nilai tukar rupiah terhadap dolar Amerika Serikat diprediksi fluktuasi ketat pekan ini.'), false);
+  assert.equal(newsEnglish('Gempa M5.2 guncang Maluku, 3 meninggal', ''), false);
+});
