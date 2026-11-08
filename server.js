@@ -3962,6 +3962,29 @@ async function rdReadYouTube(id, raw) {
   return { ok: true, url: raw, final: watch, title: title || 'Video YouTube', site: 'YouTube', byline: author, time: time ? String(time) : '',
     img: '', desc, paras, thin: false, videos: v ? [v] : [], blocks: [...vblocks, ...paras.map(t => ({ k: 'p', t }))], via: 'youtube', t: { via: 'youtube' } };
 }
+// Negative-cache read gagal: retry/hover tidak mengulang ladder ~40s penuh.
+const readFail = new Map();   // rawUrl -> { at, err } — TTL 90 detik
+const READ_FAIL_TTL = 90000;
+// Varian AMP — banyak publisher ID menyajikan /amp atau .amp tanpa Cloudflare
+// challenge. Cuma dipakai sebagai fallback pasca-race (bukan job paralel) supaya
+// tidak menambah request konkuren ke host yang sama dan memicu rate-limit.
+const rdAmpVariants = u => {
+  try {
+    const x = new URL(u), p = x.pathname.replace(/\/+$/, '');
+    if (!p || /\/(amp|amphtml)$/i.test(p)) return [];
+    return [...new Set([x.origin + p + '/amp' + (x.search || ''), x.origin + p + '.amp' + (x.search || '')])];
+  } catch (e) { return []; }
+};
+// Snapshot Wayback mentah (id_ = HTML asli tanpa toolbar archive.org).
+async function rdWaybackRaw(u) {
+  try {
+    const a = await get('https://archive.org/wayback/available?url=' + encodeURIComponent(u), {}, 8000);
+    if (!a.ok) return null;
+    const j = await a.json();
+    const s = j && j.archived_snapshots && j.archived_snapshots.closest;
+    return s && s.url ? String(s.url).replace(/\/web\/(\d+)/, '/web/$1id_') : null;
+  } catch (e) { return null; }
+}
 async function rdRead(raw) {
   const x = publicURL(raw);
   if (!x) throw new Error('URL tidak valid');
@@ -3976,6 +3999,7 @@ async function rdRead(raw) {
     const t0 = Date.now();
     const left = () => Math.max(5000, 40000 - (Date.now() - t0));   // frontend timeout 45s
     let lastErr = null, metaD = null;
+    const attempts = [];   // {via, err} per jalur — dilaporkan ke klien saat semua gagal
     const BLOCKED_RE = /just a moment|attention required|access denied|verify you are|are you a robot|cf-chl|challenge-platform|enable javascript and cookies|request blocked|pardon our interruption/i;
     const metaScore = d => ((d.videos || []).length * 2) + (d.img ? 1 : 0) + (d.desc ? 0.5 : 0);
     const tryHtml = (html, url) => {
@@ -4007,7 +4031,7 @@ async function rdRead(raw) {
     // (mahal, render browser) sebelum fallback meta.
     const jobs = [];
     // direct + redirect manual
-    jobs.push((async () => {
+    jobs.push({ via: 'direct', p: (async () => {
       const { r, url } = await rdSafeGet(target, Math.min(12000, left()));
       if (!r.ok) throw new Error('HTTP ' + r.status);
       const ct = r.headers.get('content-type') || '';
@@ -4019,10 +4043,10 @@ async function rdRead(raw) {
       const d = tryHtml(html, url);
       if (!d) throw new Error('halaman challenge/block');
       return { d, html, url };
-    })());
+    })() });
     // Jina reader — markdown, bukan html → thumb() fallback di rdFinish
     let raceSettled = false;   // true begitu ada job yang menang — Jina antrean batal
-    jobs.push((async () => {
+    jobs.push({ via: 'jina', p: (async () => {
       const { r } = await jinaGet('https://r.jina.ai/' + target, Math.min(10000, left()), { accept: 'text/plain' }, () => !raceSettled, true);
       if (!r.ok) throw new Error('HTTP ' + r.status);
       const txt = await mediaText(r, 5 << 20);
@@ -4035,8 +4059,8 @@ async function rdRead(raw) {
         if (!d.time && metaD.time) d.time = metaD.time;
       }
       return { d, html: null, url: target };
-    })());
-    for (const px of RD_PROXIES) jobs.push((async () => {
+    })() });
+    for (const px of RD_PROXIES) jobs.push({ via: 'proxy', p: (async () => {
       // mediaGet: proxy host + redirect hops tetap harus IP publik (anti-oracle).
       const { r } = await mediaGet(px(target), Math.min(12000, left()));
       if (!r.ok) throw new Error('HTTP ' + r.status);
@@ -4047,11 +4071,13 @@ async function rdRead(raw) {
       const d = tryHtml(html, target);
       if (!d) throw new Error('proxy tidak valid');
       return { d, html, url: target };
-    })());
+    })() });
     const win = await new Promise(res => {
       let n = jobs.length, settled = false;
       const done = v => { if (!settled) { settled = true; raceSettled = true; res(v); } };
-      for (const j of jobs) j.then(v => done(v), () => {}).finally(() => { if (--n === 0) done(null); });
+      for (const j of jobs) j.p.then(v => done(v), e => {
+        attempts.push({ via: j.via, err: String(e && e.message || e).slice(0, 90) });
+      }).finally(() => { if (--n === 0) done(null); });
     });
     if (win) { fetchMs = Date.now() - t0; return await fin(win.d, win.url, win.html, 'race'); }
     // 2.5) Firecrawl — render browser asli, tembus Cloudflare/challenge yang memukul direct+Jina+proxy
@@ -4084,6 +4110,33 @@ async function rdRead(raw) {
         }
       } catch (e) { lastErr = e; }
     }
+    // AMP + Wayback — jalur pemulihan terakhir, serial dan digate sisa waktu.
+    // Disengaja TIDAK masuk race paralel: menembak host yang sama berlipat kali
+    // saat race masih jalan justru memicu rate-limit/block yang lebih agresif.
+    const tryDoc = async (u, ms, via) => {
+      const { r, url } = await rdSafeGet(u, Math.min(ms, left()));
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      const ct = r.headers.get('content-type') || '';
+      if (!/text\/html|application\/xhtml/i.test(ct)) throw new Error('bukan html');
+      let html = await mediaText(r, 5 << 20);
+      if (html.length > 3e6) html = html.slice(0, 3e6);
+      const d = tryHtml(html, url);
+      if (!d) throw new Error(via + ' tidak valid');
+      fetchMs = Date.now() - t0;
+      return await fin(d, url, html, via);
+    };
+    for (const av of rdAmpVariants(target)) {
+      if (left() < 9000) break;
+      try { return await tryDoc(av, 7000, 'amp'); }
+      catch (e) { attempts.push({ via: 'amp', err: String(e && e.message || e).slice(0, 90) }); }
+    }
+    if (left() > 11000) {
+      const wu = await rdWaybackRaw(target);
+      if (wu) {
+        try { return await tryDoc(wu, 9000, 'wayback'); }
+        catch (e) { attempts.push({ via: 'wayback', err: String(e && e.message || e).slice(0, 90) }); }
+      } else attempts.push({ via: 'wayback', err: 'no snapshot' });
+    }
     // semua jalur gagal → tetap sajikan meta (judul/gambar/video/deskripsi) daripada error kosong
     if (metaD) {
       const paras = metaD.paras.length ? metaD.paras : (metaD.desc ? [metaD.desc] : []);
@@ -4093,7 +4146,12 @@ async function rdRead(raw) {
       fetchMs = Date.now() - t0;
       return await fin(d, target, null, 'meta');   // semua fetch gagal — thumb() juga akan gagal, jangan buang waktu
     }
-    throw lastErr || new Error('fetch failed');
+    // error jujur: pesan aslinya + ringkasan tahap yang dicoba, supaya UI tidak
+    // menampilkan 'fetch failed' generik saat sebenarnya direct 403 + jina timeout.
+    const why = attempts.slice(0, 8).map(a => a.via + ':' + a.err).join('; ');
+    const e2 = new Error((lastErr ? String(lastErr.message || lastErr) : 'fetch failed') + (why ? ' [' + why + ']' : ''));
+    e2.attempts = attempts.slice(0, 10);
+    throw e2;
   });
 }
 
@@ -4582,12 +4640,24 @@ http.createServer(async (req, res) => {
     if (u.pathname === '/vhs') return await vhs(u.searchParams.get('u') || '', res);
     if (u.pathname === '/img') return await img(u.searchParams.get('u') || '', res);
     if (u.pathname === '/api/read') {
+      const raw = u.searchParams.get('u') || '';
+      const fh = readFail.get(raw);
+      if (fh && Date.now() - fh.at < READ_FAIL_TTL)
+        return json({ ok: false, err: fh.err, cached: true });
       rdActive++;
-      try { return json(await rdRead(u.searchParams.get('u') || '')); }
-      catch (e) {
-        let h = ''; try { h = new URL(u.searchParams.get('u') || '').hostname; } catch (_) {}
-        console.log('[read] FAIL', h || '-', String(e.message || e).slice(0, 160));
-        return json({ ok: false, err: String(e.message || e).slice(0, 220) });
+      try {
+        const d = await rdRead(raw);
+        readFail.delete(raw);
+        return json(d);
+      } catch (e) {
+        const msg = String(e.message || e).slice(0, 400);
+        let h = ''; try { h = new URL(raw).hostname; } catch (_) {}
+        console.log('[read] FAIL', h || '-', msg.slice(0, 160));
+        readFail.set(raw, { at: Date.now(), err: msg });
+        lruCap(readFail, 300);
+        const out = { ok: false, err: msg };
+        if (e && e.attempts) out.attempts = e.attempts;
+        return json(out);
       } finally { rdActive--; }
     }
     if (u.pathname === '/api/thumb') {
