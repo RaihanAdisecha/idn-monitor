@@ -1,7 +1,7 @@
 'use strict';
 // Conservative, auditable rules. Topic relevance is not incident confirmation.
 const GEO = require('./geocode');
-const VERSION = '2026-11-08.1';
+const VERSION = '2026-11-08.2';
 const CATEGORY = { demo:'demo', kebakaran:'fire', karhutla:'fire', banjir:'flood', gempa:'disaster', kecelakaan:'insiden', penembakan:'kriminal', pencurian:'kriminal', penangkapan:'kriminal', phk:'ekonomi', rupiah:'ekonomi', ihsg:'ekonomi', 'listrik padam':'ekonomi', wabah:'kesehatan', pemilu:'politik', politik:'politik', konflik:'politik', ransomware:'siber', 'serangan siber':'siber', 'akun dibajak':'siber', insiden:'insiden', kriminal:'kriminal', kesehatan:'kesehatan',
   // topik feed-only: punya kategori supaya finding tidak null, tapi TIDAK PERNAH
   // signalEligible — lihat FEED_ONLY di bawah.
@@ -84,7 +84,7 @@ function isReport(topic, span, location, target) {
     case 'gempa': return ((identity || EVENT_ACTION.test(span)) && /gempa|magnitudo|erupsi|letusan/i.test(span)) || (/tsunami/i.test(span) && (EVENT_ACTION.test(span) || WARNING.test(span))); 
     case 'kebakaran': case 'karhutla': case 'banjir': case 'kecelakaan': case 'penembakan': case 'pencurian': return (EVENT_ACTION.test(span) || /\b(?:kebakaran|banjir|longsor|kecelakaan|penembakan|pencurian|karhutla)(?:\s+(?:rumah|gedung|pabrik|pasar|hutan|lahan))?\s+(?:di|melanda|merendam)/i.test(span));
     case 'penangkapan': return identity && /ditangkap|diamankan|penangkapan|\bott\b/i.test(span);
-    case 'demo': return identity && /unjuk rasa|aksi massa|demonstran|\bdemo\b|women'?s\s+march|international\s+women'?s\s+day|hari\s+buruh|buruh\s+sedunia/i.test(span) && /berlangsung|turun ke jalan|berkumpul|menggelar|ricuh|bentrok|tuntut|menuntut|menolak|tolak|orasi|march|aksi/i.test(span);
+    case 'demo': return identity && /unjuk rasa|aksi massa|demonstran|\bdemo\b|women'?s\s+march|international\s+women'?s\s+day|hari\s+buruh|buruh\s+sedunia/i.test(span) && /berlangsung|turun ke jalan|berkumpul|menggelar|ricuh|bentrok|tuntut|menuntut|menolak|tolak|\borasi\b|\bmarch\b|\baksi\b/i.test(span);
     case 'wabah': return identity && /kasus|pasien|terjangkit|keracunan|wabah (?:dbd|campak|kolera|difteri)|kejadian luar biasa/i.test(span);
     case 'listrik padam': return identity && /listrik padam|mati listrik|pemadaman listrik|padam listrik|pln[^.!?]{0,40}blackout/i.test(span);
     case 'phk': return identity && /melakukan|terkena|mengalami|memutus|dirumahkan|pabrik tutup|phk[^.!?]{0,30}\d+/i.test(span);

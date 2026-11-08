@@ -267,24 +267,25 @@ a{color:inherit;text-decoration:none;text-underline-offset:2px}
 }
 .sit-corners{position:absolute;inset:5px;z-index:3;pointer-events:none}
 .sit-corners i{position:absolute;width:15px;height:15px;border:0 solid rgba(244,244,244,.34)}
-.sit-corners .tl{top:0;left:0;border-top-width:1px;border-left-width:1px}
-.sit-corners .tr{top:0;right:0;border-top-width:1px;border-right-width:1px}
-.sit-corners .bl{bottom:0;left:0;border-bottom-width:1px;border-left-width:1px}
-.sit-corners .br{bottom:0;right:0;border-bottom-width:1px;border-right-width:1px}
+.sit-corners .ctl{top:0;left:0;border-top-width:1px;border-left-width:1px}
+.sit-corners .ctr{top:0;right:0;border-top-width:1px;border-right-width:1px}
+.sit-corners .cbl{bottom:0;left:0;border-bottom-width:1px;border-left-width:1px}
+.sit-corners .cbr{bottom:0;right:0;border-bottom-width:1px;border-right-width:1px}
 #sit-globe{position:relative;z-index:2;display:block;width:100%;height:100%;cursor:grab;touch-action:none;user-select:none;-webkit-user-select:none}
 .sit-globe-kpi{
   position:absolute;z-index:4;top:24px;left:12px;right:12px;display:flex;align-items:flex-start;justify-content:space-between;gap:14px;
   pointer-events:none;
 }
-.sit-kpi-main{display:flex;flex-direction:column;gap:2px}
-.sit-kpi-main b{font:600 36px/0.95 var(--sans);letter-spacing:-.035em;font-variant-numeric:tabular-nums;color:#f4f4f4}
-.sit-kpi-main span{font:500 8px/1.2 var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--text3)}
+.sit-kpi-main{display:flex;flex-wrap:wrap;align-items:baseline;column-gap:4px;row-gap:1px}
+.sit-kpi-side{font:600 10px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--text3)}
+.sit-kpi-main b{font:600 40px/1 var(--disp);letter-spacing:-.02em;font-variant-numeric:tabular-nums;color:#f4f4f4}
+.sit-kpi-sub2{flex-basis:100%;font:500 11px/1.4 var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--text)}
 .sit-kpi-sync{display:flex;flex-direction:column;align-items:flex-end;gap:3px;padding-top:3px;text-align:right}
-.sit-kpi-sync span{display:inline-flex;align-items:center;gap:5px;font:600 8px/1 var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--ok)}
-.sit-kpi-sync span::before{content:"";width:5px;height:5px;background:var(--ok);animation:pulse 2s infinite}
+.sit-kpi-sync span{display:inline-flex;align-items:center;gap:6px;font:600 10px/1 var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--ok)}
+.sit-kpi-sync span::before{content:"";width:6px;height:6px;background:var(--ok);animation:pulse 2s infinite}
 .sit-kpi-sync[data-state="stale"] span{color:var(--warn)}
 .sit-kpi-sync[data-state="stale"] span::before{background:var(--warn);animation:none}
-.sit-kpi-sync time{font:400 8px/1 var(--mono);color:var(--text3);font-variant-numeric:tabular-nums;letter-spacing:.03em}
+.sit-kpi-sync time{font:400 10px/1 var(--mono);color:var(--text3);font-variant-numeric:tabular-nums;letter-spacing:.03em}
 .sit-globe-tag{
   position:absolute;z-index:3;top:10px;left:12px;font:600 8px/1 var(--mono);letter-spacing:.13em;text-transform:uppercase;
   color:var(--text3);pointer-events:none;
@@ -329,8 +330,8 @@ a{color:inherit;text-decoration:none;text-underline-offset:2px}
 .sa-low{display:flex;flex-direction:column;gap:4px;margin-top:6px}
 .sa-ago{font:600 7.5px/1 var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--accent);white-space:nowrap}
 .sa-cd{display:flex;gap:2px;width:100%;pointer-events:none}
-.sa-cd i{flex:1;height:5px;background:#da1e28;animation:saSeg .01s steps(1) forwards;animation-delay:calc((9 - var(--n)) * .7s)}
-@keyframes saSeg{to{background:rgba(218,30,40,.2)}}
+.sa-cd i{flex:1;height:5px;background:var(--sa-c,#da1e28);transition:background .18s ease}
+.sa-cd i.done{background:color-mix(in srgb,var(--sa-c,#da1e28) 20%,transparent)}
 .sa-k2{display:block;margin-bottom:5px;font:600 8px/1 var(--mono);letter-spacing:.1em;text-transform:uppercase;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .sa-ft{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:6px}
 .sa-ft .sa-m{margin-top:0}
@@ -376,11 +377,11 @@ a{color:inherit;text-decoration:none;text-underline-offset:2px}
 .smlg-it b{margin-left:auto;font:600 8.5px/1 var(--mono);color:#d6d6d6;font-variant-numeric:tabular-nums}
 .smlg-it[aria-pressed="false"]{opacity:.38}
 .sit-legend-right{
-  position:absolute;z-index:4;right:7px;bottom:8px;display:flex;flex-direction:column;gap:2px;align-items:flex-end;
-  font:500 7px/1.15 var(--mono);letter-spacing:.06em;text-transform:uppercase;color:var(--text3);
+  position:absolute;z-index:4;right:7px;bottom:8px;display:flex;flex-direction:row;gap:4px;align-items:center;
+  font:500 8px/1 var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--text3);
   pointer-events:none;
 }
-.sit-legend-right span{background:rgba(10,10,10,.52);border:1px solid rgba(255,255,255,.06);padding:2px 5px}
+.sit-legend-right span{background:rgba(10,10,10,.52);border:1px solid rgba(255,255,255,.06);padding:3px 6px}
 .cl-h{display:flex;align-items:center;gap:8px;padding:11px 13px 8px;font:600 9px/1 var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--text3)}
 .cl-h::after{content:"";flex:1;height:1px;background:var(--border)}
 .cl-list{display:flex;flex-direction:column;border-bottom:1px solid var(--border)}
@@ -1434,7 +1435,7 @@ button.mp-src{background:none;border-top:0;border-left:0;border-right:0;cursor:p
   display:flex;flex-direction:column;align-items:flex-end;pointer-events:none;
 }
 .cl-toast{
-  pointer-events:auto;position:relative;width:min(340px,calc(100vw - 32px));
+  pointer-events:auto;position:relative;width:min(300px,calc(100vw - 32px));
   padding:8px 10px;background:rgba(31,31,31,.68);border:1px solid var(--border2);
   backdrop-filter:blur(14px) saturate(1.15);-webkit-backdrop-filter:blur(14px) saturate(1.15);
   box-shadow:0 18px 44px rgba(0,0,0,.5);cursor:pointer;
@@ -1476,7 +1477,7 @@ button.mp-src{background:none;border-top:0;border-left:0;border-right:0;cursor:p
 @media (max-width:820px){
   .cl-toasts{left:10px;right:10px;top:24px;align-items:center}
   .cl-tmore{align-self:center}
-  .cl-toast{width:min(340px,calc(100vw - 32px))}
+  .cl-toast{width:min(300px,calc(100vw - 32px))}
 }
 @media (prefers-reduced-motion:reduce){
   *,*::before,*::after{animation:none!important;transition:none!important}
@@ -1635,9 +1636,9 @@ button.mp-src{background:none;border-top:0;border-left:0;border-right:0;cursor:p
     <div class="pb sit-body">
       <div class="sit-mapwrap">
         <canvas id="sit-globe" role="img" aria-label="Globe dunia dengan titik insiden live, bisa di-drag dan di-zoom"></canvas>
-        <div class="sit-corners" aria-hidden="true"><i class="tl"></i><i class="tr"></i><i class="bl"></i><i class="br"></i></div>
+        <div class="sit-corners" aria-hidden="true"><i class="ctl"></i><i class="ctr"></i><i class="cbl"></i><i class="cbr"></i></div>
         <div class="sit-globe-kpi">
-          <div class="sit-kpi-main"><b id="sit-total">—</b><span>insiden · 24 jam</span></div>
+          <div class="sit-kpi-main"><b id="sit-total">—</b><span class="sit-kpi-side">Insiden</span><span id="sit-total-lbl" class="sit-kpi-sub2">—</span></div>
           <div class="sit-kpi-sync"><span id="sit-sync-state">live</span><time id="sit-sync-time">—</time></div>
         </div>
         <div class="sit-globe-tag">Globe · live</div>
@@ -1645,8 +1646,8 @@ button.mp-src{background:none;border-top:0;border-left:0;border-right:0;cursor:p
         <div class="sit-pop" id="sit-pop" hidden></div>
         <div class="sit-alert" id="sit-alert" hidden></div>
         <div class="sit-legend-left" id="sit-map-legend" role="group" aria-label="Filter kategori pada globe"></div>
-        <div class="sit-legend-right" aria-hidden="true">
-          <span>drag putar</span><span>scroll zoom</span><span>klik titik buka berita</span>
+        <div class="sit-legend-right">
+          <span>geser</span><span>zoom</span><span>klik</span>
         </div>
       </div>
       <div class="cl-h" id="cl-h">Klaster aktif</div>
@@ -2039,11 +2040,12 @@ paintCountdown();
    01 · SITUASI NASIONAL
    ============================================================ */
 const CAT_ORDER = ['demo','fire','flood','disaster','insiden','siber','kriminal','kesehatan','ekonomi','politik'];
-const CAT_COLOR = { demo:'#f1c21b', fire:'#da1e28', flood:'#4589ff', disaster:'#be95ff', insiden:'#8d8d8d', siber:'#c8f04b', kriminal:'#ff9f43', kesehatan:'#ff6b9d', ekonomi:'#3ddc97', politik:'#6ea8fe' };
-const CAT_LABEL = { demo:'Demo', fire:'Kebakaran', flood:'Banjir', disaster:'Bencana', insiden:'Insiden', siber:'Siber', kriminal:'Kriminal', kesehatan:'Kesehatan', ekonomi:'Ekonomi', politik:'Politik' };
-const CAT_GEO = { demo:1, fire:1, flood:1, disaster:1, insiden:1, kriminal:1, kesehatan:1 };
+const CAT_COLOR = { demo:'#f1c21b', fire:'#da1e28', flood:'#4589ff', disaster:'#be95ff', insiden:'#8d8d8d', siber:'#c8f04b', kriminal:'#ff9f43', kesehatan:'#ff6b9d', ekonomi:'#3ddc97', politik:'#6ea8fe', gempa:'#ff5a4e', gunung:'#ff9f0a' };
+const CAT_LABEL = { demo:'Demo', fire:'Kebakaran', flood:'Banjir', disaster:'Bencana', insiden:'Insiden', siber:'Siber', kriminal:'Kriminal', kesehatan:'Kesehatan', ekonomi:'Ekonomi', politik:'Politik', gempa:'Gempa', gunung:'Gunung Api' };
+const CAT_GEO = { demo:1, fire:1, flood:1, disaster:1, insiden:1, siber:1, kriminal:1, kesehatan:1, ekonomi:1, politik:1 };
+const LEGEND_SUB = ['gempa','gunung'];   // sub-insiden sensor (bukan kategori berita) — tetap bisa difilter di legend
 const CAT_RE = {
-  demo:/(\bdemo\b(?!\s*(aplikasi|game|produk|sistem|fitur|cara|tutorial|masak|memasak|kuliner|spesial|special))(?<!cooking demo|cooking\s+demo)|unjuk rasa|aksi massa|protes|mogok|kerusuhan|bentrok|\bmassa\b|long march|audiensi|women'?s\s+march|international\s+women'?s\s+day|hari\s+buruh|buruh\s+sedunia|labour\s+day|labor\s+day)/i,
+  demo:/(\bdemo\b(?!\s*(aplikasi|game|produk|sistem|fitur|cara|tutorial|masak|memasak|kuliner|spesial|special))(?<!cooking demo|cooking\s+demo)|unjuk rasa|aksi massa|protes|mogok|kerusuhan|bentrok|long march|women'?s\s+march|international\s+women'?s\s+day|hari\s+buruh|buruh\s+sedunia|labour\s+day|labor\s+day)/i,
   fire:/(kebakaran|karhutla|kebakaran hutan|kebakaran lahan|terbakar|kobaran api|asap tebal)/i,
   flood:/(banjir|genangan|longsor|tanah longsor|cuaca ekstrem|hujan deras|\brob\b)/i,
   disaster:/(gempa|tsunami|erupsi|letusan|bencana|evakuasi|korban jiwa|ambruk|tenggelam|hanyut|banjir bandang)/i,
@@ -2051,10 +2053,10 @@ const CAT_RE = {
   siber:/(peretasan|peretas|hacker|ransomware|phishing|malware|ddos|botnet|zero[- ]day|n[- ]?day|\bcve[- ]?\d{4}|exploit|dieksploitasi|kerentanan|vulnerabilit|backdoor|spyware|skimming|carding|cryptojack|deepfake|deface|defacement|vishing|smishing|sextortion|kebocoran data|bocor data|data breach|pencurian data|akun dibajak|akun palsu|scam|penipuan online|pinjol ilegal|investasi bodong|bssn|badan siber|serangan siber|serangan cyber|insiden keamanan|gangguan (layanan|sistem|jaringan|aplikasi|infrastruktur)|layanan lumpuh|situs lumpuh|maintenance keamanan|uu pdp|\bpdp\b|dompet kripto|infrastruktur kritis|apt\d{1,2}\b|command and control|leak site|akun (media sosial|instagram|facebook|whatsapp|telegram|x|tiktok) (dibajak|diretas|dibobol))/i,
   kriminal:/(penembakan|pembunuhan|pengeroyokan|begal|curat|pencurian|perampokan|penangkapan|ditangkap|tersangka|kabur dari lapas|napi kabur|terorisme|radikalisasi|suap|gratifikasi|penipuan|narkoba|psikotropika|penculikan|perkosaan|rudapaksa)/i,
   kesehatan:/(wabah|\bklb\b|kejadian luar biasa|dbd|\bdhf\b|demam berdarah|covid|korona|influenza|\bflu\b|mpox|cacar monyet|campak|morbili|cacar air|tangan kaki mulut|hfmd|leptospirosis|tifus|thypoid|typhoid|kolera|rabies|gila anjing|anjing gila|anthrax|difteri|polio|meningitis|meningokokus|ensefalitis|chikungunya|cikungunya|zika|filariasis|kaki gajah|hepatitis|\bhiv\b|\baids\b|kusta|lepra|\bispa\b|pneumonia|bronkopneumonia|bronkitis|hmpv|human metapneumovirus|\brsv\b|\bmers\b|ebola|marburg|lassa|west nile|h5n1|avian influenza|\btbc\b|tuberkulosis|\btb\b|diare|disentri|scabies|kudis|keracunan|rotavirus|flu burung|h1n1|malaria|gagal ginjal|gizi buruk|busung lapar|malnutrisi|donor darah|bank darah|transfusi darah|stok darah|obat palsu|talasemia|hemofilia|stunting|obesitas|vaksin|vaksinasi|imunisasi|kemenkes|bpom|faskes|puskesmas|kanker)/i,
-  ekonomi:/(phk|rupiah|kurs dollar|inflasi|defisit|apbn|apbd|ihsg|bursa efek|saham|emiten|dividen|stock split|buyback|right issue|utang negara|subsidi|bbm|pertamax|solar|listrik padam|padam listrik|pemadaman listrik|pertamina|\bpln\b|ojk|bank indonesia|umk\b|ump\b|thr\b|belanja negara|bea cukai|ekspor|impor|suku bunga|bappebti|kripto|bitcoin|pinjol|fintech|paylater|harga (cabai|beras|daging|minyak|emas))/i,
-  politik:/(pilpres|pilkada|pilgub|pilbup|pilgici|pemilu|\bkpu\b|kpud|bawaslu|capres|cawapres|partai politik|caleg|capil|\bdpr\b|\bdprd\b|parlemen|fraksi|koalisi|oposisi|pelantikan|menteri|wakil presiden|\bistana\b|senayan|bansos|rapat paripurna|mahkamah konstitusi|impeachment|majelis kehormatan|reshuffle|menko|kadin|perang|konflik|invasi|aneksasi|pendudukan|gencatan senjata|ultimatum|kudeta|pemberontakan|separatis|genosida|blokade|embargo|sandera|pertempuran|peluru kendali|\brudal\b|\bdron\b|serangan udara|perjanjian damai|perundingan damai|program mbg|makan bergizi)/i
+  ekonomi:/(phk|rupiah|kurs dollar|inflasi|defisit|apbn|apbd|ihsg|bursa efek|saham|emiten|dividen|stock split|buyback|right issue|utang negara|subsidi|\bbbmm?\b|pertamax|solar(?!\s*panel)|listrik padam|padam listrik|pemadaman listrik|pertamina|\bpln\b|ojk|bank indonesia|umk\b|ump\b|thr\b|belanja negara|bea cukai|ekspor|impor|suku bunga|bappebti|kripto|bitcoin|pinjol|fintech|paylater|harga (cabai|beras|daging|minyak|emas))/i,
+  politik:/(pilpres|pilkada|pilgub|pilbup|pilgici|pemilu|\bkpu\b|kpud|bawaslu|capres|cawapres|partai politik|caleg|capil|\bdpr\b|\bdprd\b|parlemen|fraksi|koalisi|oposisi|pelantikan|menteri|wakil presiden|\bistana\b|senayan|bansos|rapat paripurna|mahkamah konstitusi|impeachment|majelis kehormatan|reshuffle|menko|kadin|\bperang\b|\bkonflik\b|\binvasi\b|aneksasi|pendudukan|gencatan senjata|ultimatum|kudeta|pemberontakan|separatis|genosida|blokade|embargo|sandera|pertempuran|peluru kendali|\brudal\b|\bdron\b|serangan udara|perjanjian damai|perundingan damai|program mbg|makan bergizi)/i
 };
-const CAT_SKIP = /(pascabencana|pascagempa|pascabanjir|mitigasi|kesiapsiagaan|potensi bencana|rawan bencana|risiko bencana|kajian risiko|simulasi|edukasi|sosialisasi|pelatihan|antisipasi|siaga bencana|hadapi bencana|menghadapi bencana|peringatan dini|early warning|asuransi|operasi patuh|imbau|himbau|ingatkan|waspada|waspadai|ranperda|perda|godok|korupsi|dana bencana|modus|ruu|boikot dirinya|joget|cooking demo|demo (masak|memasak|kuliner|spesial)|liga|top skor|voli|sepak bola|piala|kualifikasi|gaun|mahalini|fashion|film|sinema|bioskop|trailer|teaser|poster|nonton|netflix|zombie|mayat hidup|hantu|sekuel|layar lebar|sinetron|sinetrik|penghargaan|jasa raharja|warisan|turun-temurun|sepanjang 20\d\d|berdampak ke ekonomi|brasil|brazil|amerika serikat|filipina|thailand|malaysia|korea|jepang|tiongkok|china|inggris|prancis|perancis|paris|jerman|australia|india|pakistan|iran|israel|palestina|ukraina|rusia|gaza)/i;
+const CAT_SKIP = /(pascabencana|pascagempa|pascabanjir|mitigasi|kesiapsiagaan|potensi bencana|rawan bencana|risiko bencana|kajian risiko|simulasi|edukasi|sosialisasi|pelatihan|antisipasi|siaga bencana|hadapi bencana|menghadapi bencana|peringatan dini|early warning|asuransi|operasi patuh|imbau|himbau|ingatkan|waspada|waspadai|ranperda|perda|godok|korupsi|dana bencana|modus|ruu|boikot dirinya|perang harga|perang dagang|joget|cooking demo|demo (masak|memasak|kuliner|spesial)|liga|top skor|voli|sepak bola|piala|kualifikasi|gaun|mahalini|fashion|film|sinema|bioskop|trailer|teaser|poster|nonton|netflix|zombie|mayat hidup|hantu|sekuel|layar lebar|sinetron|sinetrik|penghargaan|jasa raharja|warisan|turun-temurun|sepanjang 20\d\d|berdampak ke ekonomi|brasil|brazil|amerika serikat|filipina|thailand|malaysia|korea|jepang|tiongkok|china|inggris|prancis|perancis|paris|jerman|australia|india|pakistan|iran|israel|palestina|ukraina|rusia|gaza)/i;
 const catOfTitle = t => {
   if (CAT_SKIP.test(t)) return '';
   for (const c of CAT_ORDER) if (CAT_RE[c] && CAT_RE[c].test(t)) return c;
@@ -2083,7 +2085,8 @@ let clSeen = null, clSeeded = false; const clToastQ = new Map(), clToastOrder = 
 let PULSE = [], DIS_PULSE = [], globeReady = false, globeCtx = null, globeIdn = null, globeProv = null, globeRaf = 0, globeLast = 0, globePoints = [], globeNodePoints = [], globeProj = null, globeCenter = [118, 0];
 let globeActInc = '', globeActNode = '';   // id titik/node yang lagi di-hover — digambar sebagai ring highlight di canvas
 let globeShakeX = 0, globeShakeY = 0;       // offset screen shake — render digeser, hit-test harus ikut
-const legendOn = Object.fromEntries(Object.keys(CAT_GEO).map(c => [c, true]));
+const legendOn = { ...Object.fromEntries(Object.keys(CAT_GEO).map(c => [c, true])), gempa: true, gunung: true };
+const legendKeyOf = p => p.sub === 'gempa' ? 'gempa' : p.sub === 'volcano' ? 'gunung' : p.kind;   // wire-gempa & BMKG-gempa toggle bareng via key 'gempa'
 const REDUCED = matchMedia('(prefers-reduced-motion: reduce)').matches;
 const view = { lon: 118, lat: -2.5, zoom: 2.2 };
 const ZOOM_MAX = 48;   // cukup dalam untuk inspeksi node/kab; zoomTaper + hit-floor menjaga dot & node tetap terlihat/terklik
@@ -2225,7 +2228,7 @@ function focusCandidates(){
   };
   return (PULSE || []).concat(DIS_PULSE || []).filter(p => {
     if (p.fixed || typeof p.la !== 'number' || typeof p.lo !== 'number') return false;
-    if (legendOn[p.kind] === false) return false;   // kategori dimatikan di legend = dot tidak dirender → jangan fokus ke titik invisible
+    if (legendOn[legendKeyOf(p)] === false) return false;   // kategori dimatikan di legend = dot tidak dirender → jangan fokus ke titik invisible
     if (!(p.la > -12 && p.la < 8 && p.lo > 92 && p.lo < 145)) return false;   // bbox Indonesia
     if (!p.ts || now - p.ts > winOf(p) || p.ts > now + 5 * 60e3) return false;
     if (p.sub === 'gempa') { const m = magOf(p); if (m != null && m < MAG_MIN_FOCUS) return false; }
@@ -2312,7 +2315,8 @@ function syncGlobeSoon(){
 }
 let linkItem = null;
 function setLinkItem(p){ linkItem = p; }
-let sitAlertTimer = 0, sitAlertTimer2 = 0, sitAlertUrl = '';
+let sitAlertTimer2 = 0, sitAlertUrl = '';
+let saCdIv = 0, saCdAcc = 0, saCdT0 = 0, saCdPaused = false, saHiding = false;   // countdown bar & dismiss share SATU clock — tidak bisa desync
 function showSitAlert(p){
   const el = $('#sit-alert'); if (!el) return;
   const cat = p.kind || 'insiden';
@@ -2329,21 +2333,30 @@ function showSitAlert(p){
   </div>`;
   sitAlertUrl = p.url || '';
   el.hidden = false;
+  el.classList.remove('hide');   // toast baru saat sisa window .hide 320ms — jangan sampai alert baru invisible 10s
   requestAnimationFrame(() => el.classList.add('show'));
-  clearTimeout(sitAlertTimer); clearTimeout(sitAlertTimer2);   // timer2 = inner hide — toast baru tidak boleh di-hide sisa timer lama
-  sitAlertTimer = setTimeout(() => {
-    el.classList.add('hide');
-    sitAlertTimer2 = setTimeout(() => {
-      el.hidden = true; el.classList.remove('hide','show'); setLinkItem(null);
-      // toast selesai → SELALU pulang ke HOME_VIEW (zoom default), bahkan kalau
-      // user baru saja zoom/manual navigate. Hanya skip kalau user SEDANG
-      // berinteraksi (drag/pinch aktif) atau panel peta terbuka — jangan
-      // merebut kontrol di tengah gesture.
-      if (globeReady && !mapOpen && ptrs.size === 0 && !gesture) {
-        flyTo(HOME_VIEW.lat, HOME_VIEW.lon, HOME_VIEW.zoom, 'home');
-      }
-    }, 320);
-  }, 10000);
+  clearTimeout(sitAlertTimer2); clearInterval(saCdIv);
+  const cdSegs = [...el.querySelectorAll('.sa-cd i')];
+  saCdAcc = 0; saCdT0 = Date.now(); saCdPaused = false; saHiding = false;
+  const saPaint = () => {
+    const elp = saCdAcc + (saCdPaused ? 0 : Date.now() - saCdT0);
+    for (let i = 0; i < cdSegs.length; i++) if (elp >= (cdSegs.length - 1 - i) / (cdSegs.length - 1) * 9700) cdSegs[i].classList.add('done');
+    if (elp >= 10000 && !saHiding) {
+      saHiding = true; clearInterval(saCdIv);
+      el.classList.add('hide');
+      sitAlertTimer2 = setTimeout(() => {
+        el.hidden = true; el.classList.remove('hide','show'); setLinkItem(null);
+        // toast selesai → SELALU pulang ke HOME_VIEW (zoom default), bahkan kalau
+        // user baru saja zoom/manual navigate. Hanya skip kalau user SEDANG
+        // berinteraksi (drag/pinch aktif) atau panel peta terbuka — jangan
+        // merebut kontrol di tengah gesture.
+        if (globeReady && !mapOpen && ptrs.size === 0 && !gesture) {
+          flyTo(HOME_VIEW.lat, HOME_VIEW.lon, HOME_VIEW.zoom, 'home');
+        }
+      }, 320);
+    }
+  };
+  saCdIv = setInterval(saPaint, 120); saPaint();
 }
 (function(){
   const el = $('#sit-alert');
@@ -2351,6 +2364,15 @@ function showSitAlert(p){
   el.addEventListener('click', () => {
     if (!sitAlertUrl) return;
     rdOpen(sitAlertUrl, null, true, '').catch(() => window.open(sitAlertUrl, '_blank', 'noopener'));
+  });
+  // hover pause: bekukan elapsed clock — bar DAN dismiss ikut pause bareng
+  el.addEventListener('mouseenter', () => {
+    if (saCdPaused) return;
+    saCdPaused = true; saCdAcc += Date.now() - saCdT0;
+  });
+  el.addEventListener('mouseleave', () => {
+    if (!saCdPaused) return;
+    saCdPaused = false; saCdT0 = Date.now();
   });
 })();
 /* ---------- sebar titik se-lokasi: dalam kilometer & hanya di daratan ----------
@@ -2501,7 +2523,7 @@ function drawGlobe(now){
   }
   for (const p of (PULSE || []).concat(DIS_PULSE || [])) {
     if (p.fixed || typeof p.la !== 'number' || typeof p.lo !== 'number') continue;
-    if (legendOn[p.kind] === false) continue;
+    if (legendOn[legendKeyOf(p)] === false) continue;
     if (d3.geoDistance([p.lo, p.la], globeCenter) >= Math.PI / 2 - 0.03) continue;
     const xy = proj([p.lo, p.la]);
     if (!xy) continue;
@@ -2796,7 +2818,7 @@ function ptrEnd(e){
       globeSuppressClick = performance.now();
       // lempar inertia dari velocity terakhir — flick keluar = globe terus muter halus
       if (gesture.mode === 'rotate' && gesture.vx !== undefined && Math.hypot(gesture.vx, gesture.vy) > 0.08)
-        globeVel = { vx: -gesture.vx * 0.32, vy: gesture.vy * 0.30 };
+        globeVel = { vx: -gesture.vx * 0.22, vy: gesture.vy * 0.20 };
     }
     // klik tanpa drag (moved<=8) bukan interaksi — tap-to-open-reader jangan reset idle clock
     if (gesture && gesture.moved > 8) lastGestEnd = performance.now();
@@ -2839,9 +2861,9 @@ function bindGlobeEvents(){
     if (gesture.mode === 'rotate' && ptrs.size === 1) {
       const dx = e.clientX - gesture.x, dy = e.clientY - gesture.y;
       gesture.moved += Math.abs(dx) + Math.abs(dy);
-      view.lon = gesture.startLon - dx * 0.32;
+      view.lon = gesture.startLon - dx * 0.20;
       view.lon = ((view.lon + 540) % 360) - 180;   // keep [-180,180] — proyeksi periodik, tidak ada lompatan visual di antimeridian
-      view.lat = clampN(gesture.startLat + dy * 0.30, -64, 64);
+      view.lat = clampN(gesture.startLat + dy * 0.18, -64, 64);
       // velocity px/ms (EMA) → bahan inertia saat jari lepas
       const nowM = performance.now(), dtm = nowM - (gesture.pt || nowM);
       if (dtm > 0 && dtm < 120) {
@@ -2928,7 +2950,7 @@ function renderMapLegend(st){
   const wasOpen = !!(menuEl && menuEl.classList.contains('open'));
   $('#sit-map-legend').innerHTML =
     `<button class="smlg-btn" type="button" aria-expanded="${wasOpen ? 'true' : 'false'}">Filter <span class="cm">${on}/${total}</span><i class="cr"></i></button>` +
-    `<div class="smlg-menu${wasOpen ? ' open' : ''}">` + CAT_ORDER.filter(c => CAT_GEO[c]).map(c =>
+    `<div class="smlg-menu${wasOpen ? ' open' : ''}">` + [...CAT_ORDER.filter(c => CAT_GEO[c]), ...LEGEND_SUB].map(c =>
       `<button class="smlg-it" type="button" data-cat="${c}" aria-pressed="${legendOn[c] ? 'true' : 'false'}"><i style="background:${CAT_COLOR[c]}"></i>${CAT_LABEL[c]}<b>${st[c] || 0}</b></button>`).join('') +
     `</div>`;
 }
@@ -3095,6 +3117,7 @@ function clToastActivate(){
   st.active = true; st.paused = false; st.t0 = Date.now();
   clToastBar(el, st.left, st.barPct);
   st.t = setTimeout(() => clToastOut(el), st.left);
+  if (clToastsEl && clToastsEl.classList.contains('hov')) clToastPause(el);   // stack sedang di-hover → toast baru langsung pause
 }
 function clToastBar(el, ms, pct){
   const b = el.querySelector('.cl-cd'); if (!b) return;
@@ -3176,7 +3199,11 @@ function renderSituation(){
   st.gempa = (DIS_PULSE || []).filter(p => p.sub === 'gempa').length
     + (PULSE || []).filter(p => p.sub === 'gempa' && typeof p.la === 'number').length;
   st.gunung = (DIS_PULSE || []).filter(p => p.sub === 'volcano').length;
-  $('#sit-total').textContent = SIT.total || 0;
+  const sitTotal = SIT.total || 0;
+  const sitLocated = (typeof SIT.located === 'number' && isFinite(SIT.located)) ? SIT.located : 0;
+  $('#sit-total').textContent = sitLocated > 0 ? sitLocated : sitTotal;
+  const sitLbl = $('#sit-total-lbl');
+  if (sitLbl) sitLbl.textContent = sitLocated > 0 ? `${sitTotal} berita · 24 jam` : '24 jam';
   renderMapLegend(st);
   $('#dmeta').textContent = (SIT.total || 0) + ' insiden';
   const syncBox = document.querySelector('.sit-kpi-sync');
@@ -3943,9 +3970,12 @@ const srcState = new Map();   // id -> { ok, via }
 // Dipakai topicOK, renderNews, leadHtml, newsHtml, renderTk, pullBreaking.
 const newsCatOf = h => {
   const cur = h && h.assessment && h.assessment.version === SitrepSignals.VERSION;
-  return (cur ? (h.cat || h.feedTopic) : (h.cat || catOfTitle(h.title))) || '';
+  // feedTopic TIDAK dipakai untuk label: feed GNEWS longgar mewariskan topik
+  // ke item yang classifier tolak (mis. artikel golf → 'demo'). Kalau classifier
+  // bilang kosong, labelnya kosong — item tetap tampil di "Semua" tanpa badge.
+  return cur ? (h.cat || '') : ((h.cat || catOfTitle(h.title)) || '');
 };
-const newsCat = h => newsCatOf(h) || 'insiden';
+const newsCat = h => newsCatOf(h);
 const topicOK = h => !!newsCatOf(h);
 function renderCatbar(){
   const ids = ['semua', ...CAT_ORDER];
@@ -4023,7 +4053,7 @@ function leadHtml(h, imageUrl = '', isLatest = true){
   const desc = h.desc && h.desc.length > 200 ? h.desc.slice(0, 200).replace(/\s+\S*$/, '') + '…' : h.desc;
   return `<a class="lead" data-cat="${cat}" href="${esc(h.url)}" target="_blank" rel="noopener">
     ${imageUrl ? `<div class="lead-img"><img src="${esc(imageUrl)}" alt="" loading="eager" decoding="async" referrerpolicy="no-referrer" onerror="this.parentNode.remove()"></div>` : ''}
-    <div class="lead-t"><span class="lead-cat">${CAT_LABEL[cat]}</span><span class="lead-live">${isLatest ? 'Terbaru' : 'Sorotan'}</span><span class="lead-meta-r"><span class="lead-by">${esc(h.pub || h.src)}</span><time>${esc(h.ts ? wibTime(h.ts) : '')} WIB</time></span></div>
+    <div class="lead-t">${cat ? `<span class="lead-cat">${CAT_LABEL[cat]}</span>` : ''}<span class="lead-live">${isLatest ? 'Terbaru' : 'Sorotan'}</span><span class="lead-meta-r"><span class="lead-by">${esc(h.pub || h.src)}</span><time>${esc(h.ts ? wibTime(h.ts) : '')} WIB</time></span></div>
     <h3>${esc(deEmoji(h.title))}</h3>
     ${desc && desc.length > 25 ? `<p class="lead-ex">${esc(deEmoji(desc))}</p>` : descPending(h) ? `<p class="lead-ex-sk nw-ex-sk" aria-hidden="true"><span class="nw-sk-line"></span><span class="nw-sk-line"></span><span class="nw-sk-line"></span></p>` : ''}
   </a>`;
@@ -4110,7 +4140,7 @@ function newsHtml(h, full){
   const cat = newsCat(h);
   // kartu list tanpa thumbnail — gambar hanya untuk lead hero
   return `<a class="nw${full ? ' nw-full' : ''}" data-cat="${cat}" href="${esc(h.url)}" target="_blank" rel="noopener">
-    <div class="nw-top"><span class="nw-cat">${CAT_LABEL[cat]}</span><time>${esc(h.ts ? wibTime(h.ts) : '')}</time></div>
+    <div class="nw-top">${cat ? `<span class="nw-cat">${CAT_LABEL[cat]}</span>` : ''}<time>${esc(h.ts ? wibTime(h.ts) : '')}</time></div>
     <div class="nw-src">${esc(tkPub(h.pub) || h.src)}${isNew ? '<span class="new">Baru</span>' : ''}${h.n > 1 ? `<span class="dup-n" title="${esc([...h.srcs].filter(Boolean).join(', '))}">×${h.n} artikel</span>` : ''}</div>
     <h3>${esc(deEmoji(h.title))}</h3>
     ${h.desc && h.desc.length > 25 ? `<p class="nw-ex">${esc(deEmoji(h.desc))}</p>` : descPending(h) ? `<p class="nw-ex-sk" aria-hidden="true"><span class="nw-sk-line"></span><span class="nw-sk-line"></span></p>` : ''}
@@ -4633,7 +4663,7 @@ const tkPub = v => {
 };
 const renderTk = (h, isNew) => {
   const cat = newsCat(h);
-  return `<a class="tk${isNew ? ' tk-new' : ''}" data-cat="${cat}" href="${esc(h.url)}" target="_blank" rel="noopener" title="${esc(h.label || CAT_LABEL[cat])}">` +
+  return `<a class="tk${isNew ? ' tk-new' : ''}" data-cat="${cat}" href="${esc(h.url)}" target="_blank" rel="noopener" title="${esc(h.label || CAT_LABEL[cat] || '')}">` +
     `<svg class="ic tk-sig" aria-hidden="true"><use href="${TK_SIG[cat] || '#i-pin'}"></use></svg>` +
     `<span class="tk-time">${esc(h.ts ? wibTime(h.ts) : '')}</span>` +
     `<span class="tk-t">${esc(deEmoji(h.title))}</span>` +
@@ -5127,7 +5157,7 @@ async function pullCctv(){
 /* ============================================================
    05 · PETA INSIDEN (Leaflet + heat, data wire + CCTV + TomTom)
    ============================================================ */
-const KIND_COLOR = { demo:'#f1c21b', fire:'#da1e28', flood:'#4589ff', disaster:'#be95ff', insiden:'#8d8d8d', node:'#525252' };
+const KIND_COLOR = { ...CAT_COLOR, node:'#525252' };   // satukan dgn CAT_COLOR — kategori non-geo tetap berwarna di peta
 const KIND_LABEL = { demo:'Demo', fire:'Kebakaran', flood:'Banjir', disaster:'Bencana', insiden:'Insiden', node:'Node tetap' };
 const TT_CAT_LABEL = { 0:'Insiden', 1:'Kecelakaan', 2:'Kabut', 3:'Kondisi Berbahaya', 4:'Hujan', 5:'Es', 6:'Kemacetan', 7:'Jalur Ditutup', 8:'Jalan Ditutup', 9:'Perbaikan Jalan', 10:'Angin Kencang', 11:'Banjir', 14:'Kendaraan Mogok' };
 // palet insiden peta (KIND_COLOR), bukan hijau khas TomTom: merah=parah, kuning=waspada, abu=info

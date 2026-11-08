@@ -73,8 +73,12 @@ def main():
                 time.sleep(min(60.0, PACE * (2 ** consec_rl)))  # backoff eksponensial
             return True
 
-        for q in queries:
+        for i, q in enumerate(queries):
             if halt:
+                # sisa query diskip karena rate-limit: laporkan supaya server
+                # tidak menganggap topiknya sudah ter-fetch
+                for q2 in queries[i:]:
+                    errs.append({"q": q2, "err": "skipped: rate-limit"})
                 break
             try:
                 found = client.search(q, limit=20)
@@ -95,8 +99,10 @@ def main():
                     errs.append({"q": q, "err": "item: %s: %s" % (type(exc).__name__, exc)})
             time.sleep(PACE)
 
-        for u in profiles:
+        for i, u in enumerate(profiles):
             if halt:
+                for u2 in profiles[i:]:
+                    errs.append({"q": "@" + u2, "err": "skipped: rate-limit"})
                 break
             try:
                 found = client.posts(u, 80)   # posts() punya paginasi — 80 post/profil per siklus

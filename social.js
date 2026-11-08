@@ -99,9 +99,9 @@ const SOC_LOCAL_RE = /(indonesia|\bwni\b|jakarta|jabar|jateng|jatim|jawa|sumater
 
 const SOC_TOPICS = [
   { id: 'demo', local: true,
-    pos: /(unjuk rasa|demonstrasi|demonstran|pengunjuk rasa|aksi massa|\bdemo\b|women'?s\s+march|international\s+women'?s\s+day|hari\s+buruh|buruh\s+sedunia|labour\s+day|labor\s+day|orasi|ricuh|gas air mata|water cannon|buruh mogok|\bkspi\b|\bfspi\b|aksi buruh|reformasi|turun ke jalan|may day|long march|barikade|tuntutan mahasiswa)/i,
+    pos: /(unjuk rasa|demonstrasi|demonstran|pengunjuk rasa|aksi massa|\bdemo\b|women'?s\s+march|international\s+women'?s\s+day|hari\s+buruh|buruh\s+sedunia|labour\s+day|labor\s+day|\borasi\b|\bricuh\b|gas air mata|water cannon|buruh mogok|\bkspi\b|\bfspi\b|aksi buruh|\breformasi\b|turun ke jalan|\bmay day\b|long march|barikade|tuntutan mahasiswa)/i,
     strong: /(unjuk rasa|demonstrasi|demonstran|pengunjuk rasa|aksi massa|women'?s\s+march|international\s+women'?s\s+day|hari\s+buruh|buruh\s+sedunia|labour\s+day|labor\s+day)/i,   // tanpa ini, kata "demo" polos butuh konteks
-    ctx: /(tuntut|tolak|mahasiswa|\bbem\b|buruh|ojol|\bdpr\b|dprd|gedung|polisi|aparat|gas air mata|\baksi\b|\bmassa\b|orasi|turun ke jalan|spanduk|ricuh|bentrok|rusuh|ditangkap|diamankan|bubarkan|barikade|molotov|water cannon|kapolda|kapolres|reformasi|pemerintah|istana|patung kuda|march|aksi damai|long march)/i,
+    ctx: /(tuntut|tolak|mahasiswa|\bbem\b|buruh|ojol|\bdpr\b|dprd|gedung|polisi|aparat|gas air mata|\baksi\b|\bmassa\b|\borasi\b|turun ke jalan|spanduk|\bricuh\b|bentrok|rusuh|ditangkap|diamankan|bubarkan|barikade|molotov|water cannon|kapolda|kapolres|\breformasi\b|pemerintah|istana|patung kuda|\bmarch\b|aksi damai|long march)/i,
     neg: /(demo (lagu|musik|reel|reels|app|apps|aplikasi|akun|produk|plane|game|beat|tape|masak|memasak|cooking|vokal|record|rekaman|day|link|version|ui|web|website|bot|trading)|free demo|live demo|cooking demo|demonstrasi (produk|alat|masak|memasak|fitur)|happy\s+(labor|labour|international\s+women'?s)\s+day|selamat\s+(hari buruh|hari perempuan|international women'?s day)|\bdemo\b.{0,20}#(music|musik|beat))/i,
     x: ['(unjuk rasa OR demonstrasi OR "aksi massa" OR demonstran) -filter:replies',
         'demo (mahasiswa OR buruh OR ojol OR DPR OR tuntutan OR ricuh OR polisi) -filter:replies'],
@@ -195,7 +195,7 @@ const SOC_TOPICS = [
     x: ['(pemilu OR pilkada OR pilpres OR "partai politik" OR caleg OR DPR OR kabinet OR reshuffle OR menteri) -filter:replies'],
     th: ['pemilu', 'pilkada', 'pilpres', 'DPR', 'kabinet', 'reshuffle'] },
   { id: 'konflik', local: true,
-    pos: /(perang|konflik|invasi|aneksasi|pendudukan|gencatan senjata|ultimatum|kudeta|pemberontakan|separatis|genosida|blokade|embargo|sandera|pembajakan|pertempuran|darurat militer|darurat sipil|mobilisasi|milisi|paramiliter|peluru kendali|\brudal\b|\bdrone\b|\bdron\b|serangan udara|serangan rudal|\bbom\b|granat|artileri|\btni\b|\btentara\b|militer|perjanjian damai|perundingan damai)/i,
+    pos: /(\bperang\b|\bkonflik\b|\binvasi\b|aneksasi|pendudukan|gencatan senjata|ultimatum|kudeta|pemberontakan|separatis|genosida|blokade|embargo|sandera|pembajakan|pertempuran|darurat militer|darurat sipil|mobilisasi|milisi|paramiliter|peluru kendali|\brudal\b|\bdrone\b|\bdron\b|serangan udara|serangan rudal|\bbom\b|granat|artileri|\btni\b|\btentara\b|militer|perjanjian damai|perundingan damai)/i,
     // "perang harga" = sale; "konflik batin/rumah tangga" = personal; "bom waktu/saraf" = bukan senjata
     neg: /(perang harga|perang (saudara|dagang|harga|dunia ketiga|polusi|sampah|hati|jiwa|batin|pendapat|online|dunia maya|netizen|gosip)|konflik (batin|psikologis|rumah tangga|hukum|personal)|bom (wacana|waktu|tank|mobil|rakit|dekat|saraf)|film|sinema|bioskop|trailer|teaser|poster|nonton|netflix|zombie|sinetron|sinetrik|dirgahayu|kami (akan |sedang )?melaksanakan|wajib hijrah|jauhi yang kafir|khalifahah)/i,
     x: ['(perang OR "gencatan senjata" OR ultimatum OR invasi OR aneksasi OR kudeta OR "perjanjian damai" OR "darurat militer") -filter:replies'],
@@ -285,7 +285,7 @@ const SOC_TOPICS = [
     x: ['(kereta api OR "delay penerbangan" OR "penerbangan dibatalkan" OR "jalan tol" OR mudik OR ojol OR TransJakarta OR MRT OR KRL OR angkot OR LRT OR "kapal feri" OR "batal mudik" OR dermaga OR "tol macet") -filter:replies'],
     th: ['kereta api', 'delay penerbangan', 'jalan tol', 'mudik', 'ojol', 'TransJakarta', 'MRT', 'KRL', 'LRT', 'angkot', 'penerbangan dibatalkan', 'tol macet', 'kapal feri', 'batal mudik', 'dermaga'] },
   { id: 'pendidikan', local: true,
-    pos: /(ukt|biaya kuliah tunggal|beasiswa (dipotong|batal|ditolak|gelombang)|guru (honorer|pppk)|keracunan (kantin|sekolah|siswa|mahasiswa|mbg|massal)|murid (pingsan|tenggelam|meninggal|kecelakaan)|siswa (pingsan|tenggelam|meninggal|keracunan|kecelakaan)|mahasiswa (pingsan|tenggelam|meninggal|keracunan|demo|unjuk rasa|demonstrasi)|sekolah (kebakaran|longsor|ambruk|ditutup|runtuh|tenggelam)|kampus (kebakaran|longsor|ambruk)|snbt|sbmptn|kurikulum merdeka|\bpppk\b|\bcpns\b|\bcasn\b|\bspp\b|lpdp|kip kuliah|sekolah gratis)/i,
+    pos: /(ukt|biaya kuliah tunggal|beasiswa (dipotong|batal|ditolak|gelombang)|guru (honorer|pppk)|keracunan (kantin|sekolah|siswa|mahasiswa|mbg|massal)|murid (pingsan|tenggelam|meninggal|kecelakaan)|siswa (pingsan|tenggelam|meninggal|keracunan|kecelakaan)|mahasiswa (pingsan|tenggelam|meninggal|keracunan|\bdemo\b|unjuk rasa|demonstrasi)|sekolah (kebakaran|longsor|ambruk|ditutup|runtuh|tenggelam)|kampus (kebakaran|longsor|ambruk)|snbt|sbmptn|kurikulum merdeka|\bpppk\b|\bcpns\b|\bcasn\b|\bspp\b|lpdp|kip kuliah|sekolah gratis)/i,
     neg: /(film|sinema|sinetron|nonton|netflix)/i,
     x: ['(UKT OR "biaya kuliah" OR "guru honorer" OR "siswa pingsan" OR "keracunan sekolah" OR "sekolah kebakaran" OR beasiswa OR SNBT OR "guru PPPK") -filter:replies'],
     th: ['UKT', 'biaya kuliah', 'guru honorer', 'siswa pingsan', 'keracunan sekolah', 'beasiswa', 'SNBT', 'SBMPTN', 'kurikulum merdeka', 'guru PPPK', 'sekolah ambruk', 'sekolah longsor', 'beasiswa dipotong'] }
@@ -419,6 +419,113 @@ function socHot(posts, now = Date.now()) {
   return { stats, hot: hot.slice(0, 6) };
 }
 
+/* ---------- social-first intel: frasa naik + keyword mining ---------- */
+// Stopword lokal (subset TSTOP/TBLK server.js + dasar EN): dipakai bersama
+// socPhraseScan & socKeywordMine supaya dua-duanya konsisten.
+const SOC_TSTOP = new Set(('yang dan di ke dari untuk pada dengan adalah ini itu ada tidak akan juga telah sudah bisa lebih sangat para dia kami kita mereka sebuah seorang suatu saat ketika setelah sebelum hingga oleh karena maka jika hari minggu senin selasa rabu kamis jumat sabtu januari februari maret april mei juni juli agustus september oktober november desember breaking news terbaru update foto video live hasil wib wit daring online pemerintah menteri presiden indonesia daerah warga polisi damkar bpbd dishub pasar korban evakuasi massa jumlah ribu juta ratusan ribuan jutaan miliar triliun total resmi viral heboh terduga diduga kini paling orang persen masyarakat pihak oknum pelaku tersangka ibu bapak kali pemkot polda polres kejaksaan kemensos kemenkeu kemendagri detik cnn tempo liputan6 republika tribun cnbc antara jawapos okezone kumparan suara merdeka sindonews jpnn tvri inews media news kompas viva metrotvnews rmol infopublik jabarprov korankaltim tvone merahputih poskota beritasatu gridoto wowkeren bola bolaoverza mediaindonesia faktualnews berita foto video gallery wawancara investigasi khusus daerah nasional internasional ekonomi hiburan selebriti olahraga dishub cumplik the and for with that this from have has are was were will would can could should not but all any more than then when what which who how its our your their his her').split(' '));
+// author post history: user/handle/username -> lowercase tanpa '@' (ala histUser)
+const socAuthor = p => String((p && (p.user || p.handle || p.username)) || '').toLowerCase().replace(/^@/, '');
+const socInWin = (p, now, windowMs) => {
+  const ts = p && p.ts, age = now - ts;
+  return Number.isFinite(ts) && ts > 0 && age > 0 && age <= windowMs;
+};
+// bersihin teks sebelum ekstraksi: URL & mention (@handle) jangan sampai
+// jadi kandidat frasa/term — @DetikCom yang di-mention banyak orang bakal
+// selalu menang sort users. Pola sama dengan astroturfSig/socNonLatin.
+const socClean = t => String(t || '').replace(/https?:\/\/\S+/g, ' ').replace(/@[\w]+/g, ' ');
+// frasa kapital multi-kata — pola persis trendingQueries di server.js
+const SOC_PHRASE_RE = /[A-Z][A-Za-z'&]{2,}(?:\s+(?:[A-Z][A-Za-z'&]{2,}|[A-Z]{2,8})){0,3}/g;
+const SOC_TAG_RE = /#([\p{L}\p{N}_]+)/gu;
+// Frasa yang lagi ramai di sosial, independen dari registry topik.
+// Kandidat: sekuens kapital 2-4 kata + hashtag. Skor = unique author,
+// tie-break total mention. exclude = Set id topik (registry + adhoc).
+function socPhraseScan(posts, { now = Date.now(), windowMs = 3 * 3600e3, minUsers = 3, exclude = null, max = 8 } = {}) {
+  const excl = exclude ? new Set(exclude instanceof Set ? [...exclude] : exclude) : null;
+  const ok = (id, multi) => {
+    if (id.length < 4 || id.length > 42) return false;
+    if (!/[\p{L}]/u.test(id)) return false;   // hashtag murni digit (#2025) bukan frasa
+    const words = id.split(' ');
+    if (multi && words.length < 2) return false;
+    if (words.some(w => w.length < 3 || SOC_TSTOP.has(w))) return false;
+    if (SOC_FOREIGN_RE.test(id)) return false;
+    if (excl) for (const t of excl) {
+      const tl = String(t).toLowerCase();
+      if (id === tl || id.includes(tl) || tl.includes(id)) return false;
+    }
+    return true;
+  };
+  const scores = new Map();   // id -> {ph, users:Set, n}
+  for (const p of posts || []) {
+    if (!socInWin(p, now, windowMs)) continue;
+    const text = socClean(p.text);
+    if (!text.trim()) continue;
+    const author = socAuthor(p);
+    const found = new Map();   // id -> ph (asli berkaps); dedupe per post
+    for (const m of text.matchAll(SOC_PHRASE_RE)) {
+      const words = m[0].trim().split(/\s+/);
+      // fragmentasi: match 3-4 kata juga nyumbang sub-frasa kontigu >=2 kata,
+      // jadi "Banjir Jakarta Raya" & "Banjir Jakarta Pusat" tetap ngumpul
+      // di "banjir jakarta". Murah: match maks 4 kata -> <=6 window.
+      for (let len = words.length; len >= 2; len--)
+        for (let s = 0; s + len <= words.length; s++) {
+          const ph = words.slice(s, s + len).join(' ');
+          const id = ph.toLowerCase();
+          if (ok(id, true) && !found.has(id)) found.set(id, ph);
+        }
+    }
+    for (const m of text.matchAll(SOC_TAG_RE)) {
+      const id = m[1].toLowerCase().replace(/_+/g, ' ').trim();
+      if (ok(id, false) && !found.has(id)) found.set(id, id);
+    }
+    for (const [id, ph] of found) {
+      const e = scores.get(id) || (scores.set(id, { ph, users: new Set(), n: 0 }), scores.get(id));
+      if (author) e.users.add(author);
+      e.n++;
+    }
+  }
+  return [...scores.entries()]
+    .filter(([, e]) => e.users.size >= minUsers)
+    .sort((a, b) => (b[1].users.size - a[1].users.size) || (b[1].n - a[1].n))
+    .slice(0, max)
+    .map(([id, e]) => ({ ph: e.ph, id, users: e.users.size, n: e.n }));
+}
+// token kandidat buat keyword mining: alfabet murni >=4 huruf
+const SOC_KW_RE = /[a-z][a-z'-]{3,}/g;
+// Ekspansi query otomatis: istilah yang sering ditulis poster topik tapi
+// belum ada di query th/x topik itu. df = document frequency (post unik).
+function socKeywordMine(posts, topicId, { now = Date.now(), windowMs = 6 * 3600e3, maxTerms = 8 } = {}) {
+  const id = String(topicId || '').toLowerCase();
+  const topic = SOC_TOPICS.find(t => t.id === id);
+  if (!topic) return [];
+  const hay = (topic.th || []).concat(topic.x || []).join(' ').toLowerCase();
+  const df = new Map();
+  let scanned = 0;
+  for (const p of posts || []) {
+    if (scanned >= 400) break;   // cap scan biar post history gede nggak berat
+    if (!socInWin(p, now, windowMs)) continue;
+    const tps = (p.topics || []).map(t => String(t).toLowerCase());
+    if (!tps.includes(id) && String(p.q || '').toLowerCase() !== id) continue;
+    scanned++;
+    const text = socClean(p.text);
+    if (socHashJunk(text) || socNonLatin(text) || socVi(text)) continue;
+    const seen = new Set();
+    for (const m of text.toLowerCase().matchAll(SOC_KW_RE)) {
+      const term = m[0].replace(/^['-]+|['-]+$/g, '');
+      if (term.length < 4 || seen.has(term)) continue;
+      if (SOC_TSTOP.has(term) || SOC_FOREIGN_RE.test(term)) continue;
+      if (hay.includes(term)) continue;   // sudah tercakup query topik
+      seen.add(term);
+      df.set(term, (df.get(term) || 0) + 1);
+    }
+  }
+  const need = Math.max(3, Math.ceil(scanned * 0.01));
+  return [...df.entries()]
+    .filter(([, n]) => n >= need)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, maxTerms)
+    .map(([term, dfN]) => ({ term, df: dfN }));
+}
+
 // patch bump di atas VERSION assessment.js: registry/klasifikasi di file ini berubah
 const SOC_CLASSIFIER_VERSION = ASSESS.VERSION;
-module.exports = { CLASSIFIER_VERSION: SOC_CLASSIFIER_VERSION, SOC_TOPICS, socAssess, socTopics, socAdhoc, socKeepX, socKeepTh, socBalance, socQueries, socHot, socNonLatin, socVi, socHashJunk, astroturfSig, socForeignLang, SOC_FOREIGN_RE, SOC_LOCAL_RE, SOC_LISTING_RE, SOC_LISTING_DEAL };
+module.exports = { CLASSIFIER_VERSION: SOC_CLASSIFIER_VERSION, SOC_TOPICS, socAssess, socTopics, socAdhoc, socKeepX, socKeepTh, socBalance, socQueries, socHot, socNonLatin, socVi, socHashJunk, astroturfSig, socForeignLang, socPhraseScan, socKeywordMine, SOC_FOREIGN_RE, SOC_LOCAL_RE, SOC_LISTING_RE, SOC_LISTING_DEAL };
