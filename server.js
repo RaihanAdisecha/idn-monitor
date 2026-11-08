@@ -186,7 +186,15 @@ const memo = (k, ttl, fn, good) => {
   const accept = v => {
     const cur = cache.get(k);
     if (cur && cur.v !== undefined && isGood(cur.v) && !isGood(v)) return fail();
-    cache.set(k, { at: Date.now(), v }); lruCap(cache, MEMO_CAP); memoRetry.delete(k);
+    // nilai buruk tanpa last-good: simpan tapi mundurkan `at` + jadwalkan retry —
+    // dulu ok:false menempel TTL penuh (~55dtk) dan kartu "sumber gagal" tampak nyangkut
+    const bad = !isGood(v);
+    cache.set(k, { at: bad ? Date.now() - ttl + 20000 : Date.now(), v }); lruCap(cache, MEMO_CAP);
+    if (bad) {
+      const n = (memoRetry.get(k) || 0) + 1;
+      memoRetry.set(k, n); lruCap(memoRetry, MEMO_CAP);
+      if (n <= 5) setTimeout(kick, Math.min(90000, 15000 * n)).unref();
+    } else memoRetry.delete(k);
     if (k.startsWith('read:')) pruneReads();
     return v;
   };
@@ -1123,7 +1131,7 @@ const situation = () => memo('situation', 45000, async () => {
   const regionRows = [...regions.entries()].map(([name, n]) => ({ name, n }))
     .sort((a, b) => b.n - a.n).slice(0, 20);
   return { ok: true, classifierVersion: SOC.CLASSIFIER_VERSION, stats, total: items.length, items: items.slice(0, 60), regions: regionRows,
-    sources: srcs.map(s => ({ id: s.id, ok: s.ok, n: s.items.length, err: s.err || '' })), at: now };
+    sources: srcs.map(s => ({ id: s.id, ok: s.ok, n: s.items.length, err: s.err || '', at: s.at || 0 })), at: now };
 });
 
 /* ---------- MARKET: tape realtime via TradingView scanner (tanpa key) ----------
@@ -3975,8 +3983,20 @@ http.createServer(async (req, res) => {
       const a = Buffer.from(String(v == null ? '' : v)), b = Buffer.from(API_TOKEN);
       return a.length === b.length && crypto.timingSafeEqual(a, b);
     };
+    // preflight CORS untuk mode ?api= lintas-origin — tanpa ini browser block
+    // semua request ber-header x-sitrep-token sebelum sampai gate
+    if (req.method === 'OPTIONS') {
+      res.writeHead(204, {
+        'access-control-allow-origin': '*',
+        'access-control-allow-headers': 'x-sitrep-token, content-type',
+        'access-control-allow-methods': 'GET,POST,OPTIONS',
+        'access-control-max-age': '86400'
+      });
+      return res.end();
+    }
     const gated = (u.pathname.startsWith('/api/') && u.pathname !== '/api/ping') ||
-      u.pathname === '/img' || u.pathname === '/hls' || u.pathname === '/vhs';
+      u.pathname === '/img' || u.pathname === '/hls' || u.pathname === '/vhs' ||
+      u.pathname.startsWith('/tomtom/tile/');
     if (gated && !(eqTok(req.headers['x-sitrep-token']) || eqTok(u.searchParams.get('token'))))
       return json({ ok: false, err: 'token tidak valid' }, 403);
     if (u.pathname === '/' || u.pathname === '/index.html') {

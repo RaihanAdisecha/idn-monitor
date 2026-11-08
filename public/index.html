@@ -357,9 +357,8 @@ a{color:inherit;text-decoration:none;text-underline-offset:2px}
   font:600 7.5px/1 var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--text2);
   cursor:pointer;
 }
-.smlg-btn i{width:4px;height:4px;background:var(--accent);border-radius:50%;flex:none}
 .smlg-btn .cm{color:var(--text3);font-variant-numeric:tabular-nums}
-.smlg-btn .cr{width:0;height:0;border-left:3.5px solid transparent;border-right:3.5px solid transparent;border-top:4px solid var(--text3);transition:transform .15s}
+.smlg-btn .cr{width:0;height:0;flex:none;border-left:3.5px solid transparent;border-right:3.5px solid transparent;border-top:4px solid var(--text3);transition:transform .15s}
 .smlg-btn[aria-expanded="true"] .cr{transform:rotate(180deg)}
 .smlg-menu{
   position:absolute;left:0;bottom:calc(100% + 7px);display:none;flex-direction:column;gap:1px;
@@ -3358,11 +3357,15 @@ function alertCards(){
         score, latest: g.latest || 0, title: lead.title, meta: k + ' kabar · ' + s + ' feed',
         body: lanesHtml(socRes, g.items.slice(0, 6), g.items.length) });
     }
-    for (const s of (SIT.sources || [])) {
-      if (s.ok) continue;
-      cards.push({ id: 's' + s.id, sev: 'waspada', cat: 'insiden', place: 'Sumber', n: 0,
-        score: 1, latest: 0, title: 'Sumber ' + s.id + ' gagal diambil', meta: 'feed error',
-        body: s.err ? `<div class="tr-body"><div class="tr-sample">${esc(s.err)}</div></div>` : '' });
+    const failedSrc = (SIT.sources || []).filter(s => !s.ok);
+    if (failedSrc.length) {
+      const names = failedSrc.map(s => s.id).join(', ');
+      const errs = failedSrc.map(s => s.err).filter(Boolean).slice(0, 3).join(' · ');
+      const latestFail = Math.max(0, ...failedSrc.map(s => s.at || 0));
+      cards.push({ id: 'srcfail', sev: 'waspada', cat: 'insiden', place: 'Sumber', n: 0,
+        score: 1, latest: latestFail || (SIT.at || 0), title: failedSrc.length + ' sumber gagal diambil', meta: 'feed error · retry otomatis',
+        body: `<div class="tr-body"><div class="tr-sample">${esc(names)}${errs ? '<br>' + esc(errs) : ''}</div>
+          <button class="tr-more" type="button" data-retry="sit" style="margin-top:6px">Coba lagi</button></div>` });
     }
   }
   cards.sort((a, b) => (SEV_RANK[a.sev] - SEV_RANK[b.sev]) || (b.score - a.score) || (b.latest - a.latest));
@@ -3400,6 +3403,8 @@ function renderAlerts(){
       <div class="tr-f"><span>tidak ada alert aktif</span></div></div></div>`;
 }
 $('#triage').addEventListener('click', e => {
+  const r = e.target.closest('[data-retry]');
+  if (r) { if (r.dataset.retry === 'sit') pullSituation(); return; }
   const b = e.target.closest('[data-toggle]'); if (!b) return;
   const id = b.dataset.toggle;
   openAlert = openAlert === id ? '' : id;
@@ -4971,7 +4976,7 @@ let ttOk = false, ttIncBusy = false, ttIncInterval = 0;
 let routeMode = false, routeA = null, routeB = null, flowMode = false, flowProbe = null, flowBusy = false;
 const layerOn = { heat:true, pins:true, cams:true, ttflow:false, ttinc:false, ttdata:false, rute:false, lalin:false, flight:false, ship:false, transit:false, gempa:false, gunung:false, cuaca:false, wind:false, radar:false, radarbmkg:false, peringatan:true, 'sat-ir':true, 'sat-nc':false, 'sat-wv':false, 'sat-rain':false, fires:false, air:false };
 
-const ttTileUrl = kind => (API != null ? API : '') + '/tomtom/tile/' + kind + '/{z}/{x}/{y}.png';
+const ttTileUrl = kind => (API != null ? API : '') + '/tomtom/tile/' + kind + '/{z}/{x}/{y}.png?token=' + encodeURIComponent(SITREP_TOKEN);
 const havKm = (a, b) => {
   const R = 6371, rad = x => x * Math.PI / 180;
   const dLat = rad(b.lat - a.lat), dLon = rad(b.lon - a.lon);
