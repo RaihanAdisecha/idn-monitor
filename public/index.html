@@ -36,7 +36,7 @@
   --mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
   --disp:"Bricolage Grotesque","Plus Jakarta Sans",ui-sans-serif,system-ui,sans-serif;
   --lex:"Lexend",ui-sans-serif,system-ui,"Segoe UI",Roboto,sans-serif;
-  --hdr:48px; --tick:40px; --foot:30px;
+  --hdr:48px; --tick:32px; --foot:30px;
 }
 *{margin:0;padding:0;box-sizing:border-box}
 html{-webkit-text-size-adjust:100%}
@@ -185,8 +185,9 @@ a{color:inherit;text-decoration:none;text-underline-offset:2px}
 .hdr-sync[data-state="sync"] .sync-rail::before{
   width:45%;
   background:linear-gradient(90deg,transparent,#42be65,#fff,#42be65,transparent);
-  transition:none;animation:tk-laser .85s ease-in-out infinite;
+  transition:none;animation:hdr-laser .85s ease-in-out infinite;
 }
+@keyframes hdr-laser{0%{transform:translateX(-110%)}100%{transform:translateX(230%)}}
 
 /* ============================================================ ICONS */
 .sprite{position:absolute;width:0;height:0;overflow:hidden}
@@ -198,6 +199,7 @@ a{color:inherit;text-decoration:none;text-underline-offset:2px}
 
 /* ============================================================ TICKER (TACTICAL CHAMFERED TELEMETRY POD) */
 .ticker{
+  --tk-ic:14px;--tk-box:30px;--tk-tm:38px;--tk-src:76px;--tk-gap:10px;
   flex:none;height:var(--tick);display:grid;grid-template-columns:auto 72px minmax(0,1fr);
   border-bottom:1px solid #252529;
   background:linear-gradient(90deg,#0c0c0e 0%,#101014 40%,#0b0b0d 100%);
@@ -206,7 +208,7 @@ a{color:inherit;text-decoration:none;text-underline-offset:2px}
 }
 .tk-lbl{
   position:relative;z-index:3;display:flex;align-items:center;gap:8px;
-  padding:0 20px 0 13px;margin-right:-10px;
+  padding:0 20px 0 8px;margin-right:-10px;
   background:linear-gradient(135deg,#e31b27 0%,#b8111b 65%,#8e0b13 100%);
   clip-path:polygon(0 0,100% 0,calc(100% - 10px) 100%,0 100%);
   color:#fff;font:700 9.5px/1 var(--mono);letter-spacing:.15em;text-transform:uppercase;white-space:nowrap;
@@ -217,13 +219,6 @@ a{color:inherit;text-decoration:none;text-underline-offset:2px}
   background:linear-gradient(180deg,rgba(255,255,255,.55),rgba(255,255,255,.1));
   transform:skewX(-18.5deg);pointer-events:none;
 }
-.tk-lbl .tk-ic{
-  display:inline-flex;align-items:center;justify-content:center;width:17px;height:17px;flex:none;
-  background:rgba(0,0,0,.28);border:1px solid rgba(255,255,255,.48);border-radius:3px;
-  box-shadow:0 0 8px rgba(255,255,255,.15);
-}
-.tk-lbl .tk-ic .ic{width:11px;height:11px;animation:tkpulse 2s ease-in-out infinite}
-@keyframes tkpulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.45;transform:scale(.92)}}
 .tk-fetch{
   --tk-p:100%;
   position:relative;z-index:2;display:flex;flex-direction:column;justify-content:center;align-items:flex-start;
@@ -281,14 +276,14 @@ a{color:inherit;text-decoration:none;text-underline-offset:2px}
 }
 .tk-fetch[data-state="fetch"] .tk-cur::before{
   width:45%;
-  background:linear-gradient(90deg,transparent,#ff525a,#fff,#ff525a,transparent);
-  transition:none;animation:tk-laser .85s ease-in-out infinite;
+  background:#ff525a;
+  transition:none;
+  animation:none;
 }
 .tk-fetch[data-state="fail"] .tk-cur::before{
   width:100%;
-  background:repeating-linear-gradient(90deg,var(--warn) 0 5px,transparent 5px 7px);
+  background:var(--warn);
 }
-@keyframes tk-laser{0%{transform:translateX(-110%)}100%{transform:translateX(230%)}}
 @keyframes spin{to{transform:rotate(360deg)}}
 .tk-vp{
   position:relative;overflow:hidden;display:flex;align-items:center;
@@ -302,59 +297,63 @@ a{color:inherit;text-decoration:none;text-underline-offset:2px}
   padding:0 16px 0 10px;flex:none;font:700 8.5px/1 var(--mono);letter-spacing:.18em;color:#ff6b70;
 }
 .tk-live::after{
-  content:"";position:absolute;right:2px;top:8px;bottom:8px;width:1.5px;
-  background:rgba(255,107,112,.35);transform:skewX(-18deg);
+  content:"";position:absolute;right:2px;top:8px;bottom:8px;width:1px;
+  background:rgba(255,107,112,.3);
 }
-.tk-live i{width:6.5px;height:6.5px;border-radius:50%;background:#ff3b41;box-shadow:0 0 9px rgba(255,59,65,.9);animation:livepulse 1.6s ease-in-out infinite}
+.tk-live i{width:6.5px;height:6.5px;border-radius:50%;background:#ff3b41;box-shadow:0 0 4px rgba(255,59,65,.5);animation:livepulse 1.6s ease-in-out infinite}
+.tk-live .tk-fresh{font:600 8px/1 var(--mono);letter-spacing:.04em;color:#9a9aa6;font-variant-numeric:tabular-nums}
 @keyframes livepulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.3;transform:scale(.7)}}
-.tk-sig{width:13.5px;height:13.5px;flex:none;color:#7a7a82;filter:drop-shadow(0 0 3px rgba(0,0,0,.6))}
-.tk[data-cat="demo"] .tk-sig{color:#f1c21b;filter:drop-shadow(0 0 4px rgba(241,194,27,.32))}
-.tk[data-cat="fire"] .tk-sig{color:#ff6b70;filter:drop-shadow(0 0 4px rgba(255,107,112,.35))}
-.tk[data-cat="flood"] .tk-sig{color:#7aa9ff;filter:drop-shadow(0 0 4px rgba(122,169,255,.32))}
-.tk[data-cat="disaster"] .tk-sig{color:#c9a6ff;filter:drop-shadow(0 0 4px rgba(201,166,255,.32))}
-.tk[data-cat="insiden"] .tk-sig{color:#b2b2ba}
-.tk[data-cat="siber"] .tk-sig{color:#c8f04b;filter:drop-shadow(0 0 4px rgba(200,240,75,.3))}
-.tk[data-cat="kriminal"] .tk-sig{color:#ffb066;filter:drop-shadow(0 0 4px rgba(255,176,102,.3))}
-.tk[data-cat="kesehatan"] .tk-sig{color:#ff8ab5;filter:drop-shadow(0 0 4px rgba(255,138,181,.3))}
-.tk[data-cat="ekonomi"] .tk-sig{color:#6fe7b6;filter:drop-shadow(0 0 4px rgba(111,231,182,.3))}
-.tk[data-cat="politik"] .tk-sig{color:#93bcff;filter:drop-shadow(0 0 4px rgba(147,188,255,.3))}
+.tk-sig{width:var(--tk-ic);height:var(--tk-ic);flex:none;color:color-mix(in srgb,var(--cat,#8a8a94) 64%,#fff)}
+/* kotak kategori: bg tipis nempel pojok kiri item, glyph sedikit lebih terang dari bg-nya */
+.tk-mk{
+  display:flex;align-items:center;justify-content:center;
+  width:var(--tk-box);height:100%;flex:none;
+  background:rgba(255,255,255,.03);
+  background:color-mix(in srgb,var(--cat,#8a8a94) 10%,transparent);
+}
+.tk[data-cat="demo"]{--cat:#f1c21b}
+.tk[data-cat="fire"]{--cat:#ff6b70}
+.tk[data-cat="flood"]{--cat:#7aa9ff}
+.tk[data-cat="disaster"]{--cat:#c9a6ff}
+.tk[data-cat="insiden"]{--cat:#b2b2ba}
+.tk[data-cat="siber"]{--cat:#c8f04b}
+.tk[data-cat="kriminal"]{--cat:#ffb066}
+.tk[data-cat="kesehatan"]{--cat:#ff8ab5}
+.tk[data-cat="ekonomi"]{--cat:#6fe7b6}
+.tk[data-cat="politik"]{--cat:#93bcff}
 .tk{
-  position:relative;display:inline-flex;align-items:center;gap:8px;height:var(--tick);
-  padding:0 18px 0 14px;border-right:0;
-  font:600 12.5px/1 var(--disp);color:#d2d2d8;white-space:nowrap;
-  transition:background .14s,color .14s;
+  position:relative;display:grid;align-items:center;
+  grid-template-columns:var(--tk-box) var(--tk-tm) minmax(0,1fr) var(--tk-src);
+  column-gap:var(--tk-gap);
+  height:var(--tick);padding:0 18px 0 0;
+  font:500 12.5px/1 var(--disp);color:#d2d2d8;white-space:nowrap;
 }
 .tk::after{
-  content:"";position:absolute;right:0;top:8px;bottom:8px;width:1.5px;
-  background:linear-gradient(180deg,transparent,rgba(255,255,255,.16),transparent);
-  transform:skewX(-18deg);pointer-events:none;
+  content:"";position:absolute;right:0;top:8px;bottom:8px;width:1px;
+  background:rgba(255,255,255,.06);pointer-events:none;
 }
-.tk:hover{color:#fff;background:linear-gradient(90deg,rgba(255,255,255,.02),rgba(255,255,255,.055),rgba(255,255,255,.02))}
+/* hover tanpa perubahan terang: cuma garis bawah netral di judul */
+.tk:hover .tk-t{text-decoration:underline;text-decoration-thickness:1px;text-decoration-color:#3a3a44;text-underline-offset:3px}
 .tk:focus-visible{outline:1px solid rgba(255,255,255,.28);outline-offset:-1px}
 .tk-time{
-  flex:none;padding:2px 5px;border-radius:2px;
-  background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.07);
-  font:600 8.5px/1 var(--mono);color:#9898a2;font-variant-numeric:tabular-nums;letter-spacing:.04em;
+  flex:none;
+  font:500 8.5px/1 var(--mono);letter-spacing:.08em;color:#7c7c88;
+  font-variant-numeric:tabular-nums;white-space:nowrap;
 }
-.tk:hover .tk-time{color:#d0d0d8;border-color:rgba(255,255,255,.16)}
 .tk-src{
-  flex:none;padding:2px 5px;border-radius:2px;
-  background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.05);
-  font:600 7.5px/1 var(--mono);letter-spacing:.08em;color:#82828c;text-transform:uppercase;
-  max-width:124px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
-  transition:color .14s,border-color .14s,background .14s;
+  flex:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  font:500 8px/1 var(--mono);letter-spacing:.08em;color:#5f5f6a;text-transform:uppercase;
 }
-.tk:hover .tk-src{color:#c8c8d2;border-color:rgba(255,255,255,.14);background:rgba(255,255,255,.06)}
-.tk-t{max-width:560px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;letter-spacing:.01em}
-.tk-new{animation:tk-newflash 3.2s ease-out}
-@keyframes tk-newflash{0%{background:rgba(227,27,39,.22)}100%{background:transparent}}
-.tk-vp::after{content:"";position:absolute;inset:0;pointer-events:none;z-index:2;
-  background:linear-gradient(105deg,transparent 42%,rgba(255,255,255,.045) 50%,transparent 58%);
-  transform:translateX(-130%);animation:tk-sheen 13s ease-in-out infinite}
-@keyframes tk-sheen{0%,52%{transform:translateX(-130%)}88%,100%{transform:translateX(130%)}}
-@media (prefers-reduced-motion:reduce){.tk-vp::after{animation:none}}
-.tk-empty{color:var(--text3);font:400 11px/1 var(--mono);letter-spacing:.08em;text-transform:uppercase;padding-left:16px;align-self:center}
+.tk-t{min-width:0;max-width:560px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;letter-spacing:.005em}
+/* item baru: gutter mark merah 2px yang padam sendiri, tanpa flash latar */
+.tk.tk-new::before{
+  content:"";position:absolute;left:0;top:0;bottom:0;width:2px;background:#e31b27;
+  animation:tk-mark 6s linear forwards;pointer-events:none;
+}
+@keyframes tk-mark{0%,55%{opacity:1}100%{opacity:0}}
+.tk-empty{display:flex;align-items:center;color:var(--text3);font:400 11px/1 var(--mono);letter-spacing:.08em;text-transform:uppercase;padding-left:16px;height:var(--tick)}
 .tk-vp:hover .tk-rail,.tk-vp:focus-within .tk-rail{animation-play-state:paused}
+@media (prefers-reduced-motion:reduce){.tk.tk-new::before{animation:none}}
 
 /* ============================================================ CONSOLE GRID */
 .console{
@@ -1234,21 +1233,45 @@ a{color:inherit;text-decoration:none;text-underline-offset:2px}
   font:600 9px/1 var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--text3);transition:color .12s,border-color .12s}
 .xmore:hover{color:var(--text);border-color:var(--text3)}
 
-/* ============================================================ CCTV */
-.citybar{display:flex;padding:6px 10px 0;border-bottom:0;overflow-x:auto;scrollbar-width:none;
-  -webkit-mask-image:linear-gradient(90deg,#000 calc(100% - 22px),transparent);mask-image:linear-gradient(90deg,#000 calc(100% - 22px),transparent)}
+/* ============================================================ CCTV (SWISS INDEX REGISTER) */
+.citybar{
+  display:flex;align-items:stretch;padding:0;margin:0;
+  border-bottom:1px solid rgba(255,255,255,.08);
+  overflow-x:auto;scrollbar-width:none;
+  background:#101014;
+  -webkit-mask-image:linear-gradient(90deg,#000 calc(100% - 24px),transparent);
+  mask-image:linear-gradient(90deg,#000 calc(100% - 24px),transparent);
+}
 .citybar::-webkit-scrollbar{display:none}
 .cb{
-  flex:none;display:inline-flex;align-items:center;gap:5px;height:24px;margin:0 4px 0 0;
-  padding:0 10px;border:1px solid transparent;border-bottom:0;
-  border-radius:9px 9px 0 0;
-  font:500 9px/1 var(--mono);letter-spacing:.05em;text-transform:uppercase;color:var(--text3);
-  transition:background .12s,border-color .12s,color .12s;
+  flex:none;display:inline-flex;align-items:center;height:28px;margin:0;
+  padding:0 12px;border:none;border-right:1px solid rgba(255,255,255,.07);border-radius:0;
+  background:transparent;color:#7e7e8c;cursor:pointer;position:relative;
+  white-space:nowrap;user-select:none;
+  transition:background .12s,color .12s;
 }
-.cb:hover{color:var(--text2)}
-.cb .cb-n{font:600 8px/1 var(--mono);color:var(--text3);background:var(--layer2);border-radius:8px;padding:2px 5px}
-.cb[aria-selected="true"]{color:var(--text);background:var(--layer2);border-color:rgba(141,141,141,.35)}
-.cb[aria-selected="true"] .cb-n{color:var(--text2);background:var(--layer)}
+.cb:hover{color:#d0d0dc;background:rgba(255,255,255,.02)}
+.cb .cb-idx{
+  font:600 7.5px/1 var(--mono);color:#52525e;letter-spacing:.08em;margin-right:5px;
+  transition:color .12s;
+}
+.cb .cb-idx::after{content:"//";margin-left:3px;opacity:.35}
+.cb .cb-name{font:500 11px/1 var(--disp);letter-spacing:-.01em}
+.cb .cb-n{
+  font:500 9.5px/1 var(--mono);color:#686876;font-variant-numeric:tabular-nums;
+  margin-left:6px;transition:color .12s;
+}
+.cb[aria-selected="true"]{
+  color:#f4f4f7;background:rgba(255,255,255,.04);
+}
+.cb[aria-selected="true"] .cb-idx{color:#8a8a98}
+.cb[aria-selected="true"] .cb-name{color:#f4f4f7;font-weight:600}
+.cb[aria-selected="true"] .cb-n{color:#a4a4b2}
+.cb[aria-selected="true"]::after{
+  content:"";position:absolute;left:0;right:0;bottom:0;height:2px;background:#f4f4f7;
+}
+.cb[aria-selected="true"]:hover{background:rgba(255,255,255,.05);color:#fff}
+.cb:focus-visible{outline:1px solid rgba(255,255,255,.3);outline-offset:-1px;z-index:2}
 .camgrid{display:grid;grid-template-columns:repeat(var(--cols,2),minmax(0,1fr));gap:1px;background:var(--border)}
 .cam{position:relative;display:block;width:100%;padding:0;background:#000;text-align:left;cursor:pointer}
 .cam .frame{position:relative;aspect-ratio:16/9;overflow:hidden;background:#000}
@@ -6262,10 +6285,11 @@ const TK_SIG = { demo:'#i-tk-demo', fire:'#i-tk-fire', flood:'#i-tk-flood', disa
   insiden:'#i-tk-insiden', siber:'#i-tk-siber', kriminal:'#i-tk-kriminal',
   kesehatan:'#i-tk-kesehatan', ekonomi:'#i-tk-ekonomi', politik:'#i-tk-politik' };
 let breakPrev = new Set(), breakSeeded = false;   // poll pertama: seed diam-diam — backlog bukan "breaking baru"
+let tkFreshTimer = 0;
 const renderTk = (h, isNew) => {
   const cat = newsCat(h);
   return `<a class="tk${isNew ? ' tk-new' : ''}" data-cat="${cat}" href="${esc(h.url)}" target="_blank" rel="noopener" title="${esc(h.label || CAT_LABEL[cat] || '')}">` +
-    `<svg class="ic tk-sig" aria-hidden="true"><use href="${TK_SIG[cat] || '#i-pin'}"></use></svg>` +
+    `<span class="tk-mk"><svg class="ic tk-sig" aria-hidden="true"><use href="${TK_SIG[cat] || '#i-pin'}"></use></svg></span>` +
     `<span class="tk-time">${esc(h.ts ? wibTime(h.ts) : '')}</span>` +
     `<span class="tk-t">${esc(cleanTitle(deEmoji(h.title || ''), h.pub || h.src))}</span>` +
     `<span class="tk-src">${esc(cleanSrc(h.src, h.pub))}</span>` +
@@ -6310,7 +6334,16 @@ function buildTicker(force){
   breakSeeded = true;
   // Dua copy identik → loop pixel-perfect. Kalau satu periode lebih pendek dari
   // viewport, item di dalam set diulang (kedua set tetap identik).
-  const one = '<span class="tk-live"><i></i>LIVE</span>' + breakItems.map(h => renderTk(h, fresh.has(h.url || h.title))).join('');
+  // Sinyal update: jumlah item baru nempel statis di chip LIVE, tanpa animasi cahaya.
+  const freshN = fresh.size;
+  const liveChip = '<span class="tk-live"><i></i>LIVE' +
+    (freshN ? `<b class="tk-fresh">+${freshN}</b>` : '') + '</span>';
+  // counter bertahan 30 detik (di bawah siklus 45s), jadi nggak nyangkut basi
+  clearTimeout(tkFreshTimer);
+  if (freshN) tkFreshTimer = setTimeout(() => {
+    document.querySelectorAll('.tk-fresh').forEach(el => el.remove());
+  }, 30000);
+  const one = liveChip + breakItems.map(h => renderTk(h, fresh.has(h.url || h.title))).join('');
   const vp = $('.tk-vp').clientWidth || innerWidth;
   const estItemW = 280;
   const initRep = Math.max(1, Math.ceil((vp + 240) / Math.max(estItemW, breakItems.length * estItemW)));
@@ -6711,9 +6744,14 @@ function drawCityBar(){
   const cnt = {};
   CAMS.forEach(c => { cnt[c.c] = (cnt[c.c] || 0) + 1; });
   const ds = ['Semua', ...Object.keys(cnt).sort((a, b) => cnt[b] - cnt[a])];
-  $('#citybar').innerHTML = ds.map(d => {
+  $('#citybar').innerHTML = ds.map((d, idx) => {
     const n = CAMS.filter(c => d === 'Semua' || c.c === d).length;
-    return `<button class="cb" type="button" data-city="${esc(d)}" role="tab" aria-selected="${d === district}">${esc(d)}<span class="cb-n">${n}</span></button>`;
+    const num = String(idx).padStart(2, '0');
+    return `<button class="cb" type="button" data-city="${esc(d)}" role="tab" aria-selected="${d === district}">` +
+      `<span class="cb-idx">${num}</span>` +
+      `<span class="cb-name">${esc(d)}</span>` +
+      `<span class="cb-n">${n}</span>` +
+    `</button>`;
   }).join('');
 }
 $('#citybar').addEventListener('click', e => {

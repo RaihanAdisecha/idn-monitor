@@ -209,6 +209,42 @@ test('in-app reader media uses adaptive mosaic grid classes and bounded layout',
   assert.ok(html.includes('class="rd-media rd-m-${mCount}"'), 'rdPost must attach dynamic rd-m-${mCount} class to media container');
 });
 
+test('breaking ticker uses a fixed column grid, straight hairlines and a fading gutter mark instead of animation slop', () => {
+  const fs = require('fs');
+  const path = require('path');
+  const html = fs.readFileSync(path.join(__dirname, '../public/index.html'), 'utf8');
+
+  // grid kolom tetap: kotak ikon, waktu, judul fleksibel, sumber
+  assert.ok(html.includes('grid-template-columns:var(--tk-box) var(--tk-tm) minmax(0,1fr) var(--tk-src);'), 'ticker item must use the fixed four-column grid');
+  assert.ok(html.includes('--tk-ic:14px;--tk-box:30px;--tk-tm:38px;--tk-src:76px;--tk-gap:10px;'), 'ticker column tokens must be declared once on .ticker');
+  assert.ok(html.includes('height:var(--tick);padding:0 18px 0 0;'), 'item must have zero left padding so the icon box hugs the left edge');
+
+  // ornamen bergerak yang dibuang
+  assert.ok(!html.includes('tk-sheen'), 'shimmer sheen must not exist');
+  assert.ok(!html.includes('tk-laser') && !html.includes('tk-newflash') && !html.includes('tkpulse'), 'laser, flash and pulse animations must not exist');
+  assert.ok(!html.includes('drop-shadow(0 0 4px rgba(241,194,27'), 'category glyphs must not glow');
+
+  // ikon dibalut kotak bg tipis; glyph lebih terang dari bg-nya
+  assert.ok(html.includes('background:color-mix(in srgb,var(--cat,#8a8a94) 10%,transparent);'), 'icon box must use a low-opacity category tint');
+  assert.ok(html.includes('color:color-mix(in srgb,var(--cat,#8a8a94) 64%,#fff)'), 'glyph must be brighter than its box');
+  assert.ok(!html.includes('.tk-mk::after{'), 'the 2px underline mark must be gone');
+  assert.ok(html.includes('class="tk-mk"><svg class="ic tk-sig"'), 'renderTk must wrap the glyph in .tk-mk');
+
+  // item baru: gutter mark yang padam, bukan background flash
+  assert.ok(html.includes('.tk.tk-new::before{') && html.includes('animation:tk-mark 6s linear forwards'), 'new items must use a self-extinguishing gutter mark');
+  assert.ok(html.includes('@media (prefers-reduced-motion:reduce){.tk.tk-new::before{animation:none}}'), 'gutter mark must respect reduced motion');
+
+  // hairline lurus, bukan garis miring dekoratif
+  assert.ok(!/\.tk::after\{[^}]*skewX/.test(html), 'ticker separators must be straight hairlines');
+
+  // hover tanpa efek menyala: no background/opacity/color lift
+  assert.ok(!html.includes('.tk:hover{') && !html.includes('.tk:hover .tk-mk') && !html.includes('.tk:hover .tk-time'), 'ticker must not brighten on hover');
+  assert.ok(html.includes('.tk:hover .tk-t{text-decoration:underline'), 'hover cue must be a neutral underline');
+
+  // sinyal update tanpa shimmer: counter statis di chip LIVE
+  assert.ok(html.includes('class="tk-fresh"'), 'new item count must render statically inside the LIVE chip');
+});
+
 test('cl-toasts overlay is decoupled from collapsed panes and guarded for mobile touch countdown', () => {
   const fs = require('fs');
   const path = require('path');
@@ -459,4 +495,35 @@ test('demo detection, geocoding and social orchestration pipeline fixes', () => 
   assert.ok(serverCode.includes('Math.round(item.score * 20 + 50)'), 'buildTrends must calculate surge percentage');
   assert.ok(html.includes('socTrends = new Map(d.trends.map(t => [t.id, t]))'), 'frontend must ingest d.trends for telemetry chips');
   assert.ok(html.includes('hot-both'), 'frontend CSS/HTML must support hybrid hot-both and hot-wire badges');
+});
+
+test('05 CCTV regional citybar uses Swiss Index Register with structural hairline ledger, zero pill slop, and tabular count', () => {
+  const fs = require('fs');
+  const path = require('path');
+  const html = fs.readFileSync(path.join(__dirname, '../public/index.html'), 'utf8');
+
+  // 1. Grid & layout: flush register bar docked directly above camgrid with zero outer margin/padding and hairline bottom
+  assert.ok(html.includes('.citybar{') && html.includes('padding:0;margin:0;'), 'citybar must be flush with zero outer margin and padding');
+  assert.ok(html.includes('border-bottom:1px solid rgba(255,255,255,.08);'), 'citybar must have a subtle hairline bottom border');
+
+  // 2. Tab items: zero radius, vertical hairline divider, deliberate font pairing
+  assert.ok(html.includes('border-right:1px solid rgba(255,255,255,.07);border-radius:0;'), 'tabs must be square with hairline vertical divider and radius 0');
+  assert.ok(html.includes('.cb .cb-name{font:500 11px/1 var(--disp);letter-spacing:-.01em}'), 'city name must use display typography');
+
+  // 3. Technical index prefix: micro mono with // delimiter
+  assert.ok(html.includes('.cb .cb-idx{') && html.includes('var(--mono)'), 'index prefix must use mono font');
+  assert.ok(html.includes('.cb .cb-idx::after{content:"//";'), 'index prefix must render technical // delimiter');
+
+  // 4. Tabular metadata count: naked numbers without rounded pill badge background
+  assert.ok(html.includes('.cb .cb-n{') && html.includes('font-variant-numeric:tabular-nums;'), 'count must use tabular numbers');
+  assert.ok(!html.includes('background:var(--layer2);border-radius:8px'), 'pill badge slop must be eradicated');
+
+  // 5. Active state: bottom shelf lock indicator with crisp hairline and tonal fill
+  assert.ok(html.includes('.cb[aria-selected="true"]::after{') && html.includes('height:2px;background:#f4f4f7'), 'active tab must feature bottom shelf lock indicator');
+  assert.ok(html.includes('.cb[aria-selected="true"]{') && html.includes('background:rgba(255,255,255,.04);'), 'active tab must have subtle tonal fill');
+
+  // 6. drawCityBar builder markup: injects cb-idx, cb-name, and cb-n
+  assert.ok(html.includes('<span class="cb-idx">${num}</span>'), 'drawCityBar must render cb-idx span');
+  assert.ok(html.includes('<span class="cb-name">${esc(d)}</span>'), 'drawCityBar must render cb-name span');
+  assert.ok(html.includes('<span class="cb-n">${n}</span>'), 'drawCityBar must render cb-n span');
 });
