@@ -822,7 +822,7 @@ a{color:inherit;text-decoration:none;text-underline-offset:2px}
 .qc.hot{color:var(--text)}
 
 /* Tactical Shingle Panel Deck (Chamfered Card Corner + Subdued Badge + Full-Width Center) */
-.qc-shingles{display:flex;align-items:center;gap:6px;flex:none;padding:0 2px}
+.qc-shingles{display:flex;align-items:center;gap:3px;flex:none;padding:0 2px}
 .qc-panel{
   position:relative;flex:none;min-width:142px;height:58px;
   background:rgba(255,255,255,.05);
@@ -932,7 +932,7 @@ a{color:inherit;text-decoration:none;text-underline-offset:2px}
   color:#8e8e98;
 }
 
-/* SECTION 2: Main Title - Full Width Center */
+/* SECTION 2: Main Title - Full Width Center with Subtle Edge Color Glow */
 .qp-mid{
   background:#00000000;
   border-radius:3px;
@@ -942,8 +942,8 @@ a{color:inherit;text-decoration:none;text-underline-offset:2px}
   display:flex;
   align-items:center;
   justify-content:center;
-  border:1px solid rgba(255,255,255,.06);
-  box-shadow:inset 0 1px 3px rgba(0,0,0,.95);
+  border:1px solid var(--cat-bdr, rgba(255,255,255,.06));
+  box-shadow:inset 0 0 6px var(--cat-glow, transparent), inset 0 1px 2px rgba(0,0,0,.9);
   overflow:hidden;
 }
 .qp-title{
