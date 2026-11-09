@@ -6314,7 +6314,6 @@ function runDescEnrich(){
       if (descQueue.length) queueDescEnrich();
     });
 }
-}
 // masih ada item di newsList yang bisa di-fetch desc-nya?
 const descHasWork = () => {
   if (descTried.size >= DESC_MAX) return false;
