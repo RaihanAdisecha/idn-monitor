@@ -4359,6 +4359,13 @@ async function rdRead(raw, bg) {
       if (r.thin && playable) r.videoPage = true;
       r.t = { ms: Date.now() - t0, fetch: fetchMs, media: Date.now() - m0, via };
       console.log('[read]', via, r.t.ms + 'ms', 'fetch:' + fetchMs, 'media:' + r.t.media);
+      // Sinkronkan deskripsi/paragraf pertama ke descCache agar /api/desc langsung hit memori
+      if (r && (r.desc || (r.paras && r.paras[0]))) {
+        const ds = r.desc || r.paras[0];
+        if (ds && ds.length >= 26 && !BOT_CHALLENGE_RE.test(ds)) {
+          descRemember([raw, target, url, r.url, r.final].filter(Boolean), ds);
+        }
+      }
       return r;
     };
     // first-valid-wins: semua extractor jalan paralel, yang pertama hasilkan
@@ -4742,6 +4749,25 @@ async function descForUrl(reqUrl) {
     if (/(^|\.)news\.google\.com$/i.test(new URL(target).hostname)) { descRemember([reqUrl], ''); return ''; }   // gagal resolve → jangan fetch halaman GN
     const viaTarget = descGet(target);   // url resolved mungkin sudah pernah di-fetch lewat request lain
     if (viaTarget !== undefined) { descRemember([reqUrl], viaTarget); return viaTarget; }
+  }
+  // 1. Cek apakah artikel ini sudah ada di cache reader memo (instan tanpa request jaringan)
+  for (const testU of [target, reqUrl]) {
+    const rHit = cache.get('read:' + testU);
+    if (rHit && rHit.v && (rHit.v.desc || (rHit.v.paras && rHit.v.paras[0]))) {
+      const ds = rHit.v.desc || rHit.v.paras[0];
+      if (ds && ds.length >= 26 && !BOT_CHALLENGE_RE.test(ds)) {
+        descRemember([reqUrl, target], ds);
+        return ds;
+      }
+    }
+  }
+  // 2. Cek apakah ada di feed Newswire RSS memori
+  for (const testU of [target, reqUrl]) {
+    const wireIt = rdWireFind(testU);
+    if (wireIt && wireIt.desc && wireIt.desc.length >= 26 && !BOT_CHALLENGE_RE.test(wireIt.desc)) {
+      descRemember([reqUrl, target], wireIt.desc);
+      return wireIt.desc;
+    }
   }
   const host = new URL(target).hostname;
   // Slot per-host sebagai promise chain: request sehost berbaris rapi (gap 2dtk

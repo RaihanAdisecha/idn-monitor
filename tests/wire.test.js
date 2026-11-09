@@ -622,3 +622,40 @@ test('anti-captcha enforcement and wire description / headline performance', () 
   assert.ok(html.includes('descAbort') && html.includes('descAbort.abort()'),
             'topic switching must abort pending desc enrichment');
 });
+
+test('wire-reader synchronization and skeleton lifecycle enforcement', () => {
+  const fs = require('fs');
+  const path = require('path');
+  const serverJs = fs.readFileSync(path.join(__dirname, '../server.js'), 'utf8');
+  const html = fs.readFileSync(path.join(__dirname, '../public/index.html'), 'utf8');
+
+  // 1. server.js rdRead syncs article description into descRemember
+  assert.ok(serverJs.includes('descRemember([raw, target, url, r.url, r.final].filter(Boolean), ds)'),
+            'server.js rdRead fin must sync article desc to descCache');
+
+  // 2. server.js descForUrl checks reader memo cache and wire RSS memory before network
+  assert.ok(serverJs.includes("cache.get('read:' + testU)"),
+            'server.js descForUrl must check reader memo cache before network request');
+  assert.ok(serverJs.includes('rdWireFind(testU)'),
+            'server.js descForUrl must check in-memory wire feed items before network request');
+
+  // 3. index.html defines rdSyncWireDesc to bridge reader and wire cards
+  assert.ok(html.includes('function rdSyncWireDesc(d, fallbackUrl)'),
+            'index.html must implement rdSyncWireDesc helper');
+  assert.ok(html.includes('rdSyncWireDesc(d, url);'),
+            'rdArticle must call rdSyncWireDesc to update wire card immediately');
+  assert.ok(html.includes('rdSyncWireDesc(d, url);') && html.includes('rdSyncWireDesc(article, h.url);'),
+            'rdPrefetch and renderLead must backfill description from reader to wire items');
+
+  // 4. Headline-first list rendering: no stuck skeletons on wire cards
+  assert.ok(html.includes('// Headline-first: tidak memasang skeleton di kartu list'),
+            'newsHtml must use headline-first pattern and avoid mounting stuck skeletons');
+
+  // 5. CSS skeleton auto-decay keyframes
+  assert.ok(html.includes('@keyframes sk-decay'),
+            'CSS must include sk-decay keyframes to self-destruct hanging skeletons');
+
+  // 6. nwCardFor matches deduplicated twin URLs in it.alt
+  assert.ok(html.includes('it.alt instanceof Set ? it.alt : (it.alt || [])'),
+            'nwCardFor must search both primary url and dedup twin urls');
+});

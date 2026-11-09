@@ -1213,11 +1213,15 @@ a{color:inherit;text-decoration:none;text-underline-offset:2px}
 /* skeleton desc per kartu — shimmer sama dengan .nw-sk-line, ukuran menyesuaikan baris.
    PENTING: jangan pakai class .nw-ex/.lead-ex di skeleton — observer desc enrich
    me-skip kartu yang sudah punya class itu, jadi skeleton akan membunuh fetch-nya sendiri */
-.nw-ex-sk{margin-top:6px}
+.nw-ex-sk{margin-top:6px;animation:sk-decay 3.5s cubic-bezier(.4,0,.2,1) forwards}
 .nw-ex-sk .nw-sk-line{height:7px;margin:4px 0}
 .nw-ex-sk .nw-sk-line:last-child{width:76%}
 .lead-ex-sk{margin-top:9px}
 .lead-ex-sk .nw-sk-line{height:10px;margin:5px 0}
+@keyframes sk-decay{
+  0%, 75% { opacity:1; }
+  100% { opacity:0; height:0; margin:0; overflow:hidden; pointer-events:none; }
+}
 .nw .new{display:inline-block;margin-left:5px;padding:2px 3px;background:var(--accent);color:#fff;font:600 8px/1 var(--mono);letter-spacing:.07em;vertical-align:1px}
 .nw .dup-n{display:inline-block;margin-left:5px;padding:2px 3px;background:var(--layer2);border:1px solid var(--border2);color:var(--text3);font:600 8px/1 var(--mono);letter-spacing:.05em;vertical-align:1px;cursor:help}
 .nw-day{
@@ -5741,7 +5745,8 @@ function fallbackImgOK(u){
 }
 function leadHtml(h, imageUrl = '', isLatest = true){
   const cat = newsCat(h);
-  const desc = h.desc && h.desc.length > 200 ? h.desc.slice(0, 200).replace(/\s+\S*$/, '') + '…' : h.desc;
+  const rawDesc = descForItem(h) || h.desc || '';
+  const desc = rawDesc && rawDesc.length > 200 ? rawDesc.slice(0, 200).replace(/\s+\S*$/, '') + '…' : rawDesc;
   return `<a class="lead" data-cat="${cat}" href="${esc(h.url)}" target="_blank" rel="noopener">
     ${imageUrl ? `<div class="lead-img"><img src="${esc(imageUrl)}" alt="" loading="eager" decoding="async" referrerpolicy="no-referrer" onerror="this.parentNode.remove()"></div>` : ''}
     <div class="lead-t">${cat ? `<span class="lead-cat">${CAT_LABEL[cat]}</span>` : ''}${h.foreign ? '<span class="lead-cat glob">Global</span>' : ''}<span class="lead-live">${isLatest ? 'Terbaru' : 'Sorotan'}</span><span class="lead-meta-r"><span class="lead-by">${esc(cleanSrc(h.src, h.pub))}</span><time>${esc(h.ts ? wibTime(h.ts) : '')} WIB</time></span></div>
@@ -5819,8 +5824,11 @@ async function renderLead(h, isLatest = true){
       const cd = rdCache.get(h.url);
       const article = cd && cd.ok ? cd
         : await getJson(API + '/api/read?u=' + encodeURIComponent(h.url) + '&bg=1', 5000, 0);
-      if (article && article.ok && article.img && !candidates.includes(article.img)) {
-        imageUrl = await preloadLeadImage(article.img);
+      if (article && article.ok) {
+        if (article.img && !candidates.includes(article.img)) {
+          imageUrl = await preloadLeadImage(article.img);
+        }
+        rdSyncWireDesc(article, h.url);
       }
     } catch (e) {}
   }
@@ -5838,12 +5846,14 @@ async function renderLead(h, isLatest = true){
 function newsHtml(h, full){
   const isNew = freshNews.has(h.title);
   const cat = newsCat(h);
-  // kartu list tanpa thumbnail — gambar hanya untuk lead hero
+  const ext = descForItem(h) || (h.desc && h.desc.length > 25 ? h.desc : '');
+  // kartu list tanpa thumbnail — gambar hanya untuk lead hero.
+  // Headline-first: tidak memasang skeleton di kartu list agar ratusan kartu tidak stuck shimmer.
   return `<a class="nw${full ? ' nw-full' : ''}" data-cat="${cat}" href="${esc(h.url)}" target="_blank" rel="noopener">
     <div class="nw-top">${cat ? `<span class="nw-cat">${CAT_LABEL[cat]}</span>` : ''}${h.foreign ? '<span class="nw-cat glob">Global</span>' : ''}<time>${esc(h.ts ? wibTime(h.ts) : '')}</time></div>
     <div class="nw-src">${esc(cleanSrc(h.src, h.pub))}${isNew ? '<span class="new">Baru</span>' : ''}${h.n > 1 ? `<span class="dup-n" title="${esc([...h.srcs].map(s => cleanSrc(s)).filter(Boolean).join(', '))}">×${h.n} artikel</span>` : ''}</div>
     <h3>${esc(deEmoji(h.title))}</h3>
-    ${h.desc && h.desc.length > 25 ? `<p class="nw-ex">${esc(deEmoji(h.desc))}</p>` : descPending(h) ? `<p class="nw-ex-sk" aria-hidden="true"><span class="nw-sk-line"></span><span class="nw-sk-line"></span></p>` : ''}
+    ${ext ? `<p class="nw-ex">${esc(deEmoji(ext))}</p>` : ''}
   </a>`;
 }
 const dayKey = ts => ts ? new Date(ts).toLocaleDateString('id-ID',
@@ -6100,7 +6110,10 @@ function nwAppend(){
 const nwCardFor = it => {
   const box = $('#nlist');
   if (!box || !it) return null;
-  for (const a of box.querySelectorAll('a.nw')) if (a.getAttribute('href') === it.url) return a;
+  const urls = new Set([it.url, ...(it.alt instanceof Set ? it.alt : (it.alt || []))].filter(Boolean));
+  for (const a of box.querySelectorAll('a.nw')) {
+    if (urls.has(a.getAttribute('href'))) return a;
+  }
   return null;
 };
 /* ============================================================
@@ -6118,10 +6131,11 @@ const nwCardFor = it => {
 const descTried = new Set();    // url → sudah pernah dicoba — anti-loop
 const descGot = new Map();      // url → desc hasil fetch
 const descDead = new Map();     // url → timestamp kosong; server neg-cache 10 mnt → client retry ~12 mnt (dulu permanen seumur page-load)
+const descFails = new Map();    // url → jumlah kegagalan berturut-turut (maks 2x sebelum di-dead)
 const DESC_DEAD_TTL = 12 * 60000;
 const descDeadExpire = () => {
   const now = Date.now();
-  for (const [u, at] of descDead) if (now - at > DESC_DEAD_TTL) { descDead.delete(u); descTried.delete(u); }
+  for (const [u, at] of descDead) if (now - at > DESC_DEAD_TTL) { descDead.delete(u); descTried.delete(u); descFails.delete(u); }
 };
 // semua url anggota kartu dedup (url utama + alt dari merge) — kartu yang
 // selamat dedup bisa jadi url langsung publisher, sementara twin GN-nya yang
@@ -6139,8 +6153,11 @@ const descFetchUrl = h => descUrlsOf(h).find(u => descEligible(u)) || null;
 // descTried tidak disertakan: selama fetch berjalan url sudah di-tried tapi
 // skeleton tetap harus tampil. descTried.size < DESC_MAX: cap habis = sisa
 // kartu tidak akan pernah di-fetch → jangan skeleton selamanya.
-const descPending = h => descUrlsOf(h).some(u => !descGot.has(u) && !descDead.has(u))
-  && descTried.size < DESC_MAX;
+const descPending = h => {
+  if (!h || descTried.size >= DESC_MAX) return false;
+  if (descDead.has(h.url)) return false;
+  return descUrlsOf(h).some(u => !descGot.has(u) && !descDead.has(u));
+};
 const DESC_MAX = 1200, DESC_TOP = 16, DESC_BATCH = 8;
 // semua http(s) — server /api/desc menerima URL apa pun yang publik; direct-feed
 // ber-deskripsi tipis ikut ter-enrich, bukan cuma Google News
@@ -6169,7 +6186,49 @@ function nwSyncDesc(it){
       const h3 = a.querySelector('h3');
       if (h3) h3.insertAdjacentHTML('afterend', html);
     }
-  } else if (sk && !descPending(it)) sk.remove();   // terminal dead → skeleton lepas
+  } else if (sk) sk.remove();   // terminal dead / kosong → skeleton lepas
+}
+// Sinkronkan hasil scraping reader (d.desc / d.paras[0]) langsung ke kartu wire
+function rdSyncWireDesc(d, fallbackUrl) {
+  if (!d || !d.ok) return;
+  const firstBlock = (d.blocks || []).find(b => b && b.k === 'p' && b.t && b.t.length > 25);
+  const raw = d.desc || (d.paras && d.paras[0]) || (firstBlock && firstBlock.t) || '';
+  const c = cleanDesc(raw);
+  if (!c || c.length <= 25) return;
+
+  const urls = [fallbackUrl, d.url, d.final].filter(u => typeof u === 'string' && DESC_URL_RE.test(u));
+  if (!urls.length) return;
+
+  // 1. Simpan ke descGot untuk semua URL alias
+  urls.forEach(u => {
+    descGot.set(u, c);
+    descDead.delete(u);
+    descTried.add(u);
+  });
+
+  // 2. Cari item wire terkait di dedup list
+  let it = null;
+  for (const u of urls) {
+    it = findWireItem(u);
+    if (it) break;
+  }
+
+  if (it) {
+    for (const u of descUrlsOf(it)) descGot.set(u, c);
+    if (!(it.desc && it.desc.length > 25)) it.desc = c;
+    nwSyncDesc(it);
+  }
+
+  // 3. Sinkronkan kartu lead jika sedang menampilkan item ini
+  const leadEl = $('#lead .lead');
+  const leadSk = leadEl && leadEl.querySelector('.lead-ex-sk');
+  if (leadSk) {
+    const leadHref = leadEl.getAttribute('href');
+    if (urls.includes(leadHref) || (curLead && (urls.includes(curLead.url) || it === curLead))) {
+      if (curLead && !(curLead.desc && curLead.desc.length > 25)) curLead.desc = c;
+      leadSk.outerHTML = `<p class="lead-ex">${esc(deEmoji(c))}</p>`;
+    }
+  }
 }
 // cari item dedup dari href kartu (url utama atau salah satu alt twin)
 const findWireItem = u => (_nwDedup && _nwDedup.list || []).find(x => x.url === u ||
@@ -6260,10 +6319,12 @@ function runDescEnrich(){
     seen.add(u); urls.push(u);
   };
   while (descQueue.length && urls.length < DESC_TOP) push(descQueue.shift());
-  for (const h of newsList || []) {
-    if (urls.length >= DESC_TOP || descTried.size + urls.length >= DESC_MAX) break;
-    if (h && h.desc && h.desc.length > 25) continue;
-    push(h && h.url);
+  if (!urls.length) {
+    for (const h of newsList || []) {
+      if (urls.length >= 4 || descTried.size + urls.length >= DESC_MAX) break;
+      if (h && h.desc && h.desc.length > 25) continue;
+      push(h && h.url);
+    }
   }
   if (!urls.length) return;
   urls.forEach(u => descTried.add(u));   // tandai SEBELUM fetch — gagal pun tidak diulang
@@ -6273,26 +6334,62 @@ function runDescEnrich(){
   const sig = descAbort.signal;
   const batches = [];
   for (let i = 0; i < urls.length; i += DESC_BATCH) batches.push(urls.slice(i, i + DESC_BATCH));
-  Promise.all(batches.map(b => postJson(API + '/api/desc', { urls: b }, 12000, sig)   // 12s timeout — jangan biarkan batch gantung 40s
+  Promise.all(batches.map(b => postJson(API + '/api/desc', { urls: b }, 14000, sig)   // 14s timeout — jangan biarkan batch gantung 40s
       .then(d => ({ b, d })).catch(() => ({ b, d: null }))))
     .then(rs => {
       const touched = new Set();
       const items = (_nwDedup && _nwDedup.list) || [];
       for (const { b, d } of rs) {
-        if (!d) { b.forEach(u => { descTried.delete(u); descQueued.delete(u); }); continue; }   // network gagal → boleh retry siklus berikut
+        if (!d) {
+          b.forEach(u => {
+            const count = (descFails.get(u) || 0) + 1;
+            descFails.set(u, count);
+            descQueued.delete(u);
+            if (count >= 2) {
+              descDead.set(u, Date.now());
+              descTried.add(u);
+              const it = items.find(x => x.url === u || (x.alt instanceof Set ? x.alt.has(u) : (x.alt || []).includes(u)));
+              if (it) {
+                for (const altU of descUrlsOf(it)) {
+                  descDead.set(altU, Date.now());
+                  descTried.add(altU);
+                  descQueued.delete(altU);
+                }
+                touched.add(it);
+              }
+            } else {
+              descTried.delete(u);
+            }
+          });
+          continue;
+        }
         const map = d.ok && d.descs;
         if (!map) continue;
         for (const u of Object.keys(map)) {
+          descFails.delete(u);
           const c = cleanDesc(map[u]);
           const it = items.find(x => x.url === u ||
             (x.alt instanceof Set ? x.alt.has(u) : (x.alt || []).includes(u)));
-          if (!c) { descDead.set(u, Date.now()); descTried.delete(u); if (it) touched.add(it); continue; }   // kosong → terminal ~12 mnt, bukan selamanya
+          if (!c) {
+            descDead.set(u, Date.now());
+            descTried.add(u);
+            if (it) {
+              for (const altU of descUrlsOf(it)) {
+                descDead.set(altU, Date.now());
+                descTried.add(altU);
+                descQueued.delete(altU);
+              }
+              touched.add(it);
+            }
+            continue;
+          }
           descGot.set(u, c);
           // item dedup adalah object stabil selama _mmCache sama — mutasi langsung
           // supaya renderNews berikutnya (cache dedup) langsung memakainya
           if (it) {
             touched.add(it);
             if (!(it.desc && it.desc.length > 25)) it.desc = c;
+            for (const altU of descUrlsOf(it)) descGot.set(altU, c);
           }
         }
       }
@@ -9202,6 +9299,7 @@ function rdHeroFb(img) {
   if (rdHero) img.src = rdHero; else img.remove();
 }
 function rdArticle(d, url) {
+  rdSyncWireDesc(d, url);
   const ts = d.time && !isNaN(Date.parse(d.time)) ? wibFull(Date.parse(d.time)) + ' WIB' : '';
   const meta = [d.site, d.byline, ts].filter(Boolean);
   // hero image yang sama dengan poster video = duplikat — tampilkan player, bukan gambar
@@ -9402,6 +9500,7 @@ function rdPrefetch(url) {
       if (d && d.ok) {
         rdCache.set(url, d);
         if (rdCache.size > 80) rdCache.delete(rdCache.keys().next().value);
+        rdSyncWireDesc(d, url);
       }
     })
     .catch(() => {})
