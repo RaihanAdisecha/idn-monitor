@@ -1213,13 +1213,15 @@ a{color:inherit;text-decoration:none;text-underline-offset:2px}
 /* skeleton desc per kartu — shimmer sama dengan .nw-sk-line, ukuran menyesuaikan baris.
    PENTING: jangan pakai class .nw-ex/.lead-ex di skeleton — observer desc enrich
    me-skip kartu yang sudah punya class itu, jadi skeleton akan membunuh fetch-nya sendiri */
-.nw-ex-sk{margin-top:6px;animation:sk-decay 3.5s cubic-bezier(.4,0,.2,1) forwards}
+.nw-ex-sk{margin-top:6px;min-height:26px;animation:sk-decay 6.5s cubic-bezier(.4,0,.2,1) forwards}
 .nw-ex-sk .nw-sk-line{height:7px;margin:4px 0}
-.nw-ex-sk .nw-sk-line:last-child{width:76%}
+.nw-ex-sk .nw-sk-line:last-child,.nw-ex-sk .nw-sk-line.short{width:76%}
 .lead-ex-sk{margin-top:9px}
 .lead-ex-sk .nw-sk-line{height:10px;margin:5px 0}
+.nw-reveal{animation:nw-fade-in .26s cubic-bezier(0,0,.2,1) forwards}
+@keyframes nw-fade-in{from{opacity:0;transform:translateY(2px)}to{opacity:1;transform:translateY(0)}}
 @keyframes sk-decay{
-  0%, 75% { opacity:1; }
+  0%, 82% { opacity:1; }
   100% { opacity:0; height:0; margin:0; overflow:hidden; pointer-events:none; }
 }
 .nw .new{display:inline-block;margin-left:5px;padding:2px 3px;background:var(--accent);color:#fff;font:600 8px/1 var(--mono);letter-spacing:.07em;vertical-align:1px}
@@ -5902,12 +5904,12 @@ function newsHtml(h, full){
   const cat = newsCat(h);
   const ext = descForItem(h) || (h.desc && h.desc.length > 25 ? h.desc : '');
   // kartu list tanpa thumbnail — gambar hanya untuk lead hero.
-  // Headline-first: tidak memasang skeleton di kartu list agar ratusan kartu tidak stuck shimmer.
+  // Headline-first: tidak memasang skeleton di kartu list permanen — transitional reveal hanya saat descPending dengan auto-decay agar kartu tidak kosong melompong.
   return `<a class="nw${full ? ' nw-full' : ''}" data-cat="${cat}" href="${esc(h.url)}" target="_blank" rel="noopener">
     <div class="nw-top">${cat ? `<span class="nw-cat">${CAT_LABEL[cat]}</span>` : ''}${h.foreign ? '<span class="nw-cat glob">Global</span>' : ''}<time>${esc(h.ts ? wibTime(h.ts) : '')}</time></div>
     <div class="nw-src">${esc(cleanSrc(h.src, h.pub))}${isNew ? '<span class="new">Baru</span>' : ''}${h.n > 1 ? `<span class="dup-n" title="${esc([...h.srcs].map(s => cleanSrc(s)).filter(Boolean).join(', '))}">×${h.n} artikel</span>` : ''}</div>
     <h3>${esc(deEmoji(h.title))}</h3>
-    ${ext ? `<p class="nw-ex">${esc(deEmoji(ext))}</p>` : ''}
+    ${ext ? `<p class="nw-ex">${esc(deEmoji(ext))}</p>` : descPending(h) ? `<p class="nw-ex-sk" aria-hidden="true"><span class="nw-sk-line"></span><span class="nw-sk-line short"></span></p>` : ''}
   </a>`;
 }
 const dayKey = ts => ts ? new Date(ts).toLocaleDateString('id-ID',
@@ -6234,13 +6236,19 @@ function nwSyncDesc(it){
   const c = descForItem(it) || (it.desc && it.desc.length > 25 ? it.desc : '');
   const sk = a.querySelector('.nw-ex-sk');
   if (c) {
-    const html = `<p class="nw-ex">${esc(deEmoji(c))}</p>`;
+    const html = `<p class="nw-ex nw-reveal">${esc(deEmoji(c))}</p>`;
     if (sk) sk.outerHTML = html;
     else if (!a.querySelector('.nw-ex')) {
       const h3 = a.querySelector('h3');
       if (h3) h3.insertAdjacentHTML('afterend', html);
     }
-  } else if (sk) sk.remove();   // terminal dead / kosong → skeleton lepas
+  } else if (sk) {
+    sk.style.transition = 'opacity .25s ease, height .25s ease, margin .25s ease';
+    sk.style.opacity = '0';
+    sk.style.height = '0';
+    sk.style.margin = '0';
+    setTimeout(() => { if (sk && sk.parentNode) sk.remove(); }, 260);
+  }
 }
 // Sinkronkan hasil scraping reader (d.desc / d.paras[0]) langsung ke kartu wire
 function rdSyncWireDesc(d, fallbackUrl) {
@@ -6280,7 +6288,7 @@ function rdSyncWireDesc(d, fallbackUrl) {
     const leadHref = leadEl.getAttribute('href');
     if (urls.includes(leadHref) || (curLead && (urls.includes(curLead.url) || it === curLead))) {
       if (curLead && !(curLead.desc && curLead.desc.length > 25)) curLead.desc = c;
-      leadSk.outerHTML = `<p class="lead-ex">${esc(deEmoji(c))}</p>`;
+      leadSk.outerHTML = `<p class="lead-ex nw-reveal">${esc(deEmoji(c))}</p>`;
     }
   }
 }

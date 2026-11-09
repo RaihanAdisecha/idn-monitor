@@ -650,10 +650,16 @@ test('wire-reader synchronization and skeleton lifecycle enforcement', () => {
   // 4. Headline-first list rendering: no stuck skeletons on wire cards
   assert.ok(html.includes('// Headline-first: tidak memasang skeleton di kartu list'),
             'newsHtml must use headline-first pattern and avoid mounting stuck skeletons');
+  assert.ok(html.includes('descPending(h) ? `<p class="nw-ex-sk" aria-hidden="true"><span class="nw-sk-line"></span><span class="nw-sk-line short"></span></p>`'),
+            'newsHtml must render transitional skeleton placeholder when description is pending');
 
-  // 5. CSS skeleton auto-decay keyframes
+  // 5. CSS skeleton auto-decay and smooth reveal keyframes
   assert.ok(html.includes('@keyframes sk-decay'),
             'CSS must include sk-decay keyframes to self-destruct hanging skeletons');
+  assert.ok(html.includes('.nw-reveal{animation:nw-fade-in') && html.includes('@keyframes nw-fade-in'),
+            'CSS must include nw-reveal and nw-fade-in for smooth zero-shift content transition');
+  assert.ok(html.includes('<p class="nw-ex nw-reveal">${esc(deEmoji(c))}</p>'),
+            'nwSyncDesc must replace skeleton with nw-reveal paragraph');
 
   // 6. nwCardFor matches deduplicated twin URLs in it.alt
   assert.ok(html.includes('it.alt instanceof Set ? it.alt : (it.alt || [])'),
