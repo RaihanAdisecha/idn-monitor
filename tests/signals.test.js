@@ -65,3 +65,62 @@ test('user-provided political tsunami, MEXC commentary and metaphor rant never b
  ];
  for(const text of examples)assert.equal(socAssess(text).signalEligible,false,text);
 });
+
+test('football banter, Asian drama SEO and trend stuffing copypasta never leak into signals or topics',()=>{
+ const {socKeepX}=require('../social');
+ const leakingPost='Pemabuk diperlukan pelacur jalanan @ManUtd bermahkotakan duri tajam #MUFC Tutup matamu kawan @carras16 besarkan hati @persib surga SID Bukan Pahlawan Kim Jiwon of Doctor X Meng Ziyi of Tigers sniff the rose Emyu baby gempa #PERSIB BANDUNG indonesia KRAKATAU SEMERU';
+ assert.equal(socAssess(leakingPost).signalEligible,false);
+ assert.equal(socTopics(leakingPost).includes('gempa'),false);
+ assert.equal(socKeepX({text:leakingPost,likes:0}),false);
+});
+
+test('Indonesian metaphors, idioms, slang and pop culture across all categories never become signals',()=>{
+ const idiomCases=[
+   ['Wah gempa lokal nih pas dia lewat depan kelas','gempa'],
+   ['Baby gempa lucu banget tingkahnya hari ini','gempa'],
+   ['Karakter Boboiboy Gempa kekuatannya paling stabil di serialnya','gempa'],
+   ['Jual baju gempa kaos distro murah bahan katun','gempa'],
+   ['Lagu goyang gempa ini lagi viral di TikTok dan Reels','gempa'],
+   ['Guncangan politik jelang reshuffle kabinet kian memanas','gempa'],
+   ['Badai cedera menghantam lini belakang klub jelang laga derby','badai'],
+   ['Kebijakan baru menteri menuai badai kritik dari publik','badai'],
+   ['Penampilan artis itu di panggung semalam cantik badai abis','badai'],
+   ['Suasana konser pecah panggung terbakar semangat penonton','kebakaran'],
+   ['Sayap-sayap patah terbakar api cemburu yang tak kunjung padam','kebakaran'],
+   ['Pernyataan politisi itu tabrakan logika dan membingungkan warga','kecelakaan'],
+   ['Rancangan aturan baru dinilai menabrak konstitusi dan asas keadilan','kecelakaan'],
+   ['Pejabat tersebut tergelincir lidah saat sesi konferensi pers','insiden'],
+   ['Jembatan cinta kenangan kita kini hanya tinggal cerita lama','insiden'],
+   ['Dapat durian runtuh menang undian motor dari bank kemarin sore','insiden'],
+   ['Semua hadirin hanyut dalam suasana haru pembacaan puisi','banjir'],
+   ['Keluarga korban tenggelam dalam duka mendalam atas kepergiannya','insiden'],
+   ['Aduh kena racun shopee lagi checkout barang diskonan banyak banget','kesehatan'],
+   ['Cowok itu udah keracunan cinta sampai buta sama kelakuan pasangannya','kesehatan'],
+   ['Wabah judol sudah merusak generasi muda di berbagai daerah','kesehatan'],
+   ['Ditembak mati rasa hatiku tak lagi mampu mencintai siapa pun','penembakan'],
+   ['Tim tamu sukses curi poin penuh di kandang lawan pekan ini','pencurian'],
+   ['Waspada sindikat begal rekening dengan modus phishing APK kurir paket','kriminal']
+ ];
+ for(const [text,forbiddenTopic] of idiomCases){
+   const a=socAssess(text);
+   assert.equal(a.signalEligible,false,`Expected signalEligible=false for: ${text}`);
+   const topics=socTopics(text);
+   assert.equal(topics.includes(forbiddenTopic),false,`Expected ${forbiddenTopic} excluded from topics for: ${text}`);
+ }
+});
+
+test('genuine citizen and official seismic and disaster reports remain verified signals',()=>{
+ const genuineCases=[
+   ['BMKG: Gempa magnitudo 5.2 guncang Sukabumi, getaran terasa hingga Bandung','gempa'],
+   ['Gempa terasa kencang banget di Garut barusan, warga berhamburan keluar rumah','gempa'],
+   ['Gunung Semeru meletus lagi pagi ini, semburkan awan panas guguran sejauh 3 km','gempa'],
+   ['Puting beliung terjang pemukiman warga di Ciamis, puluhan atap rumah rusak','badai']
+ ];
+ for(const [text,expectedTopic] of genuineCases){
+   const a=socAssess(text);
+   assert.equal(a.signalEligible,true,`Expected signalEligible=true for: ${text}`);
+   assert.equal(a.scope,'Indonesia',`Expected scope=Indonesia for: ${text}`);
+   const topics=socTopics(text);
+   assert.ok(topics.includes(expectedTopic),`Expected topics to include ${expectedTopic} for: ${text}`);
+ }
+});
