@@ -2488,7 +2488,8 @@ function imageScore(c, dim) {
   if (ar >= 1.55) s += 24; else if (ar >= 1.25) s += 14; else if (ar >= 1.0) s += 4; else s -= 16;
   if (c.kind === 'meta' || c.kind === 'og' || c.kind === 'twitter') s += 12;
   if (c.kind === 'og') s += 20;   // og:image = gambar yang sama dengan reader → konsisten
-  if (/logo|icon|sprite|avatar|badge|placeholder|blank|pixel|advert|ads?|banner|header|footer|nav|share|whatsapp|facebook|twitter|instagram|youtube/i.test(c.url)) s -= 40;
+  if (!/^(?:whatsapp|wa)[-_ ](?:image|foto|img|pic|photo)/i.test(c.url.split('?')[0].split('/').pop() || '') &&
+      /logo|icon|sprite|avatar|badge|placeholder|blank|pixel|advert|ads?|banner|header|footer|nav|share|whatsapp|facebook|twitter|instagram|youtube/i.test(c.url)) s -= 40;
   if (/foto|photo|image|img|news|berita|upload|media|visual|original/i.test(c.url)) s += 4;
   return s;
 }
@@ -3264,11 +3265,11 @@ async function rdAssertPublic(raw) {
   if (ent.addrs.some(a => rdPrivateIP(a.address))) throw new Error('alamat privat ditolak');
   return x;
 }
-async function rdSafeGet(raw, ms) {
+async function rdSafeGet(raw, ms, headers) {
   let cur = raw;
   for (let i = 0; i < 5; i++) {
     await rdAssertPublic(cur);
-    const r = await get(cur, { redirect: 'manual', headers: { accept: 'text/html,application/xhtml+xml;q=0.9,*/*;q=0.8' } }, ms);
+    const r = await get(cur, { redirect: 'manual', headers: { accept: 'text/html,application/xhtml+xml;q=0.9,*/*;q=0.8', ...(headers || {}) } }, ms);
     if (r.status >= 300 && r.status < 400) {
       const loc = r.headers.get('location');
       if (!loc) throw new Error('redirect tanpa lokasi');
@@ -3375,7 +3376,9 @@ const RD_JUNK_BASE = /^(google|gnews|googlenews|telegram|threads|bluesky|pintere
 function rdJunkUrl(u) {
   const path = String(u).split('?')[0];
   if (RD_JUNK_URL.test(path)) return true;
-  return RD_JUNK_BASE.test(path.split('/').pop() || '');
+  const base = path.split('/').pop() || '';
+  if (/^(?:whatsapp|wa|telegram)[-_ ](?:image|foto|img|pic|photo|doc|video)/i.test(base)) return false;
+  return RD_JUNK_BASE.test(base);
 }
 // container DOM yang isinya bukan konten artikel: reaksi, author box, foto wartawan,
 // section related/baca-juga — dibuang sebelum scan gambar maupun paragraf
@@ -3418,8 +3421,9 @@ function rdMdImgJunk(u, alt) {
   const path = String(u).split('?')[0];
   if (RD_IMG_JUNK.test(path) || rdJunkUrl(u) || rdSmallHint(u) || RD_MD_PATH_JUNK.test(path)) return true;
   // icon share bernama i-facebook/i-whatsapp/dsb atau awalan sosmed (wa-komunitas.jpg)
-  if (/(?:^|\/)(?:i-(?:facebook|twitter|x|whatsapp|telegram|instagram|youtube|pinterest|linkedin|tiktok)|(?:wa|whatsapp|fb|ig|twitter|telegram|pinterest|linkedin|youtube|tiktok)[-_.])[^/]*$/i.test(path)) return true;
-  if (alt && RD_MD_ALT_JUNK.test(alt)) return true;
+  const fn = path.split('/').pop() || '';
+  if (!/^(?:whatsapp|wa)[-_ ](?:image|foto|img|pic|photo)/i.test(fn) && /(?:^|\/)(?:i-(?:facebook|twitter|x|whatsapp|telegram|instagram|youtube|pinterest|linkedin|tiktok)|(?:wa|whatsapp|fb|ig|twitter|telegram|pinterest|linkedin|youtube|tiktok)[-_.])[^/]*$/i.test(path)) return true;
+  if (alt && !/^(?:whatsapp|wa)[-_ ]image/i.test(alt) && RD_MD_ALT_JUNK.test(alt)) return true;
   return false;
 }
 const rdProbeCache = new Map();
@@ -3559,7 +3563,7 @@ function rdVideoEl(tag, finalURL) {
   return { url: u, kind: 'video', poster: rdAbs((tag.match(/\bposter=["']([^"']+)/i) || [])[1], finalURL) };
 }
 // boilerplate/CTA publisher yang bukan isi berita
-const RD_BOILER = /baca berita terkini|berita terkini dan terpercaya|dapatkan (?:berita|update|info)|untuk mendapatkan berita|follow (?:channel|akun|kami)|ikuti (?:kami|saluran|channel|akun)|gabung (?:di )?(?:channel|grup|saluran)|lorem ipsum|all rights reserved|hak cipta|download aplikasi|unduh aplikasi|informasi seputar .{0,60}(?:bisa|dapat) diakses|bergabunglah|klik (?:di sini|link)|whatsapp channel|google news|dilarang (?:keras )?(?:mengambil|menyalin|mengutip|mengcopy)|crawling|pengindeksan otomatis|download sekarang|menyajikan berita terhangat|tinggalkan komentar|^©|^copyright|unduh .{0,30}app|install aplikasi|dapatkan notifikasi|aktifkan notifikasi|laporkan (?:iklan|konten)|unblock notifications|real[- ]time updates|know more|sign up for|subscribe to|sponsored|advertisement|sumber (?:utama|pilihan|terpercaya) di google|preferred source|tambahkan .{0,40}sumber|tas darurat.{0,3}ada apa|isi komentar|tanggung jawab (?:pengguna|penulis komentar)|promo rp|jajan pakai|diskon hingga|beli sekarang|daftar sekarang|^(?:sumber|source)\s*:|^(?:editor|penulis|reporter|redaktur|kontributor)\s*:|(?:window|modal|dialog|jendela|log)\s*(?:ini|log)?[^.\n]{0,50}(?:ditutup|close)|(?:tekan|press|aktifkan|activate)[^.\n]{0,40}(?:escape|\besc\b|tombol tutup|close button|tombol close)|dapat ditutup dengan/i;
+const RD_BOILER = /baca berita terkini|berita terkini dan terpercaya|dapatkan (?:berita|update|info)|untuk mendapatkan berita|follow (?:channel|akun|kami)|ikuti (?:kami|saluran|channel|akun)|gabung (?:di )?(?:channel|grup|saluran)|lorem ipsum|all rights reserved|hak cipta|download aplikasi|unduh aplikasi|informasi seputar .{0,60}(?:bisa|dapat) diakses|bergabunglah|klik (?:di sini|link)|whatsapp channel|google news|dilarang (?:keras )?(?:mengambil|menyalin|mengutip|mengcopy)|crawling|pengindeksan otomatis|download sekarang|menyajikan berita terhangat|tinggalkan komentar|^©|^copyright|unduh .{0,30}app|install aplikasi|dapatkan notifikasi|aktifkan notifikasi|laporkan (?:iklan|konten)|unblock notifications|real[- ]time updates|know more|sign up for|subscribe to|berlangganan (?:untuk|newsletter|pos|email)|sponsored|advertisement|sumber (?:utama|pilihan|terpercaya) di google|preferred source|tambahkan .{0,40}sumber|tas darurat.{0,3}ada apa|isi komentar|tanggung jawab (?:pengguna|penulis komentar)|promo rp|jajan pakai|diskon hingga|beli sekarang|daftar sekarang|^(?:sumber|source)\s*:|^(?:editor|penulis|reporter|redaktur|kontributor)\s*:|(?:window|modal|dialog|jendela|log)\s*(?:ini|log)?[^.\n]{0,50}(?:ditutup|close)|(?:tekan|press|aktifkan|activate)[^.\n]{0,40}(?:escape|\besc\b|tombol tutup|close button|tombol close)|dapat ditutup dengan/i;
 // paragraf berupa caption foto / kredit / domain telanjang / sampah percent-encoding
 const rdCaptionish = t => t.length < 220 && (/^[A-Z][A-Z0-9 ,'.&-]{5,45}\s[-–:]\s/.test(t) || /\([^()]*(?:\/|commons|photo|credit|foto)[^()]*\)\.?$/i.test(t) && t.length < 180 || /^(?:ilustrasi|foto ilustrasi|foto|dok\.?|dokumentasi|gambar|suasana|caption)\b/i.test(t) || /\((?:foto|antara|dok|sumber|istimewa|reuters|afp|ap|getty)[^)]*\)?\.?$/i.test(t) || /^[\w.-]+\.[a-z]{2,}(?:\/\S*)?…?$/i.test(t));
 const rdGarbage = t => (t.match(/%[0-9A-F]{2}/gi) || []).length >= 3 || /^(?:https?:\/\/|www\.)\S+$/i.test(t) || (t.match(/[\\{}<>|]/g) || []).length > 6;
@@ -3634,6 +3638,7 @@ function rdPruneNoise(blocks, title) {
     if (RD_END.test(b.t) && out.filter(x => x.k === 'p').length >= 2) break;
     if (RD_BOILER.test(b.t) && b.t.length < 260) continue;
     if (rdCaptionish(b.t) || rdGarbage(b.t)) continue;
+    if (/^(?:home|beranda)\s*[/›>»]/i.test(b.t)) continue;
     const n = nrm(b.t);
     if (me.length > 25 && n.includes(me) && n.length < me.length + 40) continue;   // judul/breadcrumb
     if (n !== me && n.length > 25) { let hit = false; for (const w of wire) { if (n === w || (n.includes(w) && n.length < w.length + 25)) { hit = true; break; } } if (hit) continue; }
@@ -3921,10 +3926,15 @@ function rdExtract(html, finalURL) {
   const vkey = v => String(v.url).split('?')[0];
   const pkeys = new Set(blk.videos.map(vkey));
   const videos = [...blk.videos, ...allV.filter(v => !pkeys.has(vkey(v)))].slice(0, 4);
+  let cleanDesc = rdInline(desc);
+  if (cleanDesc.length < 25 || /^[-–—\s]*[A-Za-z0-9.\s]+$/i.test(cleanDesc)) {
+    const firstP = joined.find(p => p.length >= 40) || '';
+    if (firstP) cleanDesc = firstP.slice(0, 300);
+  }
   return {
     ok: true, url: finalURL, final: finalURL,
     title: title || rdHost(finalURL) || 'Tanpa judul',
-    site, byline, time: time ? String(time) : '', img, desc: rdInline(desc),
+    site, byline, time: time ? String(time) : '', img, desc: cleanDesc,
     paras: joined, thin: joined.length < 2, videos, blocks: finBlocks
   };
 }
@@ -4163,7 +4173,7 @@ async function rdRead(raw, bg) {
     const left = () => Math.max(5000, 40000 - (Date.now() - t0));   // frontend timeout 45s
     let lastErr = null, metaD = null;
     const attempts = [];   // {via, err} per jalur — dilaporkan ke klien saat semua gagal
-    const BLOCKED_RE = /just a moment|attention required|access denied|verify you are|are you a robot|cf-chl|challenge-platform|enable javascript and cookies|request blocked|pardon our interruption/i;
+    const BLOCKED_RE = /just a moment|attention required|access denied|verify you are|are you a robot|cf-chl|challenge-platform|enable javascript and cookies|request blocked|pardon our interruption|bot verification|recaptcha|lsrecaptcha|ddos-guard/i;
     const metaScore = d => ((d.videos || []).length * 2) + (d.img ? 1 : 0) + (d.desc ? 0.5 : 0);
     const tryHtml = (html, url) => {
       const d = rdExtract(html, url);
@@ -4207,6 +4217,30 @@ async function rdRead(raw, bg) {
       if (!d) throw new Error('halaman challenge/block');
       return { d, html, url };
     })() });
+    // bot / crawler UA (Googlebot / Feedfetcher / curl) — tembus LiteSpeed/Cloudflare anti-bot challenge
+    // yang memblokir desktop browser UA karena perbedaan fingerprint TLS Node.js
+    jobs.push({ via: 'bot', p: (async () => {
+      const botUas = [
+        'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)',
+        'Feedfetcher-Google; (+http://www.google.com/feedfetcher.html; 1 subscriber)',
+        'curl/8.7.1'
+      ];
+      let lastBotErr = null;
+      for (const bua of botUas) {
+        if (left() < 5000) break;
+        try {
+          const { r, url } = await rdSafeGet(target, Math.min(8000, left()), { 'user-agent': bua });
+          if (!r.ok) continue;
+          const ct = r.headers.get('content-type') || '';
+          if (!/text\/html|application\/xhtml/i.test(ct)) continue;
+          let html = await mediaText(r, 5 << 20);
+          if (html.length > 3e6) html = html.slice(0, 3e6);
+          const d = tryHtml(html, url);
+          if (d) return { d, html, url };
+        } catch (e) { lastBotErr = e; }
+      }
+      throw lastBotErr || new Error('bot challenge/block');
+    })() });
     // Jina reader — markdown, bukan html → thumb() fallback di rdFinish
     let raceSettled = false;   // true begitu ada job yang menang — Jina antrean batal
     jobs.push({ via: 'jina', p: (async () => {
@@ -4238,11 +4272,11 @@ async function rdRead(raw, bg) {
     const win = await new Promise(res => {
       let n = jobs.length, settled = false;
       const done = v => { if (!settled) { settled = true; raceSettled = true; res(v); } };
-      for (const j of jobs) j.p.then(v => done(v), e => {
+      for (const j of jobs) j.p.then(v => done({ ...v, via: j.via }), e => {
         attempts.push({ via: j.via, err: String(e && e.message || e).slice(0, 90) });
       }).finally(() => { if (--n === 0) done(null); });
     });
-    if (win) { fetchMs = Date.now() - t0; return await fin(win.d, win.url, win.html, 'race'); }
+    if (win) { fetchMs = Date.now() - t0; return await fin(win.d, win.url, win.html, win.via || 'race'); }
     // 2.5) Firecrawl — render browser asli, tembus Cloudflare/challenge yang memukul direct+Jina+proxy
     const FC_KEY = process.env.FIRECRAWL_API_KEY || CFG.firecrawl_key || '';
     // budget: firecrawl cuma kalau sisa waktu cukup untuk render + fin media —
@@ -4536,7 +4570,7 @@ async function descForUrl(reqUrl) {
     const hdrs = isGN
       ? { referer: 'https://news.google.com/' }
       : { accept: 'text/html,application/xhtml+xml;q=0.9,*/*;q=0.8' };
-    const CH_RE = /just a moment|attention required|cf-chl|challenge-platform|verify you are|enable javascript and cookies/i;
+    const CH_RE = /just a moment|attention required|cf-chl|challenge-platform|verify you are|enable javascript and cookies|bot verification|recaptcha|lsrecaptcha/i;
     const fetchHead = async u => {
       const { r } = await mediaGet(u, 8000, hdrs);
       if (!r.ok) throw new Error('HTTP ' + r.status);
