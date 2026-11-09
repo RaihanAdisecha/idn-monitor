@@ -237,3 +237,41 @@ test('romantic confessions, dating drama, and shooting metaphors are rejected wh
   assert.ok(resReal3.topics.includes('penembakan'), 'stray bullet shooting casualty must match penembakan');
   assert.equal(resReal3.feedEligible, true);
 });
+
+test('disaster radar covers volcanic eruptions, storms, and tornadoes while rejecting metaphors', () => {
+  // 1. Real volcanic eruptions
+  const lewotobi = 'Gunung Lewotobi Laki-laki kembali meletus semburkan awan panas guguran setinggi 4000 meter di Flores Timur';
+  const resV1 = S.socAssess(lewotobi);
+  assert.ok(resV1.topics.includes('gempa'), 'volcano eruption must map to disaster/gempa topic');
+  assert.equal(resV1.feedEligible, true, 'volcano eruption must be feed eligible');
+  assert.ok(resV1.events.some(e => e.category === 'disaster' && e.type === 'eruption'), 'event must have category disaster and type eruption');
+
+  const marapi = 'Hujan abu vulkanik tebal melanda permukiman warga akibat erupsi Gunung Marapi di Agam Sumatera Barat';
+  const resV2 = S.socAssess(marapi);
+  assert.ok(resV2.topics.includes('gempa'));
+  assert.equal(resV2.feedEligible, true);
+  assert.ok(resV2.events.some(e => e.category === 'disaster' && e.type === 'eruption'));
+
+  // 2. Real severe storm, cyclone, and tornado (puting beliung)
+  const putingBeliung = 'Angin puting beliung terjang Rancaekek Bandung, puluhan atap rumah beterbangan dan pohon tumbang';
+  const resS1 = S.socAssess(putingBeliung);
+  assert.ok(resS1.topics.includes('badai'), 'puting beliung must map to badai topic');
+  assert.equal(resS1.feedEligible, true, 'tornado must be feed eligible');
+  assert.ok(resS1.events.some(e => e.category === 'disaster' && (e.type === 'tornado' || e.type === 'storm')), 'event must have category disaster');
+
+  const siklon = 'Bibit siklon tropis di Laut Timor memicu badai petir dan gelombang pasang di pesisir Kupang NTT';
+  const resS2 = S.socAssess(siklon);
+  assert.ok(resS2.topics.includes('badai'), 'cyclone must map to badai topic');
+  assert.equal(resS2.feedEligible, true);
+
+  // 3. Metaphors must be rejected
+  const badaiAsmara = 'setelah melewati badai asmara dan drama cinta, akhirnya mereka putus juga';
+  const resM1 = S.socAssess(badaiAsmara);
+  assert.equal(resM1.topics.includes('badai'), false, 'metaphorical badai asmara must not qualify for badai');
+  assert.equal(resM1.feedEligible, false);
+
+  const badaiPastiBerlalu = 'jangan sedih sobat, badai pasti berlalu tetap semangat jalani hidup';
+  const resM2 = S.socAssess(badaiPastiBerlalu);
+  assert.equal(resM2.topics.includes('badai'), false, 'badai pasti berlalu idiom must not qualify for badai');
+  assert.equal(resM2.feedEligible, false);
+});

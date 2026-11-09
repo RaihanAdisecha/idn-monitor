@@ -53,8 +53,8 @@ const NEWS = [
   ['JPNN', 'https://www.jpnn.com/rss'],
   ['GNEWS · DEMO', gn('demo OR "unjuk rasa" OR "aksi massa"')],
   ['GNEWS · KEBAKARAN', gn('kebakaran OR karhutla OR "kebakaran hutan"')],
-  ['GNEWS · BANJIR', gn('banjir OR longsor OR "cuaca ekstrem"')],
-  ['GNEWS · BENCANA', gn('gempa OR tsunami OR erupsi OR letusan')],   // "bencana" saja terlalu longgar: tas bencana, pusdalops, bantuan — bukan kejadian
+  ['GNEWS · BANJIR', gn('banjir OR longsor OR "tanah longsor" OR "banjir bandang" OR "cuaca ekstrem"')],
+  ['GNEWS · BENCANA', gn('gempa OR tsunami OR erupsi OR letusan OR "gunung meletus" OR "puting beliung" OR "siklon tropis" OR "angin kencang" OR badai OR "hujan abu" OR "awan panas"')],
   ['GNEWS · INSIDEN', gn('kecelakaan OR ledakan OR ambruk')],
   ['GNEWS · KRIMINAL', gn('penembakan OR pembunuhan OR penangkapan OR terorisme')],
   ['GNEWS · KESEHATAN', gn('wabah OR DBD OR "demam berdarah" OR campak OR "tangan kaki mulut" OR rabies OR kolera OR mpox OR polio OR TBC OR "gagal ginjal" OR KLB OR keracunan OR "keracunan massal" OR "keracunan makanan" OR "keracunan MBG" OR "makan bergizi" OR "miras oplosan" OR stunting')],
