@@ -932,7 +932,7 @@ a{color:inherit;text-decoration:none;text-underline-offset:2px}
   color:#8e8e98;
 }
 
-/* SECTION 2: Main Title - Full Width Center with Subtle Edge Color Glow */
+/* SECTION 2: Main Title - Full Width Center (Subtle Edge Glow on Hover Only) */
 .qp-mid{
   background:#00000000;
   border-radius:3px;
@@ -942,9 +942,15 @@ a{color:inherit;text-decoration:none;text-underline-offset:2px}
   display:flex;
   align-items:center;
   justify-content:center;
-  border:1px solid var(--cat-bdr, rgba(255,255,255,.06));
-  box-shadow:inset 0 0 6px var(--cat-glow, transparent), inset 0 1px 2px rgba(0,0,0,.9);
+  border:1px solid rgba(255,255,255,.06);
+  box-shadow:inset 0 1px 2px rgba(0,0,0,.95);
   overflow:hidden;
+  transition:border-color .16s,box-shadow .16s;
+}
+.qc-panel:hover .qp-mid,
+.qc-all:hover .qp-mid{
+  border-color:var(--cat-bdr);
+  box-shadow:inset 0 0 3px var(--cat-glow), inset 0 1px 2px rgba(0,0,0,.9);
 }
 .qp-title{
   font-family:var(--disp);
@@ -985,6 +991,33 @@ a{color:inherit;text-decoration:none;text-underline-offset:2px}
 .qc .qp span.zr{opacity:.28}
 .qc .qp .ic{width:9px;height:9px;flex:none}
 .qc.z .qt{opacity:.55}
+
+/* Quick Chips Skeleton Placeholder */
+.qc-panel-sk{cursor:default;opacity:.65;pointer-events:none}
+.qc-panel-sk .qc-sk-pill{
+  display:block;border-radius:2px;
+  background:linear-gradient(90deg,#191919 20%,#28282b 48%,#191919 76%);
+  background-size:220% 100%;
+  animation:nw-shimmer 1.35s ease-in-out infinite;
+}
+.qc-panel-sk .qc-sk-idx{width:22px;height:11px}
+.qc-panel-sk .qc-sk-tag{width:36px;height:9px}
+.qc-panel-sk .qc-sk-title{height:12px;margin:auto}
+.qc-panel-sk .qc-sk-foot{width:64px;height:8px}
+
+.qc-sk-chip{
+  position:relative;flex:none;min-height:44px;padding:0 10px;
+  display:flex;flex-direction:column;align-items:flex-start;justify-content:center;gap:6px;
+  cursor:default;opacity:.55;pointer-events:none;
+}
+.qc-sk-chip .qc-sk-pill{
+  display:block;border-radius:2px;
+  background:linear-gradient(90deg,#191919 20%,#28282b 48%,#191919 76%);
+  background-size:220% 100%;
+  animation:nw-shimmer 1.35s ease-in-out infinite;
+}
+.qc-sk-chip .qc-sk-c1{width:46px;height:9px}
+.qc-sk-chip .qc-sk-c2{width:32px;height:7px}
 .tw{
   position:relative;display:grid;grid-template-columns:40px minmax(0,1fr);gap:12px;
   padding:15px 14px 13px;border-bottom:1px solid var(--border);transition:background .12s;
@@ -5211,6 +5244,7 @@ function qchipsHtml(queries, trending, active, me, other){
   };
 
   const allTot = xPosts.length + tPosts.length;
+  const totLabel = allTot > 0 ? `${allTot}` : '<span class="qc-sk-pill" style="width:24px;height:7px;display:inline-block"></span>';
   const semuaBtn = `<button class="qc qc-panel qc-all" type="button" data-q="" aria-pressed="${active === ''}" title="Semua Feed · ${allTot} Posts">` +
     `<div class="qc-panel-inner">` +
       `<div class="qp-head">` +
@@ -5224,10 +5258,33 @@ function qchipsHtml(queries, trending, active, me, other){
           `<span class="qp-sep">·</span>` +
           `<span class="qp-stat${me === 'th' ? ' on' : ''}" title="${tPosts.length} post di Threads">${ic('threads')}${tPosts.length}</span>` +
         `</div>` +
-        `<span class="qp-tot">${allTot}</span>` +
+        `<span class="qp-tot">${totLabel}</span>` +
       `</div>` +
     `</div>` +
   `</button>`;
+
+  if (!all.length) {
+    const skPanel = (w) => `<div class="qc qc-panel qc-panel-sk">` +
+      `<div class="qc-panel-inner">` +
+        `<div class="qp-head">` +
+          `<span class="qc-sk-pill qc-sk-idx"></span>` +
+          `<span class="qp-meta"><span class="qc-sk-pill qc-sk-tag"></span></span>` +
+        `</div>` +
+        `<div class="qp-mid"><span class="qc-sk-pill qc-sk-title" style="width:${w}%;"></span></div>` +
+        `<div class="qp-foot"><span class="qc-sk-pill qc-sk-foot"></span></div>` +
+      `</div>` +
+    `</div>`;
+    const skChip = (w) => `<div class="qc qc-sk-chip">` +
+      `<span class="qc-sk-pill qc-sk-c1" style="width:${w}px"></span>` +
+      `<span class="qc-sk-pill qc-sk-c2"></span>` +
+    `</div>`;
+
+    return semuaBtn +
+      '<i class="qc-sep" aria-hidden="true"></i>' +
+      '<div class="qc-shingles">' + [60, 75, 55, 68].map(skPanel).join('') + '</div>' +
+      '<i class="qc-sep" aria-hidden="true"></i>' +
+      [46, 56, 38, 50].map(skChip).join('');
+  }
 
   return semuaBtn +
     (hot.length ? '<i class="qc-sep" aria-hidden="true"></i><div class="qc-shingles">' + hot.map((q, i) => panel(q, i)).join('') + '</div>' : '') +
