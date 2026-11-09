@@ -2911,6 +2911,12 @@ const focusSort = (a, b) => (focusRank(b) - focusRank(a)) || (b.ts || 0) - (a.ts
 function doFocus(t){
   lastAutoFocus = Date.now();
   focusedHome = false;
+  // Saat fokus merebut kamera: batalkan gesture / drag manual yang sedang berjalan
+  ptrs.clear();
+  gesture = null;
+  globeVel = null;
+  const c = $('#sit-globe');
+  if (c) c.style.cursor = 'grab';
   // zoom fokus fixed 13 — cukup dekat untuk melihat konteks wilayah tanpa terlalu dalam
   flyTo(t.la, t.lo, 13, 'focus');
   setLinkItem(t); showSitAlert(t);
@@ -2929,27 +2935,36 @@ function maybeFocusFresh(){
       seenIds.add(id);
     }
   }
-  for (let i = focusQueue.length - 1; i >= 0; i--) {   // item yang keluar kandidat di-unsee — boleh antri ulang kalau muncul lagi
+  for (let i = focusQueue.length - 1; i >= 0; i--) {   // buang item yang sudah tidak ada di live kandidat (jangan delete seenIds agar tidak re-trigger amnesia)
     const qid = itemIdOf(focusQueue[i]);
-    if (!liveIds.has(qid)) { focusQueue.splice(i, 1); seenIds.delete(qid); }
+    if (!liveIds.has(qid)) { focusQueue.splice(i, 1); }
   }
   if (seenIds.size > 3000) { const keep = [...seenIds].slice(-3000); seenIds.clear(); keep.forEach(x => seenIds.add(x)); }
   saveSeen();
   if (document.hidden) return;                            // tab background: antrian tetap diisi, aksi fokus menunggu tab terlihat
   if (mapOpen) return;                                   // panel peta insiden terbuka: render globe frozen — antrian tetap diisi, doFocus/toast menunggu tutup
   if (now < focusHoldUntil) return;                        // boot hold: antrian terisi, fokus menunggu
-  if (performance.now() - lastGestEnd < 25000) return;   // jangan rebut globe dari user
-  const cd = focusQueue.length ? 45000 : FOCUS_COOLDOWN;  // item antri didahulukan lebih cepat; spotlight rotasi di-throttle ROTATE_MS
-  if (now - lastAutoFocus < cd) return;
-  if (focusQueue.length) {
+
+  // Alert aktif di layar: jangan saling tabrak / overwrite toast
+  const sa = $('#sit-alert');
+  const alertActive = sa && !sa.hidden && !saHiding;
+
+  // PRIORITAS 1: Breaking events di antrian (focusQueue).
+  // Sesuai invariant: fokus breaking HARUS tetap jalan ke titik insiden meskipun user sedang drag/zoom!
+  if (!alertActive && focusQueue.length) {
     focusQueue.sort(focusSort);
     const q = focusQueue.shift();
     rotSeen.set(itemIdOf(q), now);   // announcement antrian ikut menghitung sebagai spotlight — jangan langsung diulang rotasi
     doFocus(q);
     return;
   }
-  // Rotasi spotlight: tiap ~4 mnt.toast item terbaru yang belum di-spotlight <60 mnt.
-  // Semua kandidat sudah pernah di-toast → reset siklus & pulang ke overview.
+
+  // PRIORITAS 2: Rotasi ambient spotlight (hanya jika queue kosong & user idle).
+  // Jangan rebut globe jika user baru saja berinteraksi (<25 dtk) atau belum lewat cooldown.
+  if (performance.now() - lastGestEnd < 25000) return;
+  if (now - lastAutoFocus < FOCUS_COOLDOWN) return;
+
+  // Rotasi spotlight: tiap ~4 mnt toast item terbaru yang belum di-spotlight <60 mnt.
   if (now - lastRotFocus >= ROTATE_MS) {
     const eligible = items
       .filter(p => { const id = itemIdOf(p); return id && now - (rotSeen.get(id) || 0) >= ROT_SEEN_MS; })
@@ -2962,7 +2977,7 @@ function maybeFocusFresh(){
       doFocus(pick);   // tetap toast — invariant flyTo=toast terjaga
       return;
     }
-    rotSeen.clear();
+    // Hapus rotSeen.clear() — jangan reset map spotlight agar tidak looping tiap 8 menit
   }
   goHome();
 }
@@ -3002,8 +3017,10 @@ function hideSitAlert(){
     setLinkItem(null);
     saHiding = false;
     saHideT0 = 0;
-    // toast selesai → SELALU pulang ke HOME_VIEW (zoom default)
-    if (globeReady && !mapOpen && ptrs.size === 0 && !gesture) {
+    // toast selesai → jika ada antrian berikutnya segera proses; jika kosong, SELALU pulang ke HOME_VIEW (zoom default)
+    if (focusQueue.length > 0) {
+      maybeFocusFresh();
+    } else if (globeReady && !mapOpen && ptrs.size === 0 && !gesture) {
       flyTo(HOME_VIEW.lat, HOME_VIEW.lon, HOME_VIEW.zoom, 'home');
     }
   }, 320);
@@ -3939,6 +3956,16 @@ function clToastCard(c){
   el.setAttribute('role', 'alert');
   el.setAttribute('aria-label', 'Alert klaster baru: klik untuk menutup');
   el.dataset.url = lead.url || '';
+  if (typeof lead.la === 'number' && typeof lead.lo === 'number') {
+    el.dataset.la = String(lead.la);
+    el.dataset.lo = String(lead.lo);
+  } else if (lead.place) {
+    const pMatch = (PULSE || []).find(p => p.name && p.name.toLowerCase() === lead.place.toLowerCase());
+    if (pMatch && typeof pMatch.la === 'number' && typeof pMatch.lo === 'number') {
+      el.dataset.la = String(pMatch.la);
+      el.dataset.lo = String(pMatch.lo);
+    }
+  }
   el.style.setProperty('--tc', CAT_COLOR[lead.cat] || '#8d8d8d');
   el.innerHTML =
     `<i class="cl-c ptl"></i><i class="cl-c ptr"></i><i class="cl-c pbl"></i><i class="cl-c pbr"></i>` +
@@ -3974,6 +4001,16 @@ function clToastDigest(cards, total, nNew, placesAll){
   el.setAttribute('role', 'alert');
   el.setAttribute('aria-label', 'Alert kabar baru: klik untuk menutup');
   el.dataset.url = lead.url || '';
+  if (typeof lead.la === 'number' && typeof lead.lo === 'number') {
+    el.dataset.la = String(lead.la);
+    el.dataset.lo = String(lead.lo);
+  } else if (lead.place) {
+    const pMatch = (PULSE || []).find(p => p.name && p.name.toLowerCase() === lead.place.toLowerCase());
+    if (pMatch && typeof pMatch.la === 'number' && typeof pMatch.lo === 'number') {
+      el.dataset.la = String(pMatch.la);
+      el.dataset.lo = String(pMatch.lo);
+    }
+  }
   el.style.setProperty('--tc', CAT_COLOR[lead.cat] || '#8d8d8d');
   el.innerHTML =
     `<i class="cl-c ptl"></i><i class="cl-c ptr"></i><i class="cl-c pbl"></i><i class="cl-c pbr"></i>` +
@@ -4240,7 +4277,14 @@ if (clToastsEl){
         ? clToastActiveEl
         : [...clToastOrder].reverse().find(x => x.isConnected && !x.classList.contains('k-out'))
         || e.target.closest('.cl-toast');
-      if (frontCard) { frontCard.blur(); clToastDismiss(frontCard); }
+      if (frontCard) {
+        if (!closeBtn && frontCard.dataset.la && frontCard.dataset.lo) {
+          const cLa = parseFloat(frontCard.dataset.la), cLo = parseFloat(frontCard.dataset.lo);
+          if (isFinite(cLa) && isFinite(cLo)) flyTo(cLa, cLo, 12, 'focus');
+        }
+        frontCard.blur();
+        clToastDismiss(frontCard);
+      }
     }
   });
   // keyboard: kartu adalah role=button — Enter/Space harus sama dengan klik
@@ -4252,7 +4296,14 @@ if (clToastsEl){
       ? clToastActiveEl
       : [...clToastOrder].reverse().find(x => x.isConnected && !x.classList.contains('k-out'))
       || e.target.closest('.cl-toast');
-    if (frontCard) { frontCard.blur(); clToastDismiss(frontCard); }
+    if (frontCard) {
+      if (frontCard.dataset.la && frontCard.dataset.lo) {
+        const cLa = parseFloat(frontCard.dataset.la), cLo = parseFloat(frontCard.dataset.lo);
+        if (isFinite(cLa) && isFinite(cLo)) flyTo(cLa, cLo, 12, 'focus');
+      }
+      frontCard.blur();
+      clToastDismiss(frontCard);
+    }
   });
   // hover/focus stack: HANYA untuk desktop (fine pointer) — expand deck + pause countdown
   let clHovT = 0;
@@ -7508,7 +7559,7 @@ async function pullDisaster(){
     for (const g of (d.gempa || [])) {
       const gts = Date.parse(g.time) || 0;
       if (!gts || Date.now() - gts > 24 * 3600e3) continue;   // rolling 24 jam, sama dengan insiden
-      const key = g.lat.toFixed(2) + ',' + g.lon.toFixed(2) + '|' + g.mag;
+      const key = (g.time || gts || '') + '|' + g.lat.toFixed(2) + ',' + g.lon.toFixed(2);
       const mag = typeof g.mag === 'number' ? g.mag : parseFloat(g.mag) || 0;
       let magCol = '#e5a000', magClass = 'MINOR / RINGAN';
       if (mag >= 6.0) { magCol = '#ff3b30'; magClass = 'KUAT / MAJOR'; }
@@ -7581,6 +7632,7 @@ async function pullDisaster(){
         gempaMarkers.push(m);
       }
       dp.push({ kind: 'gempa', sub: 'gempa', la: g.lat, lo: g.lon, ts: gts,
+        eid: 'bmkg:gempa:' + key,
         title: `M${g.mag} · ${g.wilayah || ''}`, name: g.wilayah || 'Gempa', label: 'GEMPA BMKG',
         src: 'BMKG', url: 'bmkg://gempa/' + key, weight: Math.min(1, (g.mag || 3) / 6), mag: g.mag || 3 });
     }

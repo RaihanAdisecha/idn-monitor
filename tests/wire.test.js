@@ -375,3 +375,34 @@ test('mobile market header hides secondary schedule and emiten/sync without elli
   assert.ok(html.includes('.mkt-pill{margin-right:0}') && html.includes('.mkt-pill-sub{display:none}') && html.includes('.stk-meta-x{display:none}'), 'mobile CSS must hide secondary schedule and emiten/sync without trailing margin');
   assert.ok(html.includes('.pane.mkt .ph-m{max-width:none}'), 'mobile CSS must remove artificial 58% max-width cap from market pane header meta');
 });
+
+test('globe focus & alert toast pipeline enforces camera override, home return and dedupe stability', () => {
+  const fs = require('fs');
+  const path = require('path');
+  const html = fs.readFileSync(path.join(__dirname, '../public/index.html'), 'utf8');
+
+  // 1. doFocus overrides active dragging/gestures
+  assert.ok(html.includes('ptrs.clear();') && html.includes('gesture = null;') && html.includes('globeVel = null;'), 'doFocus must reset active pointers, gesture and inertia so breaking focus takes over camera cleanly');
+
+  // 2. Breaking queue is not blocked by user gesture idle cooldown
+  const maybeFocusIdx = html.indexOf('function maybeFocusFresh(){');
+  const maybeFocusBlock = html.slice(maybeFocusIdx, maybeFocusIdx + 3500);
+  assert.ok(maybeFocusBlock.indexOf('if (!alertActive && focusQueue.length)') !== -1 &&
+            maybeFocusBlock.indexOf('if (!alertActive && focusQueue.length)') < maybeFocusBlock.indexOf('if (performance.now() - lastGestEnd < 25000) return;'), 'focusQueue breaking events must take precedence before gesture idle check');
+
+  // 3. Queue amnesia and infinite rotation loops eradicated
+  assert.ok(!maybeFocusBlock.includes('seenIds.delete(qid);'), 'maybeFocusFresh must not delete seenIds when candidate drops temporarily');
+  assert.ok(!maybeFocusBlock.includes('rotSeen.clear();'), 'maybeFocusFresh must not clear rotSeen to prevent 8-minute infinite repeat loops');
+
+  // 4. hideSitAlert returns to HOME_VIEW default zoom or processes next queue item
+  const hideIdx = html.indexOf('function hideSitAlert(){');
+  const hideBlock = html.slice(hideIdx, hideIdx + 800);
+  assert.ok(hideBlock.includes('maybeFocusFresh();') && hideBlock.includes('flyTo(HOME_VIEW.lat, HOME_VIEW.lon, HOME_VIEW.zoom, \'home\');'), 'hideSitAlert must advance queue or return to HOME_VIEW default zoom upon alert completion');
+
+  // 5. BMKG disaster ID is magnitude-independent
+  assert.ok(html.includes("const key = (g.time || gts || '') + '|' + g.lat.toFixed(2) + ',' + g.lon.toFixed(2);"), 'BMKG quake key must depend only on time and coordinates, not magnitude');
+  assert.ok(html.includes("eid: 'bmkg:gempa:' + key,"), 'BMKG disaster items must assign a stable eid');
+
+  // 6. cl-toasts card click flies to location if coordinates exist
+  assert.ok(html.includes("if (!closeBtn && frontCard.dataset.la && frontCard.dataset.lo)"), 'cl-toasts card click must fly camera to incident coordinates when present');
+});
