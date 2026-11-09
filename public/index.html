@@ -844,7 +844,7 @@ a{color:inherit;text-decoration:none;text-underline-offset:2px}
 }
 
 /* Inactive panels have subdued borders and lower visual emphasis */
-.qc-panel:hover{
+.qc-panel:not([aria-pressed="true"]):hover{
   opacity:1;
   z-index:35 !important;
   background:var(--cat-bdr);
@@ -857,6 +857,9 @@ a{color:inherit;text-decoration:none;text-underline-offset:2px}
   z-index:40 !important;
   background:var(--cat-bdr) !important;
   box-shadow:0 0 14px var(--cat-glow), 0 4px 20px rgba(0,0,0,.85) !important;
+}
+.qc-panel[aria-pressed="true"]:hover{
+  box-shadow:0 4px 20px rgba(0,0,0,.85) !important;
 }
 .qc-panel[aria-pressed="true"] .qc-panel-inner{
   background:linear-gradient(180deg,#181a20 0%,#111216 100%);
@@ -889,7 +892,7 @@ a{color:inherit;text-decoration:none;text-underline-offset:2px}
   border:1px solid rgba(255,255,255,.1);
   color:#f5f5f7;
 }
-.qc-all:hover{
+.qc-all:not([aria-pressed="true"]):hover{
   opacity:1;
   z-index:35 !important;
   background:rgba(255,255,255,.2);
@@ -900,6 +903,9 @@ a{color:inherit;text-decoration:none;text-underline-offset:2px}
   z-index:40 !important;
   background:rgb(255 255 255 / 17%) !important;
   box-shadow:0 0 14px rgba(255,255,255,.2), 0 4px 20px rgba(0,0,0,.85) !important;
+}
+.qc-all[aria-pressed="true"]:hover{
+  box-shadow:0 4px 20px rgba(0,0,0,.85) !important;
 }
 .qc-all[aria-pressed="true"] .qc-panel-inner{
   background:linear-gradient(180deg,#1c1e24 0%,#131418 100%);
@@ -947,10 +953,15 @@ a{color:inherit;text-decoration:none;text-underline-offset:2px}
   overflow:hidden;
   transition:border-color .16s,box-shadow .16s;
 }
-.qc-panel:hover .qp-mid,
-.qc-all:hover .qp-mid{
+.qc-panel:not([aria-pressed="true"]):hover .qp-mid,
+.qc-all:not([aria-pressed="true"]):hover .qp-mid{
   border-color:var(--cat-bdr);
   box-shadow:inset 0 0 3px var(--cat-glow), inset 0 1px 2px rgba(0,0,0,.9);
+}
+.qc-panel[aria-pressed="true"]:hover .qp-mid,
+.qc-all[aria-pressed="true"]:hover .qp-mid{
+  border-color:rgba(255,255,255,.06) !important;
+  box-shadow:inset 0 1px 2px rgba(0,0,0,.95) !important;
 }
 .qp-title{
   font-family:var(--disp);
