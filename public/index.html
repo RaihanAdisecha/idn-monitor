@@ -355,6 +355,7 @@ a{color:inherit;text-decoration:none;text-underline-offset:2px}
 .mkt-pill{display:inline-flex;align-items:center;gap:5px;height:17px;padding:0 9px;margin-right:8px;
   border:1px solid var(--border);border-radius:9px;font:700 9px/1 var(--mono);letter-spacing:.05em;
   text-transform:uppercase;vertical-align:1px}
+.mkt-pill-sub{display:inline}
 .mkt-pill i{width:6px;height:6px;border-radius:50%;flex:none}
 .mkt-pill.open{color:var(--ok);border-color:rgba(66,190,101,.2);background:rgba(66,190,101,.07)}
 .mkt-pill.open i{background:var(--ok);animation:pulse 1.8s infinite}
@@ -1947,6 +1948,9 @@ button.mp-src{background:none;border-top:0;border-left:0;border-right:0;cursor:p
   .stk-spark{flex:1;min-width:0;height:40px;width:100%}
   .stk-chips{flex:none;width:100%;-webkit-overflow-scrolling:touch;scroll-snap-type:x proximity}
   .stk-meta-x{display:none}
+  .mkt-pill{margin-right:0}
+  .mkt-pill-sub{display:none}
+  .pane.mkt .ph-m{max-width:none}
   .stk-chip{flex:0 0 138px;scroll-snap-align:start;padding:7px 11px 0}
   .tk-t{max-width:420px}
   .foot{height:auto;padding:8px 12px;flex-wrap:wrap;gap:6px 12px;white-space:normal}
@@ -4450,14 +4454,14 @@ function drawChips(el, items, view){
 function idxSession(){
   const w = new Date(Date.now() + (420 + new Date().getTimezoneOffset()) * 60000);
   const t = w.getHours() * 60 + w.getMinutes(), d = w.getDay();
-  if (d === 0 || d === 6) return { k: 'closed', l: 'Libur Akhir Pekan' };
-  if (t < 525) return { k: 'pre', l: 'Pra-pasar · Buka 09:00 WIB' };
-  if (t >= 525 && t < 540) return { k: 'pre', l: 'Pra-bursa (08:45–09:00)' };
-  if (t >= 540 && t < 720) return { k: 'open', l: 'Sesi I Live' };
-  if (t >= 720 && t < 810) return { k: 'break', l: 'Istirahat (Sesi II 13:30)' };
-  if (t >= 810 && t < 945) return { k: 'open', l: 'Sesi II Live' };
-  if (t >= 945 && t < 960) return { k: 'post', l: 'Pasca-bursa' };
-  return { k: 'closed', l: 'Pasar Tutup · Buka Besok 09:00' };
+  if (d === 0 || d === 6) return { k: 'closed', l: 'Libur Akhir Pekan', short: 'Libur Akhir Pekan', sub: '' };
+  if (t < 525) return { k: 'pre', l: 'Pra-pasar · Buka 09:00 WIB', short: 'Pra-pasar', sub: ' · Buka 09:00 WIB' };
+  if (t >= 525 && t < 540) return { k: 'pre', l: 'Pra-bursa (08:45–09:00)', short: 'Pra-bursa', sub: ' (08:45–09:00)' };
+  if (t >= 540 && t < 720) return { k: 'open', l: 'Sesi I Live', short: 'Sesi I Live', sub: '' };
+  if (t >= 720 && t < 810) return { k: 'break', l: 'Istirahat (Sesi II 13:30)', short: 'Istirahat', sub: ' (Sesi II 13:30)' };
+  if (t >= 810 && t < 945) return { k: 'open', l: 'Sesi II Live', short: 'Sesi II Live', sub: '' };
+  if (t >= 945 && t < 960) return { k: 'post', l: 'Pasca-bursa', short: 'Pasca-bursa', sub: '' };
+  return { k: 'closed', l: 'Pasar Tutup · Buka Besok 09:00', short: 'Pasar Tutup', sub: ' · Buka Besok 09:00' };
 }
 function renderChips(){
   if (!STK) return;
@@ -4472,7 +4476,8 @@ function renderChips(){
     : mktAgeS < 60 ? (ses.k === 'closed' ? 'Sync: Settled' : 'Sync: Live')
     : mktAgeS < 300 ? `Sync: ${Math.floor(mktAgeS / 60)}m`
     : 'Sync: Paused';
-  $('#stk-meta').innerHTML = `<span class="mkt-pill ${ses.k}"><i></i>${ses.l}</span>` +
+  const subHtml = ses.sub ? `<span class="mkt-pill-sub">${ses.sub}</span>` : '';
+  $('#stk-meta').innerHTML = `<span class="mkt-pill ${ses.k}"><i></i><span class="mkt-pill-t">${ses.short}</span>${subHtml}</span>` +
     `<span class="stk-meta-x">${all.length} emiten · ${syncTxt}</span>`;
 }
 function renderFx(){

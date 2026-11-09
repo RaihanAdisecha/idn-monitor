@@ -359,3 +359,19 @@ test('cl-toasts implements front-anchored 3D deck stack with strict non-independ
   const outBlock = html.slice(outIdx, outIdx + 600);
   assert.ok(outBlock.indexOf("el.classList.add('k-out')") < outBlock.indexOf('clToastSyncZ()') && outBlock.indexOf('clToastSyncZ()') < outBlock.indexOf('clToastActivate()'), 'clToastOut must mark .k-out then sync Z-depth and activate the next card sequentially');
 });
+
+test('mobile market header hides secondary schedule and emiten/sync without ellipsis truncation', () => {
+  const fs = require('fs');
+  const path = require('path');
+  const html = fs.readFileSync(path.join(__dirname, '../public/index.html'), 'utf8');
+
+  // 1. idxSession provides structured short label and optional sub schedule
+  assert.ok(html.includes("short: 'Pasar Tutup', sub: ' · Buka Besok 09:00'") && html.includes("short: 'Pra-pasar'"), 'idxSession must split primary state from secondary schedule detail');
+
+  // 2. renderChips isolates primary state in .mkt-pill-t and secondary schedule in .mkt-pill-sub
+  assert.ok(html.includes('<span class="mkt-pill-t">${ses.short}</span>') && html.includes('<span class="mkt-pill-sub">${ses.sub}</span>'), 'renderChips must wrap short label and sub schedule in distinct elements');
+
+  // 3. Mobile CSS hides .stk-meta-x, .mkt-pill-sub, clears ghost margin-right, and frees max-width
+  assert.ok(html.includes('.mkt-pill{margin-right:0}') && html.includes('.mkt-pill-sub{display:none}') && html.includes('.stk-meta-x{display:none}'), 'mobile CSS must hide secondary schedule and emiten/sync without trailing margin');
+  assert.ok(html.includes('.pane.mkt .ph-m{max-width:none}'), 'mobile CSS must remove artificial 58% max-width cap from market pane header meta');
+});
