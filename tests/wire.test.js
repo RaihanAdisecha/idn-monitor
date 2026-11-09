@@ -659,3 +659,48 @@ test('wire-reader synchronization and skeleton lifecycle enforcement', () => {
   assert.ok(html.includes('it.alt instanceof Set ? it.alt : (it.alt || [])'),
             'nwCardFor must search both primary url and dedup twin urls');
 });
+
+test('indonesian disaster metaphor disambiguation and category domain precedence', () => {
+  const fs = require('fs');
+  const path = require('path');
+  const SOC = require('../social');
+  const serverJs = fs.readFileSync(path.join(__dirname, '../server.js'), 'utf8');
+  const html = fs.readFileSync(path.join(__dirname, '../public/index.html'), 'utf8');
+
+  // 1. Cyber headline with passive flood verb must resolve to siber, never flood
+  const cyberHeadline = 'Indonesia Dibanjiri 1,6 Juta Aktivitas Serangan Siber Dalam Sehari';
+  const cyberAssessment = SOC.socAssess(cyberHeadline);
+  assert.ok(cyberAssessment.topics.includes('serangan siber'), 'Must detect serangan siber topic');
+  assert.ok(!cyberAssessment.topics.includes('banjir'), 'Must NEVER detect banjir topic for dibanjiri serangan siber');
+
+  // 2. Metaphorical flood / landslide / fire / disaster expressions are not physical disasters
+  const metaphorCases = [
+    { text: 'Pasar Tanah Abang Dibanjiri Produk Impor Asal China', forbidden: 'banjir' },
+    { text: 'Longsor Suara Partai di Jakarta Mengkhawatirkan Jelang Pemilu', forbidden: 'banjir' },
+    { text: 'Banjir Gol di Stadion Manahan Solo, Persis Hajar Lawan', forbidden: 'banjir' },
+    { text: 'Banjir Kecaman, Kebijakan PPN 12 Persen Diprotes di Jakarta', forbidden: 'banjir' },
+    { text: 'IHSG Ambruk 2 Persen Terseret Penurunan Saham Perbankan', forbidden: 'insiden' },
+    { text: 'Gempa Politik di Senayan: Tiga Menteri Dikabarkan Mundur Serentak', forbidden: 'gempa' },
+  ];
+  for (const tc of metaphorCases) {
+    const res = SOC.socAssess(tc.text);
+    assert.ok(!res.topics.includes(tc.forbidden), `Topic ${tc.forbidden} must not trigger for "${tc.text}"`);
+  }
+
+  // 3. Health events: cardiac arrest and stroke resolve to kesehatan
+  const cardiacRes = SOC.socAssess('Pasien Meninggal Akibat Serangan Jantung di Rumah Sakit Bandung');
+  assert.ok(cardiacRes.topics.includes('kesehatan'), 'Serangan jantung must classify as kesehatan');
+
+  // 4. Literal physical floods and fires are properly preserved
+  const realFlood = SOC.socAssess('Banjir merendam ratusan rumah di Dayeuhkolot Bandung');
+  assert.ok(realFlood.topics.includes('banjir'), 'Literal flood must detect banjir');
+
+  const realFire = SOC.socAssess('Kebakaran Hanguskan Pabrik Trikolit di Cengkareng Jakarta Barat');
+  assert.ok(realFire.topics.includes('kebakaran'), 'Literal fire must detect kebakaran');
+
+  // 5. Server and frontend implement resolveCategory disambiguation engine
+  assert.ok(serverJs.includes('function resolveCategory(ids, title)'), 'server.js must define resolveCategory disambiguation function');
+  assert.ok(serverJs.includes('resolveCategory(ids, t)'), 'catOf in server.js must use resolveCategory');
+  assert.ok(html.includes('const resolveCategory = (ids, title) =>'), 'index.html must define resolveCategory disambiguation function');
+  assert.ok(html.includes('resolveCategory(hits, t)'), 'catOfTitle in index.html must use resolveCategory');
+});

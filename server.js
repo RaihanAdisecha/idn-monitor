@@ -475,10 +475,10 @@ const HEALTH_DZ = String.raw`wabah|\bklb\b|kejadian luar biasa|dbd|\bdhf\b|demam
 const HEALTH_EVT = String.raw`gagal ginjal|gizi buruk|busung lapar|malnutrisi|donor darah|bank darah|transfusi darah|stok darah|obat palsu|talasemia|hemofilia|keracunan (?:massal|makanan|mbg|pangan|nasi|katering|gas|miras|hidrogen sulfida|karbon monoksida)?|miras oplosan|alkohol oplosan|oplosan maut|makanan (?:basi|beracun|kedaluwarsa|kadaluwarsa)|mual|muntah|dilarikan ke (?:rs|puskesmas|rumah sakit)|gejala keracunan|etilen glikol|dietilen glikol|cemaran obat|sirup beracun|obat sirup`;
 const CATS = [
   { id:'demo', label:'Demo', sev:0.82, geo:true, re:/(\bdemo\b(?!\s*(aplikasi|game|produk|sistem|fitur|cara|tutorial|masak|memasak|kuliner|spesial|special))(?<!cooking demo|cooking\s+demo)|unjuk rasa|aksi massa|protes|mogok|kerusuhan|bentrok|long march|women'?s\s+march|international\s+women'?s\s+day|hari\s+buruh|buruh\s+sedunia|labour\s+day|labor\s+day)/i },
-  { id:'fire', label:'Kebakaran', sev:0.96, geo:true, re:/(kebakaran|karhutla|kebakaran hutan|kebakaran lahan|terbakar|kobaran api|asap tebal)/i },
-  { id:'flood', label:'Banjir', sev:0.86, geo:true, re:/(banjir|genangan|longsor|tanah longsor|cuaca ekstrem|hujan deras|\brob\b)/i },
-  { id:'disaster', label:'Bencana', sev:1, geo:true, re:/(gempa|tsunami|erupsi|letusan|bencana|evakuasi|korban jiwa|ambruk|tenggelam|hanyut|banjir bandang)/i },
-  { id:'insiden', label:'Insiden', sev:0.62, geo:true, re:/(kecelakaan|ledakan|pohon tumbang|runtuh|tabrakan|tabrak lari|kapal karam|pesawat jatuh|tergelincir|terjun)/i },
+  { id:'fire', label:'Kebakaran', sev:0.96, geo:true, re:/(?:\b(?:kebakaran|karhutla|kebakaran hutan|kebakaran lahan|terbakar|kobaran api|asap tebal)\b)(?!\s+(?:jenggot|harga|promo|diskon|api amarah|api cemburu|api asmara|semangat))/i },
+  { id:'flood', label:'Banjir', sev:0.86, geo:true, re:/(?:\bbanjir\b(?!\s*(?:serangan|siber|cyber|orderan|hadiah|promo|diskon|bonus|cuan|kritik|hujatan|komentar|aduan|laporan|pujian|ucapan|impor|produk|pemudik|turis|wisatawan|penonton|pelamar|pendaftar|peserta|air mata|gol))\b|banjir bandang|banjir rob|banjir lahar|banjir lumpur|banjir kiriman|terendam banjir|merendam pemukiman|genangan air|air meluap|tanggul jebol|tanah longsor|\blongsor\b(?!\s*(?:saham|suara|harga|ihsg|rupiah|kurs))\b|cuaca ekstrem|hujan deras|\brob\b|\bkebanjiran\b(?!\s*(?:orderan|hadiah|promo|diskon|bonus|cuan|kritik|hujatan|komentar|aduan|laporan|pujian|ucapan|impor|produk|pesan|chat|dm|keluhan|tamu|serangan|siber))\b)/i },
+  { id:'disaster', label:'Bencana', sev:1, geo:true, re:/(?:\b(?:gempa|tsunami|erupsi|letusan|gunung meletus|gunung api|awan panas|hujan abu|lahar dingin|lahar hujan|badai|siklon|puting beliung|angin kencang|angin ribut|badai petir|gelombang tinggi|gelombang pasang|bibit siklon|bencana|evakuasi|korban jiwa|ambruk|tenggelam|hanyut|likuefaksi)\b)(?!\s+(?:politik|jagat|dunia|maya|netizen|pasar|bursa|phk|impor|suara|protes|regulasi|vonis|kasus))/i },
+  { id:'insiden', label:'Insiden', sev:0.62, geo:true, re:/(?:\b(?:kecelakaan|ledakan|pohon tumbang|runtuh|tabrakan|tabrak lari|kapal karam|pesawat jatuh|tergelincir|terjun)\b)(?!\s+(?:penduduk|kasus|inflasi|harga|daya beli|ihsg|rupiah|saham|kurs|suara))/i },
   { id:'siber', label:'Siber', sev:0.55, geo:false, re:/(peretasan|peretas|hacker|ransomware|phishing|malware|ddos|botnet|zero[- ]day|n[- ]?day|\bcve[- ]?\d{4}|exploit|dieksploitasi|kerentanan|vulnerabilit|backdoor|spyware|skimming|carding|cryptojack|deepfake|deface|defacement|vishing|smishing|sextortion|kebocoran data|bocor data|data breach|pencurian data|akun dibajak|akun palsu|scam|penipuan online|pinjol ilegal|investasi bodong|bssn|badan siber|serangan siber|serangan cyber|insiden keamanan|gangguan (layanan|sistem|jaringan|aplikasi|infrastruktur)|layanan lumpuh|situs lumpuh|maintenance keamanan|uu pdp|\bpdp\b|dompet kripto|infrastruktur kritis|apt\d{1,2}\b|command and control|leak site|akun (media sosial|instagram|facebook|whatsapp|telegram|x|tiktok) (dibajak|diretas|dibobol))/i },
   { id:'kriminal', label:'Kriminal', sev:0.78, geo:true, re:/(penembakan|pembunuhan|pengeroyokan|begal|curat|pencurian|perampokan|penangkapan|ditangkap|tersangka|kabur dari lapas|napi kabur|terorisme|radikalisasi|suap|gratifikasi|penipuan|narkoba|psikotropika|penculikan|perkosaan|rudapaksa)/i },
   { id:'kesehatan', label:'Kesehatan', sev:0.65, geo:true, re:new RegExp('(?:' + HEALTH_DZ + '|' + HEALTH_EVT + '|stunting|obesitas|vaksin|vaksinasi|imunisasi|kemenkes|bpom|faskes|puskesmas|kanker|keracunan mbg|korban mbg|sppg|badan gizi nasional)', 'i') },
@@ -514,6 +514,62 @@ const foreignOf = (t, a) => {
   if (fs.length) return fs.some(f => f.scope === 'foreign') && !fs.some(f => f.scope === 'Indonesia');
   return ASSESS.classifyScope(t, null).scope === 'foreign';
 };
+/* ---------- Disambiguasi Semantik: Domain Spesifik vs Bencana Fisik ---------- */
+const DOMAIN_CATS = ['siber', 'kesehatan', 'ekonomi', 'politik', 'kriminal'];
+
+const PHYSICAL_ACT = {
+  flood: /(?:terendam|merendam|menggenang|menggenangi|tergenang|ketinggian\s+\d+|air\s+meluap|tanggul\s+jebol|banjir\s+bandang|banjir\s+rob|hujan\s+deras|luapan\s+air)/i,
+  insiden: /(?:kecelakaan|tabrakan|tertabrak|menabrak|terguling|anjlok|pesawat\s+jatuh|kapal\s+(?:karam|tenggelam)|pohon\s+tumbang|jembatan\s+(?:ambruk|putus)|gedung\s+ambruk|atap\s+roboh|meledak\s+di|ledakan\s+tabung|ledakan\s+bom)/i,
+  disaster: /(?:gempa\b|magnitudo\b|m\s*[\d,.]+|kedalaman\s+\d+|skala\s+richter|erupsi|gunung\s+meletus|awan\s+panas|lahar|siklon|puting\s+beliung|angin\s+kencang|gelombang\s+tinggi)/i,
+  fire: /(?:kebakaran|karhutla|terbakar|kobaran\s+api|ludes\s+dilalap|asap\s+tebal|damkar)/i
+};
+
+const METAPHOR_DISASTER = {
+  flood: /(?:dibanjiri|membanjiri)|(?:banjir|kebanjiran)\s+(?:serangan|siber|cyber|orderan|hadiah|promo|diskon|bonus|cuan|kritik|hujatan|komentar|aduan|laporan|pujian|ucapan|impor|produk|pemudik|turis|wisatawan|penonton|pelamar|pendaftar|peserta|air mata|gol|darah)/i,
+  disaster: /tsunami\s+(?:politik|protes|suara|pemilu|dukungan|saham|cuan|phk|vonis|anggaran|impor)|badai\s+(?:phk|ekonomi|krisis|politik|pemilu|kritik|inflasi|suara|cuan|rezeki|impor|kehidupan|hidup|rumah\s+tangga|ujian|cobaan)/i,
+  insiden: /ledakan\s+(?:kasus|pasien|penderita|penduduk|order|penjualan|harga|promo|suara)|tabrakan\s+(?:kepentingan|argumen|opini|jadwal)|(?:ihsg|saham|rupiah|kurs|harga|suara|koalisi|rezim|pemerintah)\s+(?:ambruk|runtuh)/i,
+  fire: /kebakaran\s+(?:jenggot|harga|promo|diskon)/i
+};
+
+const DOMAIN_ACTIVE_ACT = {
+  siber: /(?:peretasan|peretas|diretas|dibajak|dibobol|hacker|ransomware|ddos|data\s+breach|kebocoran\s+data|bocor\s+data|serangan\s+siber|serangan\s+cyber|exploit|dieksploitasi|phishing|malware|vulnerabilit)/i,
+  ekonomi: /(?:phk|rupiah\s+(?:melemah|anjlok)|ihsg\s+(?:anjlok|turun|terkoreksi)|inflasi|suku\s+bunga|kebijakan\s+tarif)/i,
+  kesehatan: /(?:terjangkit|terinfeksi|tertular|positif|pasien|korban\s+keracunan|gejala|dilarikan\s+ke\s+rs)/i,
+  politik: /(?:pilpres|pilkada|pelantikan|pemilu|sidang|reshuffle|perang|invasi|gencatan\s+senjata)/i,
+  kriminal: /(?:ditembak|dibunuh|ditangkap|membunuh|merampok|tersangka|terorisme)/i
+};
+
+const CAT_PRECEDENCE = ['demo', 'fire', 'flood', 'disaster', 'siber', 'kesehatan', 'kriminal', 'ekonomi', 'politik', 'insiden'];
+
+function resolveCategory(ids, title) {
+  const candidates = new Set(ids);
+  for (const c of candidates) {
+    if (METAPHOR_DISASTER[c] && METAPHOR_DISASTER[c].test(title)) candidates.delete(c);
+  }
+  const hasDomain = DOMAIN_CATS.some(d => candidates.has(d));
+  if (hasDomain) {
+    for (const d of ['flood', 'disaster', 'insiden']) {
+      if (candidates.has(d)) {
+        const hasPhys = PHYSICAL_ACT[d] && PHYSICAL_ACT[d].test(title);
+        if (!hasPhys) candidates.delete(d);
+      }
+    }
+  }
+  const physWinners = ['fire', 'flood', 'disaster'].filter(c => candidates.has(c) && PHYSICAL_ACT[c] && PHYSICAL_ACT[c].test(title));
+  if (physWinners.length > 0) {
+    for (const d of DOMAIN_CATS) {
+      if (candidates.has(d)) {
+        const hasActiveDomain = DOMAIN_ACTIVE_ACT[d] && DOMAIN_ACTIVE_ACT[d].test(title);
+        if (!hasActiveDomain) candidates.delete(d);
+      }
+    }
+  }
+  for (const p of CAT_PRECEDENCE) {
+    if (candidates.has(p)) return p;
+  }
+  return candidates.values().next().value || '';
+}
+
 const catOf = (t, a) => {
   a = a || assessNews(t);
   // Feed categorization = topic relevance, BUKAN signal eligibility.
@@ -530,8 +586,8 @@ const catOf = (t, a) => {
   // FEED_ONLY (olahraga/transport/pendidikan/hukum/dst) = topik kurasi feed
   // sosial, bukan kategori insiden — jangan sampai "Timnas menang" berlabel Insiden.
   const ids = new Set(a.topics.filter(tp => !ASSESS.FEED_ONLY.has(tp)).map(tp => ASSESS.CATEGORY[tp]).filter(Boolean));
-  const hit = CATS.find(c => ids.has(c.id));
-  return hit ? hit.id : '';
+  if (!ids.size) return '';
+  return resolveCategory(ids, t);
 };
 const INCIDENT_RE = new RegExp(CATS.map(c => c.re.source).join('|'), 'i');
 // feed topik menjamin tabnya tidak kosong: item GNEWS·SIBER yang lolos SKIP_RE tapi
