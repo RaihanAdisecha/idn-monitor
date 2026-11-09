@@ -222,3 +222,32 @@ test('cl-toasts overlay is decoupled from collapsed panes and guarded for mobile
   // 5. Mount height has defensive fallback
   assert.ok(html.includes('const h = el.offsetHeight || 68;'), 'clToastMount must have fallback height');
 });
+
+test('incident map popups for hotspot and air quality use structured split KPI hero layout', () => {
+  const fs = require('fs');
+  const path = require('path');
+  const html = fs.readFileSync(path.join(__dirname, '../public/index.html'), 'utf8');
+
+  // Verify CSS for split KPI hero cards
+  assert.ok(html.includes('.mp-kpi-card{display:flex;flex-direction:column;gap:6px;min-width:210px;max-width:275px}'), 'must define mp-kpi-card container');
+  assert.ok(html.includes('.mp-kpi-body{display:grid;grid-template-columns:52px minmax(0,1fr);gap:8px;align-items:stretch}'), 'must define 2-column split hero layout');
+  assert.ok(html.includes('.mp-kpi-val{'), 'must define mp-kpi-val typography');
+
+  // Verify Hotspot popup implementation (SiPongi & NASA FIRMS)
+  assert.ok(html.includes('<div class="mp-kpi-card" style="--kpi-c:${col}">') && html.includes('HOTSPOT · SIPONGI KEMENHUT'), 'SiPongi hotspot must use split KPI layout');
+  assert.ok(html.includes('HOTSPOT · NASA FIRMS') && html.includes('Titik Api Karhutla'), 'NASA FIRMS hotspot must use split KPI layout');
+
+  // Verify Air Quality popup implementation (AQMS)
+  assert.ok(html.includes('KUALITAS UDARA · AQMS KLHK') && html.includes('<span class="mp-kpi-sub">ISPU</span>'), 'AQMS air quality must use split KPI layout with ISPU hero metric');
+});
+
+test('incident map popups remove redundant close button', () => {
+  const fs = require('fs');
+  const path = require('path');
+  const html = fs.readFileSync(path.join(__dirname, '../public/index.html'), 'utf8');
+
+  // Verify close button is hidden via CSS
+  assert.ok(html.includes('#map .leaflet-popup-close-button{display:none!important}'), 'popup close button must be hidden via CSS display:none');
+  // Verify fireHitTest sets closeButton: false
+  assert.ok(html.includes('L.popup({ closeButton: false, maxWidth: 340 })'), 'fireHitTest popup must set closeButton: false');
+});

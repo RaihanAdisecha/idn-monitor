@@ -1382,16 +1382,7 @@ a{color:inherit;text-decoration:none;text-underline-offset:2px}
   box-shadow:0 8px 24px rgba(0,0,0,.6);
 }
 #map .leaflet-popup-content{margin:12px 14px;font:400 11.5px/1.45 var(--sans);width:256px!important}
-#map .leaflet-popup-close-button{
-  color:rgba(255,255,255,.6)!important;
-  padding:6px 6px 0 0!important;
-  font-size:16px!important;
-  transition:color .14s,transform .14s!important;
-}
-#map .leaflet-popup-close-button:hover{
-  color:#fff!important;
-  transform:scale(1.15);
-}
+#map .leaflet-popup-close-button{display:none!important}
 .mp-k{font:600 8.5px/1 var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--accent)}
 .mp-t{margin-top:6px;font:500 12.5px/1.4 var(--sans);color:#f4f4f4}
 .mp-m{margin-top:7px;font:400 9px/1.5 var(--mono);letter-spacing:.03em;text-transform:uppercase;color:#8d8d8d}
@@ -1406,6 +1397,43 @@ a{color:inherit;text-decoration:none;text-underline-offset:2px}
 .tt-pop .mp-t,.warn-pop .mp-t{text-transform:capitalize;overflow-wrap:anywhere}
 .mp-foot{margin-top:9px;padding-top:7px;border-top:1px solid #2a2a2a;text-align:center;font:600 8px/1.4 var(--mono);letter-spacing:.07em;text-transform:uppercase;color:#8d8d8d;white-space:nowrap}
 .mp-foot b{color:#e8e8e8;font-weight:600;letter-spacing:.02em;text-transform:none}
+/* Split KPI Hero Card (Hotspot & Kualitas Udara) */
+.mp-kpi-card{display:flex;flex-direction:column;gap:6px;min-width:210px;max-width:275px}
+.mp-kpi-head{display:flex;align-items:center;justify-content:space-between;gap:6px}
+.mp-kpi-tag{
+  font:600 7px/1 var(--mono);letter-spacing:.08em;text-transform:uppercase;
+  padding:2px 5px;border-radius:2px;background:rgba(255,255,255,.05);
+  border:1px solid rgba(255,255,255,.14);color:#a8a8b6;white-space:nowrap;
+}
+.mp-kpi-body{display:grid;grid-template-columns:52px minmax(0,1fr);gap:8px;align-items:stretch}
+.mp-kpi-hero{
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  padding:5px 3px;border-radius:3px;
+  background:color-mix(in srgb,var(--kpi-c,#ff9f0a) 15%,#101016);
+  border:1px solid color-mix(in srgb,var(--kpi-c,#ff9f0a) 55%,transparent);
+  box-shadow:inset 0 0 10px color-mix(in srgb,var(--kpi-c,#ff9f0a) 18%,transparent);
+  text-align:center;
+}
+.mp-kpi-val{
+  font:700 16px/1 var(--disp);color:var(--kpi-tc,var(--kpi-c,#ff9f0a));
+  letter-spacing:-.02em;text-shadow:0 1px 4px rgba(0,0,0,.6);
+}
+.mp-kpi-sub{
+  font:700 7px/1 var(--mono);text-transform:uppercase;letter-spacing:.08em;
+  margin-top:3px;color:var(--kpi-tc,#a0a0ae);opacity:.85;
+}
+.mp-kpi-info{display:flex;flex-direction:column;justify-content:center;gap:2.5px;min-width:0}
+.mp-kpi-title{font:600 11.5px/1.25 var(--disp);color:#f5f5f7;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mp-kpi-subt{font:400 9px/1.2 var(--sans);color:#9898a4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mp-kpi-tele{display:flex;align-items:center;gap:4px;font:500 8px/1 var(--mono);letter-spacing:.04em;text-transform:uppercase;color:#787886;margin-top:2px}
+.mp-kpi-tele b{color:#d4d4dc;font-weight:600}
+.mp-kpi-foot{
+  padding-top:5px;border-top:1px solid rgba(255,255,255,.08);
+  display:flex;align-items:center;justify-content:space-between;gap:6px;
+  font:400 7.5px/1.2 var(--mono);letter-spacing:.02em;color:#727280;
+}
+.mp-kpi-foot b{color:#a2a2b0;font-weight:500}
+.mp-kpi-note{color:#646472;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .mk-tt-ic{background:none;border:none}
 .mk-tt{width:100%;height:100%;border-radius:50%;background:#101010;border:1.5px solid var(--tc);color:var(--tc);display:flex;align-items:center;justify-content:center}
 .mk-tt .ic{width:60%;height:60%;stroke-width:1.4}
@@ -2077,7 +2105,6 @@ button.mp-src{background:none;border-top:0;border-left:0;border-right:0;cursor:p
 
 <div class="ticker" id="ticker" aria-label="Breaking news wire">
   <div class="tk-lbl">
-    <span class="tk-ic"><svg class="ic" aria-hidden="true"><use href="#i-activity"></use></svg></span>
     <span>Breaking</span>
   </div>
   <div class="tk-fetch" id="tk-fetch" data-state="idle" role="button" tabindex="0" title="Breaking wire: fetch otomatis tiap 45 detik — klik untuk fetch sekarang">
@@ -6464,7 +6491,7 @@ function fireInit(){
   map.on('click', e => {
     if (!layerOn.fires || !fireData.length) return;
     const best = fireHitTest(e.containerPoint);
-    if (best) L.popup({ closeButton: true, maxWidth: 340 }).setLatLng([best.lat, best.lon]).setContent(best.html).openOn(map);
+    if (best) L.popup({ closeButton: false, maxWidth: 340 }).setLatLng([best.lat, best.lon]).setContent(best.html).openOn(map);
   });
 }
 function fireRefresh(){ if (fireCvLayer) fireCvLayer.needRedraw(); }
@@ -6477,13 +6504,35 @@ async function pullFires(){
     if (spots.length) {
       for (const p of spots) {
         const conf = SIP_COLOR[p.confidence] ? p.confidence : 'low';
-        const age = p.time ? Math.max(0, Math.round((Date.now() - p.time) / 3600e3)) + ' jam lalu' : 'waktu tidak tersedia';
-        const loc = [p.desa, p.kecamatan, p.kabkota].filter(Boolean).join(', ') || p.provinsi || '';
+        const col = SIP_COLOR[conf] || '#ff9f0a';
+        const age = p.time ? Math.max(0, Math.round((Date.now() - p.time) / 3600e3)) + ' jam lalu' : '—';
+        const mainLoc = [p.desa, p.kecamatan].filter(Boolean).join(', ') || p.kabkota || p.provinsi || 'Titik Hotspot';
+        const subLoc = [p.kabkota, p.provinsi].filter(Boolean).join(' · ') || (p.desa ? p.desa : 'Indonesia');
+        const timeStr = p.time ? new Date(p.time).toLocaleString('id-ID', { timeZone:'Asia/Jakarta', hour:'2-digit', minute:'2-digit' }) + ' WIB' : '—';
+        const confText = conf === 'high' ? 'HIGH' : conf === 'medium' ? 'MED' : 'LOW';
+        const frpText = p.frp != null ? Number(p.frp).toFixed(1) + ' MW' : 'CONF';
         fireData.push({ lat: p.lat, lon: p.lon, conf, html:
-          `<div class="mp-k" style="color:${SIP_COLOR[conf]}">HOTSPOT · SIPONGI KEMENHUT</div>
-          <div class="mp-t">${esc(p.sumber || '')} — ${esc(conf)}</div>
-          <div class="mp-m">${p.lat.toFixed(5)}, ${p.lon.toFixed(5)}<br>${esc(loc)}<br>${esc(p.provinsi || '')}<br>terdeteksi: ${p.time ? esc(new Date(p.time).toLocaleString('id-ID', {timeZone:'Asia/Jakarta'}) + ' WIB') : '—'} · ${age}</div>
-          <div class="mp-m" style="margin-top:6px;text-transform:none;color:#d4d4d4"><b>Sumber:</b> SIPONGI Kemenhut (NASA + LAPAN/BRIN). Hotspot = anomali suhu satelit, bukan bukti kebakaran terkonfirmasi.</div>` });
+          `<div class="mp-kpi-card" style="--kpi-c:${col}">
+            <div class="mp-kpi-head">
+              <span class="mp-k" style="color:${col}">HOTSPOT · SIPONGI KEMENHUT</span>
+              <span class="mp-kpi-tag">${esc(p.sumber || 'VIIRS')}</span>
+            </div>
+            <div class="mp-kpi-body">
+              <div class="mp-kpi-hero">
+                <span class="mp-kpi-val">${confText}</span>
+                <span class="mp-kpi-sub">${esc(frpText)}</span>
+              </div>
+              <div class="mp-kpi-info">
+                <div class="mp-kpi-title">${esc(mainLoc)}</div>
+                <div class="mp-kpi-subt">${esc(subLoc)}</div>
+                <div class="mp-kpi-tele"><span>${esc(timeStr)}</span> · <b>${esc(age)}</b></div>
+              </div>
+            </div>
+            <div class="mp-kpi-foot">
+              <span>LOC <b>${p.lat.toFixed(4)}, ${p.lon.toFixed(4)}</b></span>
+              <span class="mp-kpi-note">*Anomali suhu satelit</span>
+            </div>
+          </div>` });
       }
     } else {
       // fallback: NASA FIRMS langsung
@@ -6499,12 +6548,34 @@ async function pullFires(){
       const confMap = { high:'high', nominal:'medium', low:'low' };
       for (const p of d.items) {
         const conf = confLevel(p.confidence);
-        const age = p.time ? Math.max(0, Math.round((Date.now() - p.time) / 3600e3)) + ' jam lalu' : 'waktu tidak tersedia';
+        const col = color(conf);
+        const age = p.time ? Math.max(0, Math.round((Date.now() - p.time) / 3600e3)) + ' jam lalu' : '—';
+        const timeStr = p.time ? new Date(p.time).toLocaleString('id-ID', { timeZone:'Asia/Jakarta', hour:'2-digit', minute:'2-digit' }) + ' WIB' : '—';
+        const confText = conf === 'high' ? 'HIGH' : conf === 'nominal' ? 'MED' : 'LOW';
+        const frpText = p.frp != null ? Number(p.frp).toFixed(1) + ' MW' : 'CONF';
+        const subLoc = p.daynight === 'D' ? 'Deteksi Siang Hari' : p.daynight === 'N' ? 'Deteksi Malam Hari' : 'Deteksi Satelit';
         fireData.push({ lat: p.lat, lon: p.lon, conf: confMap[conf], html:
-          `<div class="mp-k" style="color:${color(conf)}">HOTSPOT · NASA FIRMS</div>
-          <div class="mp-t">${esc(p.sensor || p.source || '')} — confidence ${esc(conf)}</div>
-          <div class="mp-m">${p.lat.toFixed(5)}, ${p.lon.toFixed(5)}<br>terdeteksi: ${p.time ? esc(new Date(p.time).toLocaleString('id-ID', {timeZone:'Asia/Jakarta'}) + ' WIB') : '—'}<br>${age} · FRP ${p.frp != null ? p.frp.toFixed(1)+' MW' : '—'}<br>${esc(p.daynight || '')}</div>
-          <div class="mp-m" style="margin-top:6px;text-transform:none;color:#d4d4d4"><b>Catatan:</b> hotspot adalah anomali suhu satelit, bukan bukti kebakaran terkonfirmasi. Awan, asap, dan api bawah tajuk dapat memengaruhi deteksi.</div>` });
+          `<div class="mp-kpi-card" style="--kpi-c:${col}">
+            <div class="mp-kpi-head">
+              <span class="mp-k" style="color:${col}">HOTSPOT · NASA FIRMS</span>
+              <span class="mp-kpi-tag">${esc(p.sensor || p.source || 'VIIRS')}</span>
+            </div>
+            <div class="mp-kpi-body">
+              <div class="mp-kpi-hero">
+                <span class="mp-kpi-val">${confText}</span>
+                <span class="mp-kpi-sub">${esc(frpText)}</span>
+              </div>
+              <div class="mp-kpi-info">
+                <div class="mp-kpi-title">Titik Api Karhutla</div>
+                <div class="mp-kpi-subt">${esc(subLoc)}</div>
+                <div class="mp-kpi-tele"><span>${esc(timeStr)}</span> · <b>${esc(age)}</b></div>
+              </div>
+            </div>
+            <div class="mp-kpi-foot">
+              <span>LOC <b>${p.lat.toFixed(4)}, ${p.lon.toFixed(4)}</b></span>
+              <span class="mp-kpi-note">*Anomali suhu satelit</span>
+            </div>
+          </div>` });
       }
     }
     fireInit();
@@ -6529,14 +6600,36 @@ async function pullAir(){
     airLayer.clearLayers();
     for (const p of d.air) {
       const col = AIR_COLOR(p.cat);
+      const isUnhealthy = /TIDAK SEHAT/i.test(String(p.cat || ''));
       const txt = /SANGAT TIDAK SEHAT/.test(String(p.cat || '').toUpperCase()) || /TIDAK SEHAT/.test(String(p.cat || '').toUpperCase()) ? '#fff' : '#101010';
       const m = L.marker([p.lat, p.lon], { keyboard: false, icon: L.divIcon({ className: 'mk-aqi-ic',
         iconSize: [30, 16], iconAnchor: [15, 8],
         html: `<div class="mk-aqi" style="background:${col};color:${txt}">${esc(p.nilai || '·')}</div>` }) });
-      m.bindPopup(`<div class="mp-k" style="color:${col}">KUALITAS UDARA · AQMS SIPONGI</div>
-        <div class="mp-t">${esc(p.alamat || p.kota || 'Stasiun AQMS')}</div>
-        <div class="mp-m">${esc(p.kota || '')}${p.provinsi ? ' · ' + esc(p.provinsi) : ''}<br>nilai ${esc(p.nilai || '—')} · ${esc(p.cat || '—')}<br>pengukuran: ${esc(p.waktu || '—')}<br>${p.lat.toFixed(4)}, ${p.lon.toFixed(4)}</div>
-        <div class="mp-m" style="margin-top:6px;text-transform:none;color:#d4d4d4"><b>Sumber:</b> SIPONGI Kemenhut / jaringan stasiun AQMS.</div>`);
+      const mainLoc = p.alamat || p.kota || 'Stasiun AQMS';
+      const subLoc = p.kota ? p.kota + (p.provinsi ? ' · ' + p.provinsi : '') : (p.provinsi || 'Indonesia');
+      const noteTxt = isUnhealthy ? '*Disarankan pakai masker' : '*Sensor stasiun darat';
+      m.bindPopup(
+        `<div class="mp-kpi-card" style="--kpi-c:${col}">
+          <div class="mp-kpi-head">
+            <span class="mp-k" style="color:${col}">KUALITAS UDARA · AQMS KLHK</span>
+            <span class="mp-kpi-tag" style="color:${col};border-color:${col}55">${esc(p.cat || 'ISPU')}</span>
+          </div>
+          <div class="mp-kpi-body">
+            <div class="mp-kpi-hero" style="--kpi-tc:${col}">
+              <span class="mp-kpi-val">${esc(p.nilai || '—')}</span>
+              <span class="mp-kpi-sub">ISPU</span>
+            </div>
+            <div class="mp-kpi-info">
+              <div class="mp-kpi-title">${esc(mainLoc)}</div>
+              <div class="mp-kpi-subt">${esc(subLoc)}</div>
+              <div class="mp-kpi-tele"><b>${esc(p.cat || '—')}</b> · <span>${esc(p.waktu || 'Pengukuran')}</span></div>
+            </div>
+          </div>
+          <div class="mp-kpi-foot">
+            <span>LOC <b>${p.lat.toFixed(4)}, ${p.lon.toFixed(4)}</b></span>
+            <span class="mp-kpi-note">${noteTxt}</span>
+          </div>
+        </div>`);
       airLayer.addLayer(m);
     }
     syncLayers();
