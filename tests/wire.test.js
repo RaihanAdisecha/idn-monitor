@@ -569,22 +569,28 @@ test('globe mobile touch pipeline isolates overlay pointer events and enables no
             'ptrEnd touch branch must only showGlobePop without stacking showGlobeTip simultaneously');
 });
 
-test('reader server scraping mitigations and mozaik.inilah.com source ban', () => {
+test('reader resilience and banned news source enforcement', () => {
   const fs = require('fs');
   const path = require('path');
-  const serverCode = fs.readFileSync(path.join(__dirname, '../server.js'), 'utf8');
-  const indexCode = fs.readFileSync(path.join(__dirname, '../public/index.html'), 'utf8');
+  const serverJs = fs.readFileSync(path.join(__dirname, '../server.js'), 'utf8');
+  const html = fs.readFileSync(path.join(__dirname, '../public/index.html'), 'utf8');
 
-  // 1. mozaik.inilah.com source banned in server.js and public/index.html
-  assert.ok(serverCode.includes('mozaik\\.inilah\\.com'), 'server BANNED_SRC must include mozaik.inilah.com');
-  assert.ok(indexCode.includes('mozaik\\.inilah\\.com'), 'frontend NEWS_BANNED must include mozaik.inilah.com');
+  // 1. mozaik.inilah.com banned in server and client
+  assert.ok(serverJs.includes('mozaik\\.inilah\\.com'), 'BANNED_SRC in server.js must ban mozaik.inilah.com');
+  assert.ok(html.includes('mozaik\\.inilah\\.com'), 'NEWS_BANNED in public/index.html must ban mozaik.inilah.com');
 
-  // 2. Dead proxy (corsproxy.io) removed and CUSTOM_PROXY supported
-  assert.ok(!serverCode.includes("'https://corsproxy.io/?url='"), 'dead corsproxy.io must be pruned from RD_PROXIES');
-  assert.ok(serverCode.includes('CUSTOM_PROXY = process.env.SCRAPER_PROXY'), 'CUSTOM_PROXY configuration must be supported');
+  // 2. Dead proxies pruned, custom proxy env supported
+  assert.ok(!serverJs.includes('corsproxy.io'), 'dead paid proxy corsproxy.io must be pruned from RD_PROXIES');
+  assert.ok(!serverJs.includes('proxy.corsfix.com'), 'dead proxy corsfix must be pruned from RD_PROXIES');
+  assert.ok(serverJs.includes('process.env.CUSTOM_PROXY_URL') && serverJs.includes('process.env.PROXY_URL'),
+            'server.js must support CUSTOM_PROXY_URL / PROXY_URL for Cloudflare Workers / custom gateways');
 
-  // 3. rdWireItem fallback to prevent raw ugly error when Cloudflare blocks server scraping
-  assert.ok(serverCode.includes('function rdWireItem(url)'), 'rdWireItem function must exist in server.js');
-  assert.ok(serverCode.includes('rdWireItem(target)'), 'rdRead must fallback to rdWireItem before throwing');
-  assert.ok(serverCode.includes("via: 'wire-fallback'"), 'wire-fallback must be emitted when network scrapers are blocked');
+  // 3. Jina API key env supported
+  assert.ok(serverJs.includes('process.env.JINA_API_KEY'), 'server.js must support JINA_API_KEY for free bearer auth');
+
+  // 4. Wire in-memory fallback for blocked articles
+  assert.ok(serverJs.includes('function rdWireFind(targetUrl)'), 'server.js must implement rdWireFind');
+  assert.ok(serverJs.includes("via: 'wire-fallback'") && serverJs.includes('wireFallback: true'),
+            'rdRead must fall back to wire RSS metadata instead of throwing when cloud datacenters are 403 blocked');
+  assert.ok(html.includes('d.wireFallback'), 'index.html reader must handle d.wireFallback banner');
 });

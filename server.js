@@ -365,7 +365,7 @@ const cleanPub = v => {
 };
 // domain/sumber yang dilarang — item langsung dibuang dari semua feed.
 // kompasiana = platform opini/blog, bukan berita; masuk lewat agregat Google News.
-const BANNED_SRC = /infopublik\.id|infopublik|kompasiana|mediacenter\.palangkaraya\.go\.id|viva\.co\.id\/foto|nokenlive|polreskedirikota|korankaltim|pelakita|cilegon\.go\.id|twaslnews|kilangbara\.com|klikmu\.co|mozaik\.inilah\.com/i;
+const BANNED_SRC = /infopublik\.id|infopublik|kompasiana|mozaik\.inilah\.com|mediacenter\.palangkaraya\.go\.id|viva\.co\.id\/foto|nokenlive|polreskedirikota|korankaltim|pelakita|cilegon\.go\.id|twaslnews|kilangbara\.com|klikmu\.co/i;
 function parseFeed(xml) {
   const out = [];
   for (const m of xml.matchAll(/<item[\s>]([\s\S]*?)<\/item>/gi)) {
@@ -428,11 +428,12 @@ function cleanTitle(t, pub) {
   return s;
 }
 const news = () => Promise.all(NEWS.map(([id, url]) => memo('n:' + id, 55000, async () => {
+  const customProxy = process.env.CUSTOM_PROXY_URL || process.env.PROXY_URL || CFG.custom_proxy;
   const attempts = [
     url,
+    ...(customProxy ? [(customProxy.endsWith('/') ? customProxy : customProxy + '/') + encodeURIComponent(url)] : []),
     'https://api.codetabs.com/v1/proxy?quest=' + encodeURIComponent(url),
     'https://api.allorigins.win/raw?url=' + encodeURIComponent(url),
-    'https://proxy.corsfix.com/?' + encodeURIComponent(url),
     'https://test.cors.workers.dev/?' + encodeURIComponent(url)
   ];
   let lastErr = '';
@@ -2793,10 +2794,13 @@ const jinaPump = () => {
   p.then(v => { jinaPending--; job.resolve(v); jinaPump(); },
          e => { jinaPending--; job.reject(e); jinaPump(); });
 };
+const JINA_KEY = process.env.JINA_API_KEY || CFG.jina_key || '';
 const jinaGet = (u, ms, h, alive, prio) => {
   if (jinaPending + jinaQP.length + jinaQN.length >= 12) return Promise.reject(new Error('jina queue penuh'));
+  const hdrs = { ...(h || {}) };
+  if (JINA_KEY && !hdrs['authorization']) hdrs['authorization'] = 'Bearer ' + JINA_KEY;
   return new Promise((resolve, reject) => {
-    (prio ? jinaQP : jinaQN).push({ u, ms, h, alive, prio: !!prio, resolve, reject });
+    (prio ? jinaQP : jinaQN).push({ u, ms, h: hdrs, alive, prio: !!prio, resolve, reject });
     jinaPump();
   });
 };
@@ -3141,10 +3145,11 @@ async function cctvFetch(url, ms, headers){
   // url berasal dari sumber eksternal (halaman pemda) — cek publik dulu; kalau
   // DNS sedang gagal, attempt direct tetap throw sendiri dan proxy masih dicoba.
   try { await rdAssertPublic(url); } catch (e) {}
+  const customProxy = process.env.CUSTOM_PROXY_URL || process.env.PROXY_URL || CFG.custom_proxy;
   const attempts = [url,
+    ...(customProxy ? [(customProxy.endsWith('/') ? customProxy : customProxy + '/') + encodeURIComponent(url)] : []),
     'https://api.codetabs.com/v1/proxy?quest=' + encodeURIComponent(url),
-    'https://api.allorigins.win/raw?url=' + encodeURIComponent(url),
-    'https://proxy.corsfix.com/?' + encodeURIComponent(url)];
+    'https://api.allorigins.win/raw?url=' + encodeURIComponent(url)];
   let lastErr = '';
   for (const u of attempts) {
     try {
@@ -3714,14 +3719,17 @@ function rdWireImg(url) {
   }
   return '';
 }
-function rdWireItem(url) {
-  if (!url) return null;
+function rdWireFind(targetUrl) {
+  const norm = u => String(u || '').split('?')[0].replace(/\/+$/, '').toLowerCase();
+  const tNorm = norm(targetUrl);
   for (const [k, c] of cache) {
     if (!k.startsWith('n:') || !c || !c.v || !Array.isArray(c.v.items)) continue;
     for (const i of c.v.items) {
-      if (i.url === url) return i;
+      if (!i || !i.url) continue;
+      const iNorm = norm(i.url);
+      if (iNorm === tNorm) return i;
       const g = gnCache.get(i.url);
-      if (g && g.url === url) return i;
+      if (g && (norm(g.url) === tNorm || norm(g) === tNorm)) return { ...i, url: g.url || g };
     }
   }
   return null;
@@ -4087,12 +4095,11 @@ function rdExtract(html, finalURL) {
     paras: joined, thin: joined.length < 2, videos, blocks: finBlocks
   };
 }
-const CUSTOM_PROXY = process.env.SCRAPER_PROXY || process.env.PROXY_URL || CFG.scraper_proxy || '';
+const CUSTOM_PROXY = process.env.CUSTOM_PROXY_URL || process.env.PROXY_URL || CFG.custom_proxy || '';
 const RD_PROXIES = [
-  ...(CUSTOM_PROXY ? [u => (CUSTOM_PROXY.includes('%s') ? CUSTOM_PROXY.replace('%s', encodeURIComponent(u)) : CUSTOM_PROXY.replace(/\/+$/, '') + '/?url=' + encodeURIComponent(u))] : []),
-  u => 'https://api.codetabs.com/v1/proxy?quest=' + encodeURIComponent(u),
+  ...(CUSTOM_PROXY ? [u => CUSTOM_PROXY.includes('%s') ? CUSTOM_PROXY.replace('%s', encodeURIComponent(u)) : (CUSTOM_PROXY.endsWith('=') || CUSTOM_PROXY.endsWith('?') || CUSTOM_PROXY.endsWith('/') ? CUSTOM_PROXY + encodeURIComponent(u) : CUSTOM_PROXY + '?url=' + encodeURIComponent(u))] : []),
   u => 'https://api.allorigins.win/raw?url=' + encodeURIComponent(u),
-  u => 'https://proxy.corsfix.com/?' + encodeURIComponent(u)
+  u => 'https://api.codetabs.com/v1/proxy?quest=' + encodeURIComponent(u)
 ];
 // Jina reader mengembalikan markdown; ubah jadi bentuk yang kompatibel rdExtract.
 // Gambar konten (![alt](url) dan kartu [![alt](img)](link)) dipertahankan sebagai
@@ -4333,10 +4340,7 @@ async function rdRead(raw, bg) {
     const tryHtml = (html, url) => {
       const d = rdExtract(html, url);
       const blocked = BLOCKED_RE.test(d.title + ' ' + (d.desc || '') + ' ' + html.slice(0, 30000));
-      if (!blocked && d.paras.length >= 2 && !rdOnTopic(d.title, d.desc, d.paras)) {
-        lastErr = new Error('isi tidak nyambung dengan judul');
-        return null;
-      }
+      if (!blocked && !rdOnTopic(d.title, d.desc, d.paras)) { lastErr = new Error('isi tidak nyambung dengan judul'); return null; }
       // halaman JS-rendered: teks tipis tapi meta (og:image/og:video) tetap bernilai → simpan untuk fallback & merge
       if (!blocked && metaScore(d) > (metaD ? metaScore(metaD) : -1)) metaD = d;
       return (d.paras.length < 2 || blocked) ? null : d;
@@ -4501,26 +4505,30 @@ async function rdRead(raw, bg) {
       fetchMs = Date.now() - t0;
       return await fin(d, target, null, 'meta');   // semua fetch gagal — thumb() juga akan gagal, jangan buang waktu
     }
-    // jika scraper jaringan gagal total (Cloudflare/datacenter block), periksa cache wire berita
-    const wi = rdWireItem(target) || rdWireItem(raw);
-    if (wi && (wi.title || wi.desc)) {
-      const paras = wi.desc ? [wi.desc] : [];
+    // jika fetch halaman gagal total (misal 403 Cloudflare di IP datacenter cloud seperti Railway):
+    // sajikan ringkasan dari feed Newswire / RSS yang sudah ada di memori server
+    const wireIt = rdWireFind(target);
+    if (wireIt && wireIt.title) {
+      const desc = String(wireIt.desc || '').trim();
+      const paras = desc ? desc.split(/\n+/).map(p => p.trim()).filter(p => p.length >= 20) : [];
+      if (!paras.length && desc) paras.push(desc);
+      if (!paras.length) paras.push('Laporan lengkap berada di situs sumber. Akses server dibatasi oleh proteksi bot penerbit.');
       const d = {
         ok: true,
         url: target,
         final: target,
-        title: wi.title || 'Warta Berita',
-        site: wi.pub || rdHost(target),
-        byline: wi.pub || '',
-        time: wi.ts ? new Date(wi.ts).toISOString() : '',
-        img: wi.img || rdWireImg(target) || '',
-        desc: wi.desc || '',
+        title: wireIt.title,
+        site: wireIt.pub || wireIt.src || rdHost(target),
+        byline: wireIt.pub || wireIt.src || '',
+        time: wireIt.ts ? new Date(wireIt.ts).toISOString() : '',
+        img: wireIt.img || '',
+        desc: desc,
         paras,
         thin: true,
-        videos: [],
-        blocks: paras.map(t => ({ k: 'p', t })),
+        wireFallback: true,
         via: 'wire-fallback',
-        blocked: true
+        videos: [],
+        blocks: paras.map(t => ({ k: 'p', t }))
       };
       fetchMs = Date.now() - t0;
       return await fin(d, target, null, 'wire-fallback');

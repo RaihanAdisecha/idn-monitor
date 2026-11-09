@@ -5676,7 +5676,7 @@ $('#catbar').addEventListener('click', e => {
 });
 
 // mirror BANNED_SRC di server.js — GN feed bisa narik blog/opini (kompasiana dll)
-const NEWS_BANNED = /infopublik|kompasiana|mediacenter\.palangkaraya\.go\.id|viva\.co\.id\/foto|nokenlive|polreskedirikota|korankaltim|mozaik\.inilah\.com/i;
+const NEWS_BANNED = /infopublik|kompasiana|mozaik\.inilah\.com|mediacenter\.palangkaraya\.go\.id|viva\.co\.id\/foto|nokenlive|polreskedirikota|korankaltim/i;
 function parseRss(xmlText, srcId){
   const doc = new DOMParser().parseFromString(xmlText, 'text/xml');
   const out = [];
@@ -9207,6 +9207,7 @@ function rdArticle(d, url) {
   };
   const note = d.videoPage
     ? `<div class="rd-note">Halaman video — konten utama adalah video; teks artikel tidak tersedia.</div>`
+    : d.wireFallback ? `<div class="rd-note">Mode Ringkasan Wire — server diblokir Cloudflare/penerbit. Buka sumber untuk artikel lengkap.</div>`
     : d.thin ? `<div class="rd-note">Halaman ini tidak mengirim teks penuh (login/JS). Ringkasan di bawah diambil dari metadata. Buka sumber untuk lanjut.</div>` : '';
   let flow, hasBlocks = Array.isArray(d.blocks) && d.blocks.length > 0;
   if (hasBlocks) {
@@ -9231,7 +9232,7 @@ function rdArticle(d, url) {
     <div class="rd-meta">${meta.map(x => `<span>${esc(x)}</span>`).join('')}</div>
     ${img}${hasBlocks ? note : ''}${flow}
   </article>`;
-  $('#rd-state').textContent = (d.videoPage ? 'halaman video' : d.thin ? 'ringkasan' : (d.paras || []).length + ' paragraf') + ' · ' + rdHostOf(d.final || url);
+  $('#rd-state').textContent = (d.videoPage ? 'halaman video' : d.wireFallback ? 'ringkasan wire' : d.thin ? 'ringkasan' : (d.paras || []).length + ' paragraf') + ' · ' + rdHostOf(d.final || url);
   const safeUrl = d.final || url;
   $('#rd-open').href = /^https?:\/\//i.test(String(safeUrl || '').trim()) ? String(safeUrl).trim() : '#';
   $('#rd-body').scrollTop = 0;
