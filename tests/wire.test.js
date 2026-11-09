@@ -42,6 +42,16 @@ test('geocode blocks generic village/ibukota hijacks and resolves Province/POI a
   const pg = GEO.locate('Banjir di Pondok Gede');
   assert.ok(pg);
   assert.equal(pg.prov, 'Jawa Barat');
+
+  // National power centers & political palace POI vs generic village disambiguation
+  assert.equal(GEO.locate('gibran dimakzulkan di istana')?.name, 'Istana Merdeka');
+  assert.equal(GEO.locate('Massa Demonstran Segel Istana Wapres Gibran')?.name, 'Istana Merdeka');
+  assert.equal(GEO.locate('Demo di DPR Tuntut Batalkan Revisi UU')?.name, 'DPR / MPR Senayan');
+  assert.equal(GEO.locate('Aksi Buruh di Depan Gedung MK')?.name, 'Mahkamah Konstitusi');
+  assert.equal(GEO.locate('Kebakaran di Istana Maimun Medan')?.name, 'Istana Maimun');
+  assert.equal(GEO.locate('Demonstrasi di depan Istana Bogor')?.name, 'Istana Bogor');
+  assert.equal(GEO.locate('Warga Desa Istana di Ketapang unjuk rasa')?.name, 'Desa Istana');
+  assert.equal(GEO.locate('Warga Desa Istana di Ketapang unjuk rasa')?.prov, 'Kalimantan Barat');
 });
 
 test('evmerge preserves shared incident tokens across large single-city cluster', () => {
@@ -330,8 +340,8 @@ test('cl-toasts implements front-anchored 3D deck stack with strict non-independ
   const path = require('path');
   const html = fs.readFileSync(path.join(__dirname, '../public/index.html'), 'utf8');
 
-  // 1. Front-anchored grid stack CSS: all cards share grid-area:1/1 and recede via --depth
-  assert.ok(html.includes('grid-area:1/1;') && html.includes('transform:translate3d(0,calc(var(--depth,0) * 10px),0) scale(calc(1 - var(--depth,0) * .048))'), 'cl-toast must use grid-area:1/1 and --depth 3D deck transform');
+  // 1. Front-anchored grid stack CSS: all cards share grid-area:1/1 and recede upwards via negative --depth
+  assert.ok(html.includes('grid-area:1/1;') && html.includes('transform:translate3d(0,calc(var(--depth,0) * -14px),0) scale(calc(1 - var(--depth,0) * .045))'), 'cl-toast must use grid-area:1/1 and negative --depth 3D deck transform peaking at top');
   assert.ok(html.includes('.cl-toasts:not(.open) .cl-toast[data-front="false"]'), 'back cards in stack must be styled and pointer-guarded via data-front="false"');
 
   // 2. Batch mount order mounts oldest first and newest last so latest card sits at front (--depth:0)

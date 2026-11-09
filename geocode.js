@@ -140,9 +140,19 @@ for (const [nm, [la, lo]] of Object.entries(VOLC)) {
   POI.push({ re, e: { id: 'V' + nm, level: 'poi', name: label, la, lo, prov: '', prec: 'poi' } });
 }
 const LM = (id, name, la, lo, re) => POI.push({ re, e: { id, level: 'poi', name, la, lo, prov: 'DKI Jakarta', prec: 'poi' } });
-LM('istana', 'Istana Merdeka', -6.1702, 106.8272, /(?:^| )(?:istana negara|istana merdeka|istana presiden|(?:depan|sekitar|area|kawasan) istana)(?= |$)/);
-LM('dpr', 'DPR / MPR Senayan', -6.2185, 106.8002, /(?:^| )(?:(?:gedung|depan|kompleks|kawasan) (?:dpr|mpr|dpr ri|parlemen)|senayan)(?= |$)/);
+LM('istana-wapres', 'Istana Wapres', -6.1814, 106.8268, /(?:^| )(?:istana (?:wapres|wakil presiden)|kantor wapres)(?= |$)/);
+POI.push({ re: /(?:^| )istana garuda(?= |$)/, e: { id: 'istana-garuda', level: 'poi', name: 'Istana Garuda IKN', la: -0.9634, lo: 116.7022, prov: 'Kalimantan Timur', prec: 'poi' } });
+POI.push({ re: /(?:^| )istana bogor(?= |$)/, e: { id: 'istana-bogor', level: 'poi', name: 'Istana Bogor', la: -6.5950, lo: 106.7941, prov: 'Jawa Barat', prec: 'poi' } });
+POI.push({ re: /(?:^| )istana cipanas(?= |$)/, e: { id: 'istana-cipanas', level: 'poi', name: 'Istana Cipanas', la: -6.7369, lo: 107.0397, prov: 'Jawa Barat', prec: 'poi' } });
+POI.push({ re: /(?:^| )istana tampaksiring(?= |$)/, e: { id: 'istana-tampaksiring', level: 'poi', name: 'Istana Tampaksiring', la: -8.4358, lo: 115.3094, prov: 'Bali', prec: 'poi' } });
+POI.push({ re: /(?:^| )istana maimun(?= |$)/, e: { id: 'istana-maimun', level: 'poi', name: 'Istana Maimun', la: 3.5753, lo: 98.6837, prov: 'Sumatera Utara', prec: 'poi' } });
+POI.push({ re: /(?:^| )istana (?:pagaruyung|basa pagaruyung)(?= |$)/, e: { id: 'istana-pagaruyung', level: 'poi', name: 'Istana Pagaruyung', la: -0.4712, lo: 100.6212, prov: 'Sumatera Barat', prec: 'poi' } });
+LM('istana', 'Istana Merdeka', -6.1702, 106.8272, /(?:^| )(?:istana (?:negara|merdeka|presiden)|(?:gedung|depan|sekitar|area|kawasan|menuju|geruduk|segel|kepung|demo di|aksi di|rapat di|panggil ke|di|ke) istana|\bistana(?!\s+(?:maimun|pagaruyung|kadriah|siak|alwatzikhoebillah|bogor|cipanas|tampaksiring|garuda|anak anak))\b)(?= |$)/);
+LM('dpr', 'DPR / MPR Senayan', -6.2185, 106.8002, /(?:^| )(?:(?:gedung|depan|kompleks|kawasan|menuju|geruduk|segel|kepung|demo di|aksi di|di|ke) (?:dpr|mpr|dpr ri|parlemen)|senayan|\bdpr ri\b)(?= |$)/);
 LM('monas', 'Monas', -6.1754, 106.8272, /(?:^| )(?:monas|patung kuda|medan merdeka|lapangan banteng|bundaran hi)(?= |$)/);
+LM('mk', 'Mahkamah Konstitusi', -6.1751, 106.8228, /(?:^| )(?:gedung mk|mahkamah konstitusi)(?= |$)/);
+LM('kpk', 'Gedung KPK', -6.2115, 106.8315, /(?:^| )(?:gedung kpk|kantor kpk|kpk ri)(?= |$)/);
+LM('kpu', 'KPU RI', -6.1994, 106.8322, /(?:^| )(?:gedung kpu|kantor kpu|kpu ri)(?= |$)/);
 POI.push({ re: /(?:^| )pelaga(?= |$)/, e: { id: 'pelaga', level: 'poi', name: 'Pelaga, Badung', la: -8.36, lo: 115.35, prov: 'Bali', prec: 'poi' } });
 
 /* POI kawasan kota & landmark: nama daerah yang sering muncul di berita tapi tidak
@@ -306,7 +316,7 @@ const VILLAGE_STOP = new Set([
   'pertama', 'utama', 'ujung', 'hulu', 'hilir', 'kantor', 'lapangan', 'kejaksaan', 'pengadilan', 'bandara', 'pelabuhan',
   'stadion', 'stasiun', 'terminal', 'dermaga', 'perbatasan', 'pedalaman', 'bendungan', 'waduk', 'pesantren', 'kampung',
   'alun alun', 'turunan', 'tanjakan', 'tikungan', 'simpang', 'bundaran', 'jembatan', 'jalan', 'lorong', 'gang',
-  'negara', 'sumber', 'benteng', 'pandan', 'pinang', 'manggar', 'korban', 'warga', 'polisi', 'tentara', 'aparat', 'petugas',
+  'negara', 'istana', 'parlemen', 'senayan', 'kementerian', 'sumber', 'benteng', 'pandan', 'pinang', 'manggar', 'korban', 'warga', 'polisi', 'tentara', 'aparat', 'petugas',
   'tersangka', 'pelaku', 'saksi', 'rumah', 'gedung', 'sekolah', 'kampus', 'masjid', 'gereja', 'pura', 'wihara', 'asrama',
   'penjara', 'lapas', 'rutan', 'polsek', 'polres', 'polda', 'kodim', 'koramil', 'puskesmas', 'klinik', 'apotek', 'hotel',
   'mall', 'plaza', 'taman', 'pasar', 'toko', 'warung', 'kios', 'gudang', 'pabrik', 'bengkel', 'tambang', 'kebun', 'hutan',
@@ -515,7 +525,7 @@ function locate(title) {
       if (!explicitCue && (idx.has(key) || used.slice(i, i + n).some(Boolean))) continue;
       if (!explicitCue && !kecContext && !locCue) continue;
       if (genericCue && !typeCue && !kecContext && !parentContext && !(allRows.length === 1 && key.length >= 6)) continue;
-      if (!explicitCue && !kecContext && !parentContext && !(allRows.length === 1 && locCue && key.length >= 6)) continue;
+      if (!explicitCue && !kecContext && !parentContext && !(allRows.length === 1 && locCue && key.includes(' ') && key.length >= 8)) continue;
       const exactNamedPoi = cands.some(c => c.e.level === 'poi' && c.specific &&
         (c.matchKey === key || c.matchKey.endsWith(' ' + key)) && (!c.e.prov || provKey(c.e.prov) === provKey(e.prov)));
       if (exactNamedPoi) continue; // Stasiun/Bandara/dll yang disebut eksplisit lebih spesifik dari centroid wilayah
@@ -545,7 +555,7 @@ function locate(title) {
     // Provinsi tanpa cue lokatif ('di bali') terlalu lemah untuk membunuh POI:
     // "Bali Mester" adalah nama jalan di Jatinegara, bukan provinsi Bali.
     const alt = cands.find(c => c !== top &&
-      (c.e.level === 'kab' || c.e.level === 'village' ||
+      (c.e.level === 'kab' || (c.e.level === 'village' && (c.cue >= 2 || c.parentContext)) ||
        (c.e.level === 'prov' && (c.cue || 0) > 0)) &&
       ((c.e.prov && provKey(c.e.prov) !== provKey(top.e.prov)) ||
        (c.e.level === 'kab' && POI_CITY[top.e.id] && !norm(c.e.name).includes(POI_CITY[top.e.id]))));

@@ -44,6 +44,12 @@ const GOLD = [
   ['Gempa di NTB', 'Nusa Tenggara Barat'],
   ['Banjir di DIY', 'DI Yogyakarta'],
   ['Gempa di DKI', 'Jakarta'],
+  ['gibran dimakzulkan di istana', 'Istana Merdeka'],
+  ['Massa Demonstran Segel Istana Wapres Gibran', 'Istana Merdeka'],
+  ['Demo di DPR Tuntut Batalkan Revisi UU', 'DPR / MPR Senayan'],
+  ['Aksi Buruh di Depan Gedung MK', 'Mahkamah Konstitusi'],
+  ['Kebakaran di Istana Maimun Medan', 'Istana Maimun'],
+  ['Demonstrasi di depan Istana Bogor', 'Istana Bogor'],
 ];
 for (const [t, exp, multi] of GOLD) {
   const r = GEO.locate(t), got = r && r.name;
