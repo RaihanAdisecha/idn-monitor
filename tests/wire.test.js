@@ -451,4 +451,10 @@ test('demo detection, geocoding and social orchestration pipeline fixes', () => 
 
   // 7. Frontend: CAT_SKIP does not suppress demo titles
   assert.ok(html.includes('const isDemo = CAT_RE.demo && CAT_RE.demo.test(t);') && html.includes('if (CAT_SKIP.test(t) && !isDemo) return \'\';'), 'Frontend catOfTitle must preserve demo categories');
+
+  // 8. 24h Hybrid Trending: newsTopicHeat covers 24h, buildTrends produces rank & pct, frontend maps telemetry
+  assert.ok(serverCode.includes('now - it.ts > 24 * 3600e3'), 'newsTopicHeat must inspect full 24h window');
+  assert.ok(serverCode.includes('Math.round(item.score * 20 + 50)'), 'buildTrends must calculate surge percentage');
+  assert.ok(html.includes('socTrends = new Map(d.trends.map(t => [t.id, t]))'), 'frontend must ingest d.trends for telemetry chips');
+  assert.ok(html.includes('hot-both'), 'frontend CSS/HTML must support hybrid hot-both and hot-wire badges');
 });

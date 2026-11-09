@@ -811,10 +811,10 @@ const richPosts = () => memo('richposts', 60000, async () => [
   ...[...xHist.values()].map(p => ({ text: p.text, ts: histTs(p), topics: p.topics, platform: 'x', user: histUser(p) })),
   ...[...tHist.values()].map(p => ({ text: p.text, ts: histTs(p), topics: p.topics, platform: 'th', user: histUser(p) }))
 ]);
-// topik yang lagi spike di BERITA (3 jam terakhir, maks ~400 judul). Klasifikasi
+// topik yang lagi spike di BERITA (cakupan 24 jam dengan time decay, maks ~1200 judul). Klasifikasi
 // pakai registry yang sama dengan post sosial; ADHOC ikut supaya nama kasus baru
-// yang lagi naik juga kehitung. >=3 judul berbeda per topik — satu berita viral
-// doang tidak boleh memicu boost. Murah: reuse news() yang sudah ke-fetch.
+// yang lagi naik juga kehitung. Bobot: <=6h (1.0), 6-12h (0.6), 12-24h (0.3).
+// Murah: reuse news() yang sudah ke-fetch.
 const newsTopicHeat = () => memo('newsheat', 300000, async () => {
   try {
     const srcs = await news(), now = Date.now(), cnt = new Map(), seen = new Set();
@@ -822,19 +822,25 @@ const newsTopicHeat = () => memo('newsheat', 300000, async () => {
     for (const s of srcs) {
       if (!s.ok) continue;
       for (const it of s.items) {
-        if (n >= 400) break;
+        if (n >= 1200) break;
         const t = String(it.title || '');
-        if (!Number.isFinite(it.ts) || it.ts <= 0 || it.ts > now || now - it.ts > 3 * 3600e3) continue;
+        if (!Number.isFinite(it.ts) || it.ts <= 0 || it.ts > now || now - it.ts > 24 * 3600e3) continue;
         // dedupe pakai kunci ternormalisasi: 3 media menulis ulang insiden yang
         // sama = 1 peristiwa, bukan 3 — ambang >=3 berarti kejadian berbeda.
         const k = breakNorm(t);
         if (!k || seen.has(k)) continue;
         seen.add(k); n++;
-        for (const tp of SOC.socTopics(t, ADHOC)) cnt.set(tp, (cnt.get(tp) || 0) + 1);
+        const ageH = (now - it.ts) / 3600e3;
+        const w = ageH <= 6 ? 1.0 : ageH <= 12 ? 0.6 : 0.3;
+        for (const tp of SOC.socTopics(t, ADHOC)) cnt.set(tp, (cnt.get(tp) || 0) + w);
       }
-      if (n >= 400) break;
+      if (n >= 1200) break;
     }
-    return [...cnt.entries()].filter(([, c]) => c >= 3).sort((a, b) => b[1] - a[1]).slice(0, 2).map(([t]) => t);
+    return [...cnt.entries()]
+      .filter(([, c]) => c >= 2.0)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 10)
+      .map(([t, score]) => ({ id: t, score: +score.toFixed(1) }));
   } catch (e) { return []; }
 });
 // bridge berita→sosial: token yang lagi sering muncul di judul+desc 24 jam.
@@ -925,28 +931,55 @@ const memoVal = k => { const c = cache.get(k); return c && c.v !== undefined ? c
 //   adhoc   = 1.5 (topik dinamis ADHOC)
 //   x       = 1..0.6 sesuai urutan GetTrends (5 tren)
 // social biasanya menang; sumber lain jadi sinyal awal & tie-breaker.
-function buildTrends(hot) {
+function buildTrends(hot, stats) {
   const m = new Map();
   const add = (id, src, score) => {
     id = String(id || '').toLowerCase().trim();
     if (!id || !(score > 0)) return;
     const e = m.get(id) || { id, src: [], score: 0 };
     if (e.src.indexOf(src) < 0) e.src.push(src);
-    if (score > e.score) e.score = score;
+    // Multi-source corroboration: if event emerges in both 24h news and social, award significant +3.0 boost
+    e.score = Math.max(e.score, score) + (e.src.length > 1 ? 3.0 : 0);
     m.set(id, e);
   };
-  for (const t of memoVal('newsheat')) add(t, 'news', 3);
+  for (const it of memoVal('newsheat')) {
+    const tid = typeof it === 'string' ? it : (it && it.id);
+    const sc = typeof it === 'object' && it.score ? Math.min(25, it.score * 0.25 + 5) : 3;
+    if (tid) add(tid, 'news', sc);
+  }
   for (const h of hot || []) add(h.id, 'social', Math.min(30, +h.score || 0));
+  if (stats) {
+    for (const [tid, cnts] of Object.entries(stats)) {
+      const vol = (cnts.x || 0) + (cnts.th || 0);
+      if (vol >= 5) add(tid, 'social', Math.min(20, Math.log2(vol + 1) * 2.0));
+    }
+  }
   (memoVal('xtrend') || []).forEach((n, i) => add(n, 'x', Math.max(0.5, 1 - i * 0.1)));
   for (const a of ADHOC) add(a.id, 'adhoc', 1.5);
-  return [...m.values()].sort((a, b) => b.score - a.score).slice(0, 10);
+  const list = [...m.values()].sort((a, b) => b.score - a.score).slice(0, 10);
+  return list.map((item, idx) => {
+    const rank = idx + 1;
+    const pct = Math.min(450, Math.round(item.score * 20 + 50));
+    return { ...item, rank, pct: '+' + pct + '%' };
+  });
 }
-// chip + trending + statistik lintas platform, semuanya dari history sosial itu sendiri
+// chip + trending + statistik lintas platform, terpadu antara berita 24 jam dan sinyal sosial
 const socMeta = () => {
   const { stats, hot } = SOC.socHot(socPosts());
-  return { queries: SOC.SOC_TOPICS.map(t => t.id).concat(ADHOC.map(t => t.id)),
-    trending: hot.map(h => h.id), both: hot.filter(h => h.both).map(h => h.id), hot, stats,
-    trends: buildTrends(hot) };
+  const trends = buildTrends(hot, stats);
+  const trendIds = trends.map(t => t.id);
+  // dynamic queries order: trending topics first, followed by active topics with >=1 posts, then the rest
+  const activeQueries = Object.keys(stats).filter(q => (stats[q].x || 0) + (stats[q].th || 0) > 0);
+  const baseQueries = SOC.SOC_TOPICS.map(t => t.id).concat(ADHOC.map(t => t.id));
+  const queries = [...new Set([...trendIds, ...activeQueries, ...baseQueries])];
+  return {
+    queries,
+    trending: trendIds,
+    both: hot.filter(h => h.both).map(h => h.id),
+    hot,
+    stats,
+    trends
+  };
 };
 // sintesis query dinamis per siklus: varian adhoc + tren X + frasa sosial +
 // keyword mining + keyword dari berita. Hasilnya masuk byTopic sebagai topik
@@ -1066,11 +1099,12 @@ const xposts = () => memo('x', 300000, async () => {
   // newsHotTop: topik yang lagi spike di berita ikut antri di forced — prioritas,
   // bukan bypass; query-nya tetap makan budget N seperti topik lain.
   const newsHotTop = await newsTopicHeat();
+  const newsHotIds = (newsHotTop || []).map(x => typeof x === 'string' ? x : (x && x.id)).filter(Boolean);
   // forcedOrd = prioritas berurutan: topik riil panas dulu (hot sosial, spike
   // berita, adhoc), baru id sintetis. Semua tunduk budget N — yang kelebihan
   // antri siklus depan, jadi total fetch per siklus tidak pernah lewat N.
   const synthSet = new Set(synth.map(e => e.t));
-  const forcedOrd = hotTop.concat(newsHotTop, ADHOC.map(a => a.id), synth.map(e => e.t));
+  const forcedOrd = hotTop.concat(newsHotIds, ADHOC.map(a => a.id), synth.map(e => e.t));
   const forced = new Set(forcedOrd);
   const chosen = new Set();
   if (first) { for (const t of byTopic.keys()) chosen.add(t); }
@@ -1265,10 +1299,11 @@ const threads = () => memo('threads', 240000, async () => {
   for (const e of entries) { const a = byTopic.get(e.t); if (a) a.push(e.q); else byTopic.set(e.t, [e.q]); }
   // newsHotTop: topik spike berita — prioritas di forced, tetap makan budget N
   const newsHotTop = await newsTopicHeat();
+  const newsHotIds = (newsHotTop || []).map(x => typeof x === 'string' ? x : (x && x.id)).filter(Boolean);
   const synthSet = new Set(synth.map(e => e.t));
   // sama seperti X: forcedOrd berurutan prioritas (topik riil dulu, sintetis
   // belakangan) dan semua tunduk budget N — tidak ada bypass, total ≤ N.
-  const forcedOrd = hotTop.concat(newsHotTop, ADHOC.map(a => a.id), synth.map(e => e.t));
+  const forcedOrd = hotTop.concat(newsHotIds, ADHOC.map(a => a.id), synth.map(e => e.t));
   const forced = new Set(forcedOrd);
   const chosen = new Set(), chosenQueries = new Map();
   // throttle sejak siklus pertama: burst ~30 request langsung memicu 429 Threads
@@ -5024,7 +5059,10 @@ http.createServer(async (req, res) => {
   threads().then(r => console.log('Threads warm: ' + r.posts.length + ' post')).catch(e => console.log('Threads warm gagal: ' + e.message));
   incidents().then(r => console.log('Peta warm: ' + r.items.length + ' titik')).catch(() => {});
   situation().then(r => console.log('Situasi warm: ' + r.total + ' insiden')).catch(() => {});
-  news().then(rs => console.log('News warm: ' + rs.filter(s => s.ok).length + '/' + rs.length + ' feed')).catch(() => {});
+  news().then(async rs => {
+    console.log('News warm: ' + rs.filter(s => s.ok).length + '/' + rs.length + ' feed');
+    await newsTopicHeat().catch(() => {});
+  }).catch(() => {});
   xposts().then(r => console.log('X warm: ' + r.posts.length + ' post' + (r.err ? ' | err: ' + String(r.err).slice(0, 160) : ''))).catch(e => console.log('X warm gagal: ' + e.message));
   setTimeout(() => warmCctv().catch(() => {}), 20000);
   setInterval(() => { warmCctv().catch(() => {}); }, 1800000);

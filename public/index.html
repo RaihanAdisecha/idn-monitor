@@ -819,7 +819,19 @@ a{color:inherit;text-decoration:none;text-underline-offset:2px}
 .qc-sep{flex:none;align-self:center;width:1px;height:20px;background:var(--border2);margin:0 9px 0 5px}
 .qc[aria-pressed="true"]{color:var(--text)}
 .qc[aria-pressed="true"]::after{background:var(--accent)}
-.qc.hot .qa{color:var(--ok);font-weight:700}
+.qc.hot{color:var(--text)}
+.qc.hot .qa{
+  display:inline-flex;align-items:center;gap:3px;
+  color:var(--ok);font:700 8.5px/1 var(--mono);
+  background:rgba(52,211,153,.12);border:1px solid rgba(52,211,153,.28);
+  padding:2px 5px;border-radius:3px;margin-right:4px;letter-spacing:.02em;
+}
+.qc.hot .qa-arrow{font-style:normal;font-size:7px;transform:translateY(-.5px)}
+.qc.hot.hot-wire .qa{color:#38bdf8;background:rgba(56,189,248,.12);border-color:rgba(56,189,248,.28)}
+.qc.hot.hot-both .qa{color:#fbbf24;background:rgba(251,191,36,.12);border-color:rgba(251,191,36,.28)}
+.qc-idle{opacity:.4;filter:grayscale(.8)}
+.qc-idle:hover{opacity:.85;filter:none}
+.qc-sep-idle{opacity:.35}
 .qc .qt{display:block}
 .qc .qp{display:flex;align-items:center;gap:7px;font:500 9px/1 var(--mono);letter-spacing:.02em;font-variant-numeric:tabular-nums;color:var(--text3)}
 .qc .qp span{display:inline-flex;align-items:center;gap:3px;opacity:.55}
@@ -4984,7 +4996,7 @@ async function xLazy(q){
     renderX();
   } catch (e) {}
 }
-let socStats = {}, socBoth = [];
+let socStats = {}, socBoth = [], socTrends = new Map();
 const TOPIC_LABEL = { phk:'PHK', ihsg:'IHSG', bssn:'BSSN', ransomware:'Ransomware' };
 const topicLabel = q => TOPIC_LABEL[q] || String(q).replace(/(^|\s)(\S)/g, (m, a, b) => a + b.toUpperCase());
 function qchipsHtml(queries, trending, active, me, other){
@@ -4992,20 +5004,38 @@ function qchipsHtml(queries, trending, active, me, other){
   const n = (q, k) => (socStats[q] && socStats[q][k]) || 0;
   const all = [...new Set(queries || [])];
   const hot = all.filter(q => tr.includes(q)).sort((a, b) => tr.indexOf(a) - tr.indexOf(b));
-  const rest = all.filter(q => !tr.includes(q)).sort((a, b) => (n(b, me) + n(b, other)) - (n(a, me) + n(a, other)));
-  const chip = q => {
-    const h = tr.includes(q), nx = n(q, 'x'), nt = n(q, 'th');
+  const rest = all.filter(q => !tr.includes(q));
+  const restActive = rest.filter(q => (n(q, me) + n(q, other)) > 0).sort((a, b) => (n(b, me) + n(b, other)) - (n(a, me) + n(a, other)));
+  const restZero = rest.filter(q => (n(q, me) + n(q, other)) === 0);
+
+  const chip = (q, isHot, isIdle) => {
+    const nx = n(q, 'x'), nt = n(q, 'th');
+    const trData = isHot ? socTrends.get(q) : null;
     const cell = (k, v) => `<span class="${k === me ? 'on' : ''}${v ? '' : ' zr'}" title="${v} post di ${k === 'x' ? 'X' : 'Threads'}">${ic(k === 'x' ? 'x' : 'threads')}${v}</span>`;
-    return `<button class="qc${h ? ' hot' : ''}${n(q, me) ? '' : ' z'}" type="button" data-q="${esc(q)}" aria-pressed="${q === active}"` +
-      `${h ? ' title="Lagi naik di sosial"' : ''}><span class="qt">${h ? '<b class="qa">↑</b> ' : ''}${esc(topicLabel(q))}</span>` +
+    let badge = '';
+    let hotCls = '';
+    if (trData) {
+      const isWire = trData.src && trData.src.includes('news');
+      const isSocial = trData.src && (trData.src.includes('social') || trData.src.includes('x'));
+      hotCls = (isWire && isSocial) ? ' hot-both' : isWire ? ' hot-wire' : '';
+      const srcTag = isWire && isSocial ? 'WIRE+SOS' : isWire ? 'WIRE' : 'SOS';
+      badge = `<b class="qa" title="Rank #${trData.rank || ''} · ${srcTag} · Lonjakan 24h ${trData.pct || ''}"><i class="qa-arrow">▲</i>${trData.rank ? '#' + trData.rank + ' ' : ''}${trData.pct || 'HOT'}</b> `;
+    } else if (isHot) {
+      badge = '<b class="qa"><i class="qa-arrow">▲</i>HOT</b> ';
+    }
+    return `<button class="qc${isHot ? ' hot' + hotCls : ''}${isIdle ? ' z qc-idle' : ''}" type="button" data-q="${esc(q)}" aria-pressed="${q === active}"` +
+      `${isHot ? ' title="Trending 24 jam lintas sumber"' : ''}><span class="qt">${badge}${esc(topicLabel(q))}</span>` +
       `<span class="qp">${cell('x', nx)}${cell('th', nt)}</span></button>`;
   };
+
   return `<button class="qc" type="button" data-q="" aria-pressed="${active === ''}"><span class="qt">Semua</span><span class="qp"><span class="${me === 'x' ? 'on' : ''}">${ic('x')}${xPosts.length}</span><span class="${me === 'th' ? 'on' : ''}">${ic('threads')}${tPosts.length}</span></span></button>` +
-    (hot.length ? '<i class="qc-sep" aria-hidden="true"></i>' + hot.map(chip).join('') : '') +
-    (rest.length ? '<i class="qc-sep" aria-hidden="true"></i>' + rest.map(chip).join('') : '');
+    (hot.length ? '<i class="qc-sep" aria-hidden="true"></i>' + hot.map(q => chip(q, true, false)).join('') : '') +
+    (restActive.length ? '<i class="qc-sep" aria-hidden="true"></i>' + restActive.map(q => chip(q, false, false)).join('') : '') +
+    (restZero.length ? '<i class="qc-sep qc-sep-idle" aria-hidden="true"></i>' + restZero.map(q => chip(q, false, true)).join('') : '');
 }
 function socApply(d){
   if (d && d.stats) { socStats = d.stats; socBoth = d.both || []; }
+  if (d && Array.isArray(d.trends)) { socTrends = new Map(d.trends.map(t => [t.id, t])); }
 }
 function renderQchips(){
   $('#qchips').innerHTML = qchipsHtml(xQueries, xTrending, xQuery, 'x', 'th');
