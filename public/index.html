@@ -821,69 +821,103 @@ a{color:inherit;text-decoration:none;text-underline-offset:2px}
 .qc[aria-pressed="true"]::after{background:var(--accent)}
 .qc.hot{color:var(--text)}
 
-/* Shingle Overlapping Echelon Deck (Opsi 01) */
-.qc-shingles{display:flex;align-items:center;flex:none;padding:2px 6px 2px 2px}
-.qc-shingle{
-  position:relative;flex:none;min-width:116px;height:40px;padding:3px 10px 3px 12px;
-  background:linear-gradient(165deg,#1c1d22 0%,#121316 100%);
+/* Tactical Shingle Panel Deck (Three Distinct Sections) */
+.qc-shingles{display:flex;align-items:center;flex:none;padding:2px 4px}
+.qc-panel{
+  position:relative;flex:none;min-width:130px;height:58px;padding:6px 11px 5px 12px;
+  background:linear-gradient(180deg,#191a1f 0%,#111215 100%);
   border:1px solid var(--border2);border-radius:4px;
-  display:flex;flex-direction:column;justify-content:center;gap:2px;
-  box-shadow:-4px 0 10px rgba(0,0,0,.55);
+  display:flex;flex-direction:column;justify-content:space-between;
+  box-shadow:-4px 0 12px rgba(0,0,0,.6);
   cursor:pointer;white-space:nowrap;
   transition:transform .16s cubic-bezier(.16,1,.3,1),box-shadow .16s,border-color .16s,background .16s;
 }
-.qc-shingle:not(:first-child){margin-left:-10px}
-.qc-shingle::before{
+.qc-shingles .qc-panel:not(:first-child){margin-left:-8px}
+.qc-panel::before{
   content:"";position:absolute;left:0;top:0;bottom:0;width:3px;
-  border-radius:4px 0 0 4px;background:var(--shingle-bar,var(--text3));
+  border-radius:4px 0 0 4px;background:var(--panel-bar,var(--text3));
   transition:width .14s,box-shadow .14s;
 }
-.qc-shingle::after{display:none !important}
-.qc-shingle.hot-both{--shingle-bar:#fbbf24;--shingle-glow:rgba(251,191,36,.35)}
-.qc-shingle.hot-wire{--shingle-bar:#38bdf8;--shingle-glow:rgba(56,189,248,.35)}
-.qc-shingle.hot{--shingle-bar:#34d399;--shingle-glow:rgba(52,211,153,.35)}
-.qc-shingle:hover{
+.qc-panel::after{display:none !important}
+.qc-panel.hot-both{--panel-bar:#fbbf24;--panel-glow:rgba(251,191,36,.4)}
+.qc-panel.hot-wire{--panel-bar:#38bdf8;--panel-glow:rgba(56,189,248,.4)}
+.qc-panel.hot{--panel-bar:#34d399;--panel-glow:rgba(52,211,153,.4)}
+
+.qc-panel:hover{
   z-index:35 !important;
   transform:translateY(-2px) scale(1.02);
-  border-color:var(--shingle-bar);
-  box-shadow:-4px 6px 18px rgba(0,0,0,.75),0 0 0 1px var(--shingle-glow);
+  border-color:var(--panel-bar);
+  box-shadow:-4px 8px 22px rgba(0,0,0,.85),0 0 0 1px var(--panel-glow);
 }
-.qc-shingle:hover::before{width:4px;box-shadow:0 0 8px var(--shingle-bar)}
-.qc-shingle[aria-pressed="true"]{
+.qc-panel:hover::before{width:4px;box-shadow:0 0 10px var(--panel-bar)}
+
+.qc-panel[aria-pressed="true"]{
   z-index:40 !important;
   transform:translateY(-1px);
   border-color:var(--accent);
-  background:linear-gradient(165deg,#23242b 0%,#15161b 100%);
-  box-shadow:0 0 0 1px var(--accent),-4px 6px 20px rgba(0,0,0,.85);
+  background:linear-gradient(180deg,#24262d 0%,#14151a 100%);
+  box-shadow:0 0 0 1px var(--accent),-4px 8px 24px rgba(0,0,0,.9);
 }
-.qc-shingle[aria-pressed="true"]::before{width:4px;background:var(--accent);box-shadow:0 0 8px var(--accent)}
+.qc-panel[aria-pressed="true"]::before{width:4px;background:var(--accent);box-shadow:0 0 10px var(--accent)}
 
-.qs-rail{display:flex;align-items:center;gap:4px;line-height:1;margin-bottom:1px;width:100%}
-.qs-rank{font:700 8.5px/1 var(--mono);color:var(--shingle-bar);letter-spacing:.02em;font-variant-numeric:tabular-nums}
-.qs-delta{font:600 7.5px/1 var(--mono);color:var(--ok);opacity:.9;display:inline-flex;align-items:center;gap:1.5px}
-.qs-delta .qa-arrow{font-size:6px;font-style:normal;transform:translateY(-.5px)}
-.qs-tag{
-  font:700 6.5px/1 var(--mono);letter-spacing:.06em;text-transform:uppercase;
-  padding:1px 3.5px;border-radius:2px;margin-left:auto;
-  color:var(--shingle-bar);border:1px solid currentColor;opacity:.85;
-  background:rgba(255,255,255,.04);
+/* Non-shingle companion panels */
+.qc-reg{
+  position:relative;flex:none;min-width:95px;height:58px;padding:6px 10px 5px;
+  background:rgba(255,255,255,.015);border:1px solid var(--border);border-radius:4px;
+  display:flex;flex-direction:column;justify-content:space-between;
+  cursor:pointer;white-space:nowrap;
+  transition:all .14s ease;
 }
-.qs-title{
-  font:700 10.5px/1.1 var(--disp);letter-spacing:.02em;color:var(--text);
-  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:130px;
-}
-.qc-shingle .qp{gap:6px;font:500 8.5px/1 var(--mono)}
+.qc-reg:hover{background:rgba(255,255,255,.04);border-color:var(--border2);color:var(--text)}
+.qc-reg[aria-pressed="true"]{border-color:var(--accent);background:var(--layer);color:var(--text);box-shadow:0 0 0 1px var(--accent)}
+.qc-reg::after{display:none !important}
+.qc-reg .qp-title{font-size:12px;font-weight:700}
 
-.qc.hot .qa{
-  display:inline-flex;align-items:center;gap:3px;
-  color:var(--ok);font:700 8.5px/1 var(--mono);
-  background:rgba(52,211,153,.12);border:1px solid rgba(52,211,153,.28);
-  padding:2px 5px;border-radius:3px;margin-right:4px;letter-spacing:.02em;
+/* SECTION 1: Top header - Small category index left, tiny uppercase metadata label right */
+.qp-head{display:flex;align-items:center;justify-content:space-between;width:100%;line-height:1}
+.qp-idx{font:700 8.5px/1 var(--mono);color:var(--panel-bar,var(--text3));letter-spacing:.06em;font-variant-numeric:tabular-nums}
+.qp-meta{
+  font:700 7px/1 var(--mono);letter-spacing:.08em;text-transform:uppercase;
+  display:inline-flex;align-items:center;gap:3px;color:var(--text3);
 }
-.qc.hot .qa-arrow{font-style:normal;font-size:7px;transform:translateY(-.5px)}
-.qc.hot.hot-wire .qa{color:#38bdf8;background:rgba(56,189,248,.12);border-color:rgba(56,189,248,.28)}
-.qc.hot.hot-both .qa{color:#fbbf24;background:rgba(251,191,36,.12);border-color:rgba(251,191,36,.28)}
-.qc-idle{opacity:.4;filter:grayscale(.8)}
+.qp-meta .qa-arrow{font-size:6px;font-style:normal;color:var(--ok);transform:translateY(-.5px)}
+.qp-meta .qp-tag{
+  padding:1px 3px;border-radius:2px;
+  background:rgba(255,255,255,.05);border:1px solid currentColor;
+  color:var(--panel-bar,var(--text3));
+}
+
+/* SECTION 2: Main title - Large, bold, condensed uppercase typography as dominant visual element */
+.qp-title{
+  font-family:var(--disp);
+  font-size:15px;
+  font-weight:800;
+  line-height:1;
+  letter-spacing:-.01em;
+  text-transform:uppercase;
+  color:var(--text);
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  margin:2px 0 3px;
+  text-align:left;
+}
+
+/* SECTION 3: Bottom metadata strip - Subtle divider followed by compact metrics, symbols, counts */
+.qp-foot{
+  display:flex;align-items:center;justify-content:space-between;
+  width:100%;padding-top:3px;border-top:1px solid rgba(255,255,255,.07);
+  font:500 8.5px/1 var(--mono);letter-spacing:.02em;color:var(--text3);
+}
+.qp-foot .qp-stats{display:flex;align-items:center;gap:5px}
+.qp-foot .qp-stat{display:inline-flex;align-items:center;gap:2.5px;opacity:.55}
+.qp-foot .qp-stat.on{opacity:1;color:var(--text)}
+.qp-foot .qp-stat.zr{opacity:.25}
+.qp-foot .qp-sep{opacity:.35;font-size:7px}
+.qp-foot .ic{width:9px;height:9px;flex:none}
+.qp-foot .qp-tot{font:600 7px/1 var(--mono);letter-spacing:.05em;color:var(--text3);opacity:.55;text-transform:uppercase}
+
+.qc-idle{opacity:.35;filter:grayscale(.9)}
 .qc-idle:hover{opacity:.85;filter:none}
 .qc-sep-idle{opacity:.35}
 .qc .qt{display:block}
@@ -5064,7 +5098,7 @@ function qchipsHtml(queries, trending, active, me, other){
 
   const cell = (k, v) => `<span class="${k === me ? 'on' : ''}${v ? '' : ' zr'}" title="${v} post di ${k === 'x' ? 'X' : 'Threads'}">${ic(k === 'x' ? 'x' : 'threads')}${v}</span>`;
 
-  const shingle = (q, idx) => {
+  const panel = (q, idx) => {
     const nx = n(q, 'x'), nt = n(q, 'th');
     const trData = socTrends.get(q);
     const isWire = trData && trData.src && trData.src.includes('news');
@@ -5075,21 +5109,30 @@ function qchipsHtml(queries, trending, active, me, other){
     const pctStr = trData && trData.pct ? trData.pct : 'HOT';
     const z = Math.max(1, 20 - idx);
 
-    return `<button class="qc qc-shingle hot${hotCls}" type="button" data-q="${esc(q)}" aria-pressed="${q === active}" style="z-index:${z}" title="Rank ${rankStr} · ${srcTag} · Lonjakan 24h ${pctStr}">` +
-      `<div class="qs-rail"><span class="qs-rank">${rankStr}</span><span class="qs-delta"><i class="qa-arrow">▲</i>${pctStr}</span><span class="qs-tag">${srcTag}</span></div>` +
-      `<div class="qs-title">${esc(topicLabel(q))}</div>` +
-      `<span class="qp">${cell('x', nx)}${cell('th', nt)}</span></button>`;
+    return `<button class="qc qc-panel hot${hotCls}" type="button" data-q="${esc(q)}" aria-pressed="${q === active}" style="z-index:${z}" title="Rank ${rankStr} · ${srcTag} · Lonjakan 24h ${pctStr}">` +
+      `<div class="qp-head"><span class="qp-idx">${rankStr}</span><span class="qp-meta"><i class="qa-arrow">▲</i>${pctStr} <span class="qp-tag">${srcTag}</span></span></div>` +
+      `<div class="qp-title">${esc(topicLabel(q))}</div>` +
+      `<div class="qp-foot"><div class="qp-stats"><span class="qp-stat${me === 'x' ? ' on' : ''}" title="${nx} post di X">${ic('x')}${nx}</span><span class="qp-sep">·</span><span class="qp-stat${me === 'th' ? ' on' : ''}" title="${nt} post di Threads">${ic('threads')}${nt}</span></div><span class="qp-tot">${nx + nt}P</span></div>` +
+      `</button>`;
   };
 
   const regChip = (q, isIdle) => {
     const nx = n(q, 'x'), nt = n(q, 'th');
-    return `<button class="qc${isIdle ? ' z qc-idle' : ''}" type="button" data-q="${esc(q)}" aria-pressed="${q === active}">` +
-      `<span class="qt">${esc(topicLabel(q))}</span>` +
-      `<span class="qp">${cell('x', nx)}${cell('th', nt)}</span></button>`;
+    return `<button class="qc qc-reg${isIdle ? ' z qc-idle' : ''}" type="button" data-q="${esc(q)}" aria-pressed="${q === active}">` +
+      `<div class="qp-head"><span class="qp-idx">TOPIC</span><span class="qp-meta">${isIdle ? 'IDLE' : 'ACT'}</span></div>` +
+      `<div class="qp-title">${esc(topicLabel(q))}</div>` +
+      `<div class="qp-foot"><div class="qp-stats"><span class="qp-stat${me === 'x' ? ' on' : ''}">${ic('x')}${nx}</span><span class="qp-sep">·</span><span class="qp-stat${me === 'th' ? ' on' : ''}">${ic('threads')}${nt}</span></div><span class="qp-tot">${nx + nt}</span></div>` +
+      `</button>`;
   };
 
-  return `<button class="qc" type="button" data-q="" aria-pressed="${active === ''}"><span class="qt">Semua</span><span class="qp"><span class="${me === 'x' ? 'on' : ''}">${ic('x')}${xPosts.length}</span><span class="${me === 'th' ? 'on' : ''}">${ic('threads')}${tPosts.length}</span></span></button>` +
-    (hot.length ? '<i class="qc-sep" aria-hidden="true"></i><div class="qc-shingles">' + hot.map((q, i) => shingle(q, i)).join('') + '</div>' : '') +
+  const semuaBtn = `<button class="qc qc-panel" type="button" data-q="" aria-pressed="${active === ''}" title="Semua post lintas topik">` +
+    `<div class="qp-head"><span class="qp-idx">ALL</span><span class="qp-meta"><span class="qp-tag">STREAM</span></span></div>` +
+    `<div class="qp-title">SEMUA</div>` +
+    `<div class="qp-foot"><div class="qp-stats"><span class="qp-stat${me === 'x' ? ' on' : ''}" title="${xPosts.length} post di X">${ic('x')}${xPosts.length}</span><span class="qp-sep">·</span><span class="qp-stat${me === 'th' ? ' on' : ''}" title="${tPosts.length} post di Threads">${ic('threads')}${tPosts.length}</span></div><span class="qp-tot">LIVE</span></div>` +
+    `</button>`;
+
+  return semuaBtn +
+    (hot.length ? '<i class="qc-sep" aria-hidden="true"></i><div class="qc-shingles">' + hot.map((q, i) => panel(q, i)).join('') + '</div>' : '') +
     (restActive.length ? '<i class="qc-sep" aria-hidden="true"></i>' + restActive.map(q => regChip(q, false)).join('') : '') +
     (restZero.length ? '<i class="qc-sep qc-sep-idle" aria-hidden="true"></i>' + restZero.map(q => regChip(q, true)).join('') : '');
 }
