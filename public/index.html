@@ -687,7 +687,7 @@ a{color:inherit;text-decoration:none;text-underline-offset:2px}
 .tr-rel.ok{color:#6fdc8c;border-color:rgba(66,190,101,.35);background:rgba(66,190,101,.1)}
 .tr-rel.maybe{color:#e8b64c;border-color:rgba(232,182,76,.35);background:rgba(232,182,76,.08)}
 .tr-time{margin-left:auto;flex:none;font:500 9.5px/1 var(--mono);font-variant-numeric:tabular-nums;color:var(--text3)}
-.tr-t{font:500 12.5px/1.42 var(--sans);color:var(--text);display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+.tr-t{font:500 12.5px/1.42 var(--disp);color:var(--text);display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
 .tr[data-sev="info"] .tr-t{color:var(--text2)}
 .tr-f{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:1px}
 .tr-pills{
@@ -1983,24 +1983,42 @@ button.mp-src{background:none;border-top:0;border-left:0;border-right:0;cursor:p
   .tvwrap{--tvw:min(72vw,400px);max-width:none!important;border-radius:8px}
   .tvwrap .tv-h{cursor:grab}
 }
-/* toast "klaster baru" — lower-third broadcast, stack di kanan atas */
+/* toast "klaster baru" — front-anchored 3D deck stack di kanan atas */
 .cl-toasts{
   position:fixed;z-index:190;top:calc(var(--hdr) + var(--tick) + 8px);right:16px;
-  display:flex;flex-direction:column;align-items:flex-end;pointer-events:none;
+  display:grid;justify-items:end;align-items:start;pointer-events:none;
 }
 .cl-toast{
+  grid-area:1/1;
   pointer-events:auto;position:relative;width:min(300px,calc(100vw - 32px));
-  padding:8px 10px 8px 20px;background:rgba(31,31,31,.68);border:1px solid var(--border2);
+  padding:8px 10px 8px 20px;background:rgba(26,26,30,.92);border:1px solid var(--border2);
   border-radius:12px 2px 2px 12px;
   backdrop-filter:blur(14px) saturate(1.15);-webkit-backdrop-filter:blur(14px) saturate(1.15);
   box-shadow:0 14px 36px rgba(0,0,0,.6),0 2px 8px rgba(0,0,0,.4),inset 0 1px 0 rgba(255,255,255,.08);cursor:pointer;
   touch-action:manipulation;-webkit-tap-highlight-color:transparent;
+  transform-origin:bottom center;
+  transform:translate3d(0,calc(var(--depth,0) * 10px),0) scale(calc(1 - var(--depth,0) * .048));
+  transition:transform .32s cubic-bezier(.2,.8,.25,1),opacity .26s ease,filter .26s ease,background-color .26s ease,border-color .26s ease;
   animation:clToastIn .28s cubic-bezier(.2,.8,.3,1);
 }
-/* deck stack: kartu lama di belakang peek ~26px di atas sebagai tab kicker — kartu baru di depan menindih ke bawah.
-   --prev-h diukur JS; hover/.open transisi ke layout sejajar ke bawah */
-.cl-toast + .cl-toast{margin-top:calc(26px - var(--prev-h, var(--ch,72px)));transition:margin-top .3s cubic-bezier(.2,.8,.3,1)}
-.cl-toasts.open .cl-toast + .cl-toast{margin-top:12px}
+/* deck stack: kartu terbaru selalu di depan (--depth:0), kartu lama mundur ke belakang (--depth:1, 2, dst.) */
+.cl-toasts:not(.open) .cl-toast[data-front="false"]{
+  height:var(--front-h,auto);overflow:hidden;
+  background:rgba(20,20,24,.88);
+  filter:brightness(calc(1 - var(--depth,0) * .22)) saturate(.85);
+  opacity:calc(1 - var(--depth,0) * .16);
+  pointer-events:none;
+}
+.cl-toasts:not(.open) .cl-toast[data-front="false"] .cl-cd{opacity:.22}
+.cl-toasts:not(.open) .cl-toast[data-depth-hidden="true"]{
+  opacity:0!important;pointer-events:none!important;
+  transform:translate3d(0,30px,0) scale(.82);
+}
+.cl-toasts.open .cl-toast{
+  grid-area:auto;order:var(--depth,0);margin-bottom:10px;
+  height:auto;overflow:visible;
+  transform:none;filter:none;opacity:1;pointer-events:auto;
+}
 .cl-c{position:absolute;width:9px;height:9px;border:0 solid var(--tc,#8d8d8d);pointer-events:none}
 .cl-c.ptl{display:none}
 .cl-c.ptr{top:-4px;right:-4px;border-top-width:1px;border-right-width:1px}
@@ -2016,7 +2034,7 @@ button.mp-src{background:none;border-top:0;border-left:0;border-right:0;cursor:p
   display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 .cl-tf{display:flex;align-items:center;gap:8px;margin-top:6px;
   font:400 7.5px/1 var(--mono);letter-spacing:.06em;text-transform:uppercase;color:var(--text3)}
-.cl-cd{position:absolute;top:0;left:0;bottom:0;width:24px;height:100%;pointer-events:none;z-index:2}
+.cl-cd{position:absolute;top:0;left:0;bottom:0;width:24px;height:100%;pointer-events:none;z-index:2;transition:opacity .2s ease}
 .cl-cd svg{display:block;width:100%;height:100%;overflow:visible}
 .cl-cd path{
   fill:color-mix(in srgb,var(--tc,#8d8d8d) 88%,#fff);
@@ -2029,26 +2047,25 @@ button.mp-src{background:none;border-top:0;border-left:0;border-right:0;cursor:p
   opacity:.3;
 }
 .cl-tmore{
-  pointer-events:auto;align-self:flex-end;margin-top:10px;padding:4px 10px;background:var(--layer);
+  grid-row:2;justify-self:end;order:999;
+  pointer-events:auto;align-self:flex-end;margin-top:calc(var(--stack-pad,0px) + 10px);padding:4px 10px;background:var(--layer);
   border:1px solid var(--border2);font:600 8px/1 var(--mono);letter-spacing:.1em;
   text-transform:uppercase;color:var(--text3);cursor:pointer;
 }
+.cl-toasts.open .cl-tmore{grid-row:auto;margin-top:2px}
 .cl-tmore:hover{color:var(--text);border-color:var(--text3)}
 /* digest: >3 klaster dalam satu tick digabung satu kartu — klik buka lead, bukan 3 timer antre */
-.cl-toast.cl-digest{background:rgba(24,24,24,.86);border-color:var(--text3)}
+.cl-toast.cl-digest{background:rgba(24,24,24,.94);border-color:var(--text3)}
 .cl-toast.cl-digest .cl-tk{color:var(--text2)}
 .cl-toast.cl-digest .cl-th{color:var(--text2)}
 .cl-toasts .cl-toast:nth-of-type(n+7){display:none}
 .cl-toasts.open .cl-toast:nth-of-type(n+7){display:block}
-@media (hover:hover){   /* desktop: hover stack = expand deck via .hov (JS debounce — anti flicker) */
-  .cl-toasts.hov .cl-toast + .cl-toast{margin-top:12px}
-  .cl-toasts.hov .cl-toast:nth-of-type(n+7){display:block}
-}
-@keyframes clToastIn{from{opacity:0;transform:translateY(16px) scale(.98)}to{opacity:1;transform:translateY(0) scale(1)}}
-@keyframes clToastOut{from{opacity:1;transform:translateY(0) scale(1)}to{opacity:0;transform:translateY(-12px) scale(.96)}}
+@keyframes clToastIn{from{opacity:0;transform:translate3d(0,-10px,0) scale(.96)}to{opacity:1;transform:translate3d(0,0,0) scale(1)}}
+@keyframes clToastOut{from{opacity:1;transform:translate3d(0,0,0) scale(1)}to{opacity:0;transform:translate3d(18px,-8px,0) scale(.95)}}
 @media (max-width:820px){
   .cl-toasts{left:10px;right:10px;top:calc(var(--hdr) + var(--tick) + 8px);align-items:center}
-  .cl-tmore{align-self:center}
+  .cl-toasts{justify-items:center}
+  .cl-tmore{align-self:center;justify-self:center}
   .cl-toast{width:min(300px,calc(100vw - 32px))}
 }
 @media (prefers-reduced-motion:reduce){
@@ -3889,7 +3906,7 @@ function noteWire(d){
   const nNew = all.filter(c => c.isNew).length;
 
   if (cards.length >= CL_DIGEST_AT || groups.length > cards.length) clToastDigest(cards, groups.length, nNew, [...new Set(all.map(c => c.items[0].place).filter(Boolean))]);
-  else cards.forEach(clToastCard);
+  else [...cards].reverse().forEach(clToastCard);
 }
 
 function clToastCard(c){
@@ -4033,12 +4050,18 @@ function clToastPaintSegs(el, pctRem){
 function clToastSyncZ(){
   const box = $('#cl-toasts'); if (!box) return;
   const cards = Array.from(box.querySelectorAll('.cl-toast:not(.k-out)'));
+  const total = cards.length;
+  const frontCard = total ? cards[total - 1] : null;
+  const frontH = frontCard ? (parseFloat(frontCard.style.getPropertyValue('--ch')) || frontCard.offsetHeight || 68) : 68;
+  box.style.setProperty('--front-h', frontH + 'px');
+  box.style.setProperty('--stack-pad', (Math.min(Math.max(0, total - 1), 3) * 10) + 'px');
   cards.forEach((c, idx) => {
-    c.style.zIndex = String(100 + idx);
-    const prev = c.previousElementSibling && c.previousElementSibling.matches('.cl-toast:not(.k-out)')
-      ? c.previousElementSibling : null;
-    const ph = prev ? prev.offsetHeight : (parseFloat(c.style.getPropertyValue('--ch')) || 72);
-    c.style.setProperty('--prev-h', ph + 'px');
+    const depth = total - 1 - idx;
+    c.style.setProperty('--depth', String(depth));
+    c.style.zIndex = String(100 - depth);
+    c.dataset.front = depth === 0 ? 'true' : 'false';
+    if (depth >= 4) c.dataset.depthHidden = 'true';
+    else delete c.dataset.depthHidden;
   });
 }
 function clToastMount(box, el){
@@ -4056,45 +4079,46 @@ function clToastMount(box, el){
   if (cd) cd.innerHTML = buildClRailSvg(h);
   clToastOrder.push(el);
   clToastQ.set(el, { t: 0, iv: 0, left: CL_TTL, t0: 0, active: false, paused: false, barPct: 100 });
+  clToastSyncZ();
   clToastPromote(el);
   clToastSyncMore();
-  clToastSyncZ();
 }
-/* Kartu baru langsung jadi bintang: sisa waktu kartu aktif dipotong jadi 1.2s supaya
-   kartu yang kelihatan (teratas) tidak membeku menunggu kartu lama yang ketutup. */
+/* Kartu baru muncul di paling depan (--depth:0): kartu lama yang tadinya di depan
+   mundur ke belakang (--depth:1) dan countdown-nya di-reset penuh menunggu giliran sekuensial. */
 function clToastPromote(el){
   const cur = clToastActiveEl;
-  const isFine = matchMedia('(hover:hover) and (pointer:fine)').matches;
-  const hov = isFine && clToastsEl && clToastsEl.classList.contains('hov');
-  if (hov){
-    if (cur && cur !== el && cur.isConnected && !cur.classList.contains('k-out')) return;   // user sedang baca kartu lama
-    // tidak ada kartu aktif (mis. deck baru saja kosong) → jalankan lalu langsung pause,
-    // supaya mouseleave/focusout yang memulai timer. Tanpa ini kartu baru yatim tanpa timer.
-    clToastActivate();
-    if (clToastActiveEl === el) clToastPause(el);
-    return;
-  }
-  if (cur && cur !== el && cur.isConnected && !cur.classList.contains('k-out')){
+  if (cur && cur !== el){
     const st = clToastQ.get(cur);
     if (st){
       clearTimeout(st.t); clearInterval(st.iv);
-      st.left = 1200; st.t0 = Date.now();
-      clToastBar(cur, 1200, st.barPct);
-      st.t = setTimeout(() => clToastOut(cur), 1200);
+      st.t = 0; st.iv = 0;
+      st.active = false; st.paused = false;
+      st.left = CL_TTL; st.t0 = 0; st.barPct = 100;
+      clToastPaintSegs(cur, 100);
     }
-    return;   // clToastOut(cur) → clToastActivate() → kartu baru dapat timer penuh
+    clToastActiveEl = null;
   }
   clToastActivate();
 }
-/* dismiss sequential: satu kartu menghitung mundur dalam satu waktu.
-   LIFO — kartu TERATAS (paling kelihatan) yang dihitung. Versi lama memakai find()
-   dari depan array, jadi timer 10s jalan di kartu paling bawah yang ketutup kartu
-   baru, sementara kartu yang terlihat progress bar-nya beku. */
+/* dismiss sequential: HANYA satu kartu (paling terdepan / --depth:0) yang menghitung mundur.
+   Saat kartu terdepan habis countdown atau di-dismiss manual, kartu di belakangnya
+   maju menggantikan posisi terdepan (--depth:0) dan mulai menghitung mundur dari 100%. */
 function clToastActivate(){
-  if (clToastActiveEl && clToastActiveEl.isConnected && !clToastActiveEl.classList.contains('k-out')) return;
   const el = [...clToastOrder].reverse().find(x => x.isConnected && !x.classList.contains('k-out'));
-  clToastActiveEl = el || null;
-  if (!el) return;
+  for (const [k, s] of clToastQ){
+    if (k !== el){
+      clearTimeout(s.t); clearInterval(s.iv);
+      s.t = 0; s.iv = 0; s.active = false; s.paused = false;
+      s.left = CL_TTL; s.t0 = 0; s.barPct = 100;
+      clToastPaintSegs(k, 100);
+    }
+  }
+  if (!el){ clToastActiveEl = null; return; }
+  if (clToastActiveEl === el){
+    const curSt = clToastQ.get(el);
+    if (curSt && curSt.active) return;
+  }
+  clToastActiveEl = el;
   const st = clToastQ.get(el); if (!st) return;
   st.left = CL_TTL; st.active = true; st.paused = false; st.t0 = Date.now(); st.barPct = 100;
   clToastBar(el, st.left, 100);
@@ -4142,15 +4166,17 @@ function clToastOut(el){
   clToastQ.delete(el);
   const i = clToastOrder.indexOf(el); if (i >= 0) clToastOrder.splice(i, 1);
   if (clToastActiveEl === el) clToastActiveEl = null;
+  if (el.isConnected) el.classList.add('k-out');
+  clToastSyncZ();
+  clToastSyncMore();
   clToastActivate();
   if (!el.isConnected) return;
-  el.classList.add('k-out');
   setTimeout(() => { el.remove(); clToastSyncMore(); clToastSyncZ(); }, 260);
 }
 function clToastSyncMore(){
   const box = $('#cl-toasts'); if (!box) return;
   const chip = box.querySelector('.cl-tmore');
-  const n = box.querySelectorAll('.cl-toast').length;
+  const n = box.querySelectorAll('.cl-toast:not(.k-out)').length;
   const mobile = matchMedia('(hover:none)').matches;
   const lim = mobile ? 1 : 6;   // mobile: chip = expand deck; desktop: chip hanya kalau >6
   if (n <= lim){ if (chip) chip.remove(); box.classList.remove('open'); return; }

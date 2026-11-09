@@ -324,3 +324,28 @@ test('Detail situasi uses Opsi 01 telemetry deck with Opsi 02 category label, fu
   assert.ok(html.includes('.sr-t{display:grid;grid-template-columns:repeat(10,1fr);gap:2.5px;height:6px;align-items:center}') && html.includes('transform:skewX(-18deg)'), 'Wilayah meter must use 10-cell canted individual bars');
   assert.ok(html.includes("Array.from({ length: 10 }, (_, k) => `<i${k < lit ? ' class=\"on\"' : ''}></i>`).join('')"), 'renderSituation must generate 10 discrete bar elements per region');
 });
+
+test('cl-toasts implements front-anchored 3D deck stack with strict non-independent sequential front countdown', () => {
+  const fs = require('fs');
+  const path = require('path');
+  const html = fs.readFileSync(path.join(__dirname, '../public/index.html'), 'utf8');
+
+  // 1. Front-anchored grid stack CSS: all cards share grid-area:1/1 and recede via --depth
+  assert.ok(html.includes('grid-area:1/1;') && html.includes('transform:translate3d(0,calc(var(--depth,0) * 10px),0) scale(calc(1 - var(--depth,0) * .048))'), 'cl-toast must use grid-area:1/1 and --depth 3D deck transform');
+  assert.ok(html.includes('.cl-toasts:not(.open) .cl-toast[data-front="false"]'), 'back cards in stack must be styled and pointer-guarded via data-front="false"');
+
+  // 2. Batch mount order mounts oldest first and newest last so latest card sits at front (--depth:0)
+  assert.ok(html.includes('else [...cards].reverse().forEach(clToastCard);'), 'noteWire must mount batch cards in reverse so latest card is at front of deck');
+
+  // 3. clToastSyncZ computes depth = total - 1 - idx and marks front card
+  assert.ok(html.includes('const depth = total - 1 - idx;') && html.includes("c.dataset.front = depth === 0 ? 'true' : 'false';"), 'clToastSyncZ must assign --depth and data-front from newest to oldest');
+
+  // 4. clToastPromote parks previous active card in back at 100% (no 1200ms background auto-dismiss)
+  assert.ok(!html.includes('st.left = 1200;'), 'clToastPromote must not cut previous card timer to 1200ms in the background');
+  assert.ok(html.includes('st.left = CL_TTL; st.t0 = 0; st.barPct = 100;') && html.includes('clToastPaintSegs(cur, 100);'), 'clToastPromote must reset stepped-back card to full CL_TTL waiting state');
+
+  // 5. clToastOut adds .k-out before syncing Z-depth and activating the next card sequentially
+  const outIdx = html.indexOf('function clToastOut(el){');
+  const outBlock = html.slice(outIdx, outIdx + 600);
+  assert.ok(outBlock.indexOf("el.classList.add('k-out')") < outBlock.indexOf('clToastSyncZ()') && outBlock.indexOf('clToastSyncZ()') < outBlock.indexOf('clToastActivate()'), 'clToastOut must mark .k-out then sync Z-depth and activate the next card sequentially');
+});
