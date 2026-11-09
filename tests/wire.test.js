@@ -594,3 +594,31 @@ test('reader resilience and banned news source enforcement', () => {
             'rdRead must fall back to wire RSS metadata instead of throwing when cloud datacenters are 403 blocked');
   assert.ok(html.includes('d.wireFallback'), 'index.html reader must handle d.wireFallback banner');
 });
+
+test('anti-captcha enforcement and wire description / headline performance', () => {
+  const fs = require('fs');
+  const path = require('path');
+  const feedtext = require('../feedtext.js');
+  const serverJs = fs.readFileSync(path.join(__dirname, '../server.js'), 'utf8');
+  const html = fs.readFileSync(path.join(__dirname, '../public/index.html'), 'utf8');
+
+  // 1. CAPTCHA warning is completely rejected by descFrom
+  const captchaText = 'Warning: This page maybe requiring CAPTCHA, please make sure you are authorized to access this page.';
+  const res = feedtext.descFrom({ description: captchaText }, 'Sebuah Berita');
+  assert.equal(res, '', 'descFrom must completely reject CAPTCHA / challenge warning boilerplate');
+
+  // 2. server.js must guard against CAPTCHA in Jina and mediaDesc
+  assert.ok(serverJs.includes('BOT_CHALLENGE_RE'), 'server.js must define BOT_CHALLENGE_RE');
+  assert.ok(serverJs.includes('BOT_CHALLENGE_RE.test(clean)'), 'rdJinaMd must discard paragraphs matching BOT_CHALLENGE_RE');
+
+  // 3. public/index.html must clean CAPTCHA in cleanDesc
+  assert.ok(html.includes('BOT_CHALLENGE_RE'), 'index.html must define BOT_CHALLENGE_RE for cleanDesc');
+
+  // 4. Headline image prioritizes RSS image instead of blocking on /api/thumb
+  assert.ok(html.includes('if (h && h.img && fallbackImgOK(h.img)) imgs.push(h.img)'),
+            'fetchThumbInfo must prioritize h.img from RSS feed before calling /api/thumb');
+
+  // 5. descAbort aborts pending fetches on topic change
+  assert.ok(html.includes('descAbort') && html.includes('descAbort.abort()'),
+            'topic switching must abort pending desc enrichment');
+});

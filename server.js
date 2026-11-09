@@ -3506,6 +3506,7 @@ function rdName(v) {
   return '';
 }
 const RD_SKIP = /^(baca juga|simak juga|lihat juga|berita terkait|artikel terkait|advertisement|iklan|scroll|lanjutkan|ikuti|bagikan|komentar|rekomendasi|topik|tags?|sumber|foto|video|infografis|follow|newsletter|subscribe|langganan|whatsapp)\b/i;
+const BOT_CHALLENGE_RE = /captcha|recaptcha|lsrecaptcha|cf-chl|challenge-platform|just a moment|attention required|access denied|verify you are|are you a robot|enable javascript and cookies|bot verification|ddos-guard|pardon our interruption|security check|situs ini mungkin memblokir|requiring captcha/i;
 const RD_CREDIT = /\b(?:foto|istimewa|dok\.?)\s*:/i;
 const VID_IFRAME = /(?:youtube\.com\/(?:embed|shorts)\/|youtube-nocookie\.com\/(?:embed|shorts)\/|youtu\.be\/|player\.vimeo\.com\/|facebook\.com\/plugins\/video|\/embed\/|\/player\/|\/video-embed\/)/i;
 const VID_FILE = /\.(mp4|webm|mov|m4v|m3u8|mpd)(\?|#|$)/i;
@@ -4134,7 +4135,7 @@ function rdJinaMd(text, url) {
       .replace(/(\*\*|__|\*|_|`|~~)/g, '')
       .replace(/\s+/g, ' ').trim();
     if (clean.length < 60 || clean.length > 1600) return;
-    if (RD_SKIP.test(clean)) return;
+    if (RD_SKIP.test(clean) || BOT_CHALLENGE_RE.test(clean)) return;
     const k = clean.toLowerCase().replace(/\W+/g, ' ').slice(0, 140);
     if (seen.has(k)) return;
     seen.add(k); paras.push(clean); blocks.push({ k: 'p', t: clean });
@@ -4146,11 +4147,11 @@ function rdJinaMd(text, url) {
     if (!t) continue;
     if (/^markdown content:/i.test(t)) continue;
     const tm = t.match(/^title:\s*(.+)/i);
-    if (tm) { if (!title) title = tm[1].trim(); continue; }
+    if (tm) { if (!title && !BOT_CHALLENGE_RE.test(tm[1])) title = tm[1].trim(); continue; }
     if (/^url source:/i.test(t)) continue;
     if (t.startsWith('#')) {
       const hd = t.replace(/^#+\s*/, '').trim();
-      if (!title) title = hd;
+      if (!title && !BOT_CHALLENGE_RE.test(hd)) title = hd;
       else if (paras.length >= 2 && /terpopuler|terkait|baca juga|rekomendasi|berita lain|terbaru|trending|populer|lainnya|related|more (?:news|stories)|latest|you may|komentar|comments?/i.test(hd)) break;   // semua setelah heading ini = widget/footer
       continue;
     }
@@ -4335,7 +4336,7 @@ async function rdRead(raw, bg) {
     const left = () => Math.max(5000, 40000 - (Date.now() - t0));   // frontend timeout 45s
     let lastErr = null, metaD = null;
     const attempts = [];   // {via, err} per jalur — dilaporkan ke klien saat semua gagal
-    const BLOCKED_RE = /just a moment|attention required|access denied|verify you are|are you a robot|cf-chl|challenge-platform|enable javascript and cookies|request blocked|pardon our interruption|bot verification|recaptcha|lsrecaptcha|ddos-guard/i;
+    const BLOCKED_RE = BOT_CHALLENGE_RE;
     const metaScore = d => ((d.videos || []).length * 2) + (d.img ? 1 : 0) + (d.desc ? 0.5 : 0);
     const tryHtml = (html, url) => {
       const d = rdExtract(html, url);
@@ -4665,7 +4666,7 @@ const DESC_NEG_TTL = 10 * 60000;      // kegagalan/desc kosong hanya 10 mnt — 
 const DESC_CAP = 800;                 // cap entri cache; LRU-ish: entri yang diakses di-refresh posisinya
 const DESC_MAX_PER_CALL = 8;          // hard cap fetch per request
 const DESC_FETCH_GAP = 250;           // jeda antar fetch (serial, concurrency 1)
-const DESC_HOST_GAP = 2000;           // jeda minimal antar fetch ke hostname yang sama (politeness)
+const DESC_HOST_GAP = 400;           // jeda minimal antar fetch ke hostname yang sama (politeness)
 const descCache = new Map();          // url (asli ATAU hasil resolve GN) -> { desc, at }
 const descHostAt = new Map();         // hostname -> ts fetch terakhir
 const descHostChain = new Map();      // hostname -> Promise tail — antrian slot per host
@@ -4749,9 +4750,9 @@ async function descForUrl(reqUrl) {
   const prev = descHostChain.get(host) || Promise.resolve();
   let release;
   const mine = new Promise(r => { release = r; });
-  descHostChain.set(host, prev.then(() => mine));
+  descHostChain.set(host, Promise.race([prev, sleep(1500)]).then(() => mine));
   if (descHostChain.size > 500) descHostChain.delete(descHostChain.keys().next().value);
-  await prev;
+  await Promise.race([prev, sleep(1500)]);
   let html = '';
   try {
     const waitHost = Math.max(0, (descHostAt.get(host) || 0) + DESC_HOST_GAP - Date.now());
@@ -4760,15 +4761,14 @@ async function descForUrl(reqUrl) {
     const hdrs = isGN
       ? { referer: 'https://news.google.com/' }
       : { accept: 'text/html,application/xhtml+xml;q=0.9,*/*;q=0.8' };
-    const CH_RE = /just a moment|attention required|cf-chl|challenge-platform|verify you are|enable javascript and cookies|bot verification|recaptcha|lsrecaptcha/i;
     const fetchHead = async u => {
-      const { r } = await mediaGet(u, 8000, hdrs);
+      const { r } = await mediaGet(u, 4500, hdrs);
       if (!r.ok) throw new Error('HTTP ' + r.status);
       const ct = r.headers.get('content-type') || '';
       if (ct && !/text\/html|application\/xhtml|text\/plain/i.test(ct)) throw new Error('bukan halaman HTML');
       const h = await mediaDesc(r);   // meta bisa setelah </head> — baca sampai </html>/1MB
-      // HTTP 200 tapi halaman challenge (Cloudflare dsb) → anggap gagal supaya proxy dicoba
-      if (h.length < 60000 && CH_RE.test(h.slice(0, 30000))) throw new Error('halaman challenge');
+      // HTTP 200 tapi halaman challenge (Cloudflare/CAPTCHA dsb) → anggap gagal supaya proxy dicoba
+      if (BOT_CHALLENGE_RE.test(h.slice(0, 30000))) throw new Error('halaman challenge/captcha');
       return h;
     };
     try {
@@ -4777,7 +4777,7 @@ async function descForUrl(reqUrl) {
       console.log('[desc] direct gagal', host, String(e && e.message || e).slice(0, 80));
       // publisher di balik Cloudflare (Tempo/CNNID/Detik/dsb) menolak fetch langsung —
       // coba proxy publik seperti yang sudah dipakai news() dan rdRead
-      for (const px of RD_PROXIES.slice(0, 2)) {
+      for (const px of RD_PROXIES.slice(0, 1)) {
         try { html = await fetchHead(px(target)); console.log('[desc] proxy OK', host); break; }
         catch (e2) { console.log('[desc] proxy gagal', host, String(e2 && e2.message || e2).slice(0, 60)); }
       }
@@ -4787,25 +4787,27 @@ async function descForUrl(reqUrl) {
       // reader tetap bisa fetch (pola sama dengan thumbFromJina/rdRead).
       // Ambil blok paragraf lede dari markdown sebagai desc.
       try {
-        const { r } = await jinaGet('https://r.jina.ai/' + target, 12000, { accept: 'text/plain' });
+        const { r } = await jinaGet('https://r.jina.ai/' + target, 6000, { accept: 'text/plain' });
         if (r.ok) {
-          const txt = await mediaText(r, 1 << 20);
-          // Jina markdown: header meta + nav menu raksasa dulu, baru konten artikel.
-          // Scan semua blok; skip yang link-dense (menu), meta, atau terlalu pendek.
-          for (const b of String(txt || '').split(/\n\s*\n/).slice(0, 80)) {
-            let linkChars = 0;
-            const txtOnly = b.replace(/!?\[([^\]]*)\]\(([^)]*)\)/g, (m, t, u) => { linkChars += u.length + 4; return t; });
-            const plain = txtOnly
-              .replace(/^[#>\s*_`-]+/gm, '')
-              .replace(/\s+/g, ' ').trim();
-            if (plain.length < 60 || plain.length > 1200) continue;
-            if (/^(https?:|title:|url:|published|author:|markdown content)/i.test(plain)) continue;
-            if (/!?\[[^\]]*\]\(|!\[|\bimage \d+:/i.test(plain)) continue;   // sisa syntax markdown / blok gambar
-            if (linkChars > plain.length) continue;   // syntax link > teks = nav/menu, bukan paragraf
-            const d = FEEDTEXT.descFrom({ description: plain }, '');
-            if (d) {
-              descRemember([reqUrl, target], d);
-              return d;
+          const txt = await mediaText(r, 512 << 10);
+          // Jina markdown: jika seluruh respons terdeteksi sebagai CAPTCHA / bot challenge, buang!
+          if (!BOT_CHALLENGE_RE.test(txt.slice(0, 5000))) {
+            for (const b of String(txt || '').split(/\n\s*\n/).slice(0, 40)) {
+              let linkChars = 0;
+              const txtOnly = b.replace(/!?\[([^\]]*)\]\(([^)]*)\)/g, (m, t, u) => { linkChars += u.length + 4; return t; });
+              const plain = txtOnly
+                .replace(/^[#>\s*_`-]+/gm, '')
+                .replace(/\s+/g, ' ').trim();
+              if (plain.length < 60 || plain.length > 1200) continue;
+              if (/^(https?:|title:|url:|published|author:|markdown content)/i.test(plain)) continue;
+              if (BOT_CHALLENGE_RE.test(plain)) continue;
+              if (/!?\[[^\]]*\]\(|!\[|\bimage \d+:/i.test(plain)) continue;   // sisa syntax markdown / blok gambar
+              if (linkChars > plain.length) continue;   // syntax link > teks = nav/menu, bukan paragraf
+              const d = FEEDTEXT.descFrom({ description: plain }, '');
+              if (d && !BOT_CHALLENGE_RE.test(d)) {
+                descRemember([reqUrl, target], d);
+                return d;
+              }
             }
           }
         }
@@ -4835,7 +4837,7 @@ async function descForUrl(reqUrl) {
     const lede = (html.match(/<p[^>]*>[\s\S]*?<\/p>/gi) || []).slice(0, 6).join('');
     if (lede) desc = FEEDTEXT.descFrom({ contentEncoded: lede }, title || '');
   }
-  const out = desc && Array.from(desc).length >= 26 ? desc : '';
+  const out = desc && Array.from(desc).length >= 26 && !BOT_CHALLENGE_RE.test(desc) ? desc : '';
   descRemember([reqUrl, target], out);
   return out;
 }

@@ -247,6 +247,7 @@ function cleanDescText(t) {
     keep = keep.replace(/[\s,.;:!?\-–—|•·]+$/, '');
     t = keep + '…';
   }
+  if (BOT_CHALLENGE_RE.test(t)) return '';
   return t;
 }
 
@@ -263,6 +264,9 @@ const CHROME_HEAD_RE = new RegExp('^(?:' +
   'oleh\\s*:|di\\s+olah\\s+oleh|baca\\s+(?:juga|selengkapnya|berita|lainnya|dulu)|bacalah|' +
   'ikuti\\s|bagikan|share\\s|jangan\\s+lewatkan|lihat\\s+juga|berita\\s+terkait|topik\\s*:|' +
   'iklan\\b|advertisement\\b|advertorial\\b|sumber\\s*:|credit\\s*:|foto\\s*:)', 'i');
+
+// Bot challenge / CAPTCHA boilerplate — buang kandidat teks yang memuat teks proteksi bot/Cloudflare
+const BOT_CHALLENGE_RE = /captcha|recaptcha|lsrecaptcha|cf-chl|challenge-platform|just a moment|attention required|access denied|verify you are|are you a robot|enable javascript and cookies|bot verification|ddos-guard|pardon our interruption|security check|situs ini mungkin memblokir|requiring captcha/i;
 
 // First 1-3 sentence-ish segments of prose, skipping leading chrome.
 // Returns '' when nothing usable; callers fall back to the full text.
@@ -333,7 +337,7 @@ function descFrom(fields, title) {
     // Floor matches client display gate (desc shown only when >25 chars).
     if (!s || Array.from(s).length < 26) { cleaned.push(''); continue; }
     if (titleNorm && norm(s) === titleNorm) { cleaned.push(''); continue; }
-    if (PUBLISHER_ONLY_RE.test(s) || CHROME_HEAD_RE.test(s)) { cleaned.push(''); continue; }
+    if (PUBLISHER_ONLY_RE.test(s) || CHROME_HEAD_RE.test(s) || BOT_CHALLENGE_RE.test(s)) { cleaned.push(''); continue; }
     cleaned.push(s);
   }
   // A thin description teaser (<80) loses to a substantially richer
