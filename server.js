@@ -365,7 +365,7 @@ const cleanPub = v => {
 };
 // domain/sumber yang dilarang — item langsung dibuang dari semua feed.
 // kompasiana = platform opini/blog, bukan berita; masuk lewat agregat Google News.
-const BANNED_SRC = /infopublik\.id|infopublik|kompasiana|mediacenter\.palangkaraya\.go\.id|viva\.co\.id\/foto|nokenlive|polreskedirikota|korankaltim|pelakita|cilegon\.go\.id|twaslnews|kilangbara\.com|klikmu\.co/i;
+const BANNED_SRC = /infopublik\.id|infopublik|kompasiana|mediacenter\.palangkaraya\.go\.id|viva\.co\.id\/foto|nokenlive|polreskedirikota|korankaltim|pelakita|cilegon\.go\.id|twaslnews|kilangbara\.com|klikmu\.co|mozaik\.inilah\.com/i;
 function parseFeed(xml) {
   const out = [];
   for (const m of xml.matchAll(/<item[\s>]([\s\S]*?)<\/item>/gi)) {
@@ -432,7 +432,6 @@ const news = () => Promise.all(NEWS.map(([id, url]) => memo('n:' + id, 55000, as
     url,
     'https://api.codetabs.com/v1/proxy?quest=' + encodeURIComponent(url),
     'https://api.allorigins.win/raw?url=' + encodeURIComponent(url),
-    'https://corsproxy.io/?url=' + encodeURIComponent(url),
     'https://proxy.corsfix.com/?' + encodeURIComponent(url),
     'https://test.cors.workers.dev/?' + encodeURIComponent(url)
   ];
@@ -3145,7 +3144,7 @@ async function cctvFetch(url, ms, headers){
   const attempts = [url,
     'https://api.codetabs.com/v1/proxy?quest=' + encodeURIComponent(url),
     'https://api.allorigins.win/raw?url=' + encodeURIComponent(url),
-    'https://corsproxy.io/?url=' + encodeURIComponent(url)];
+    'https://proxy.corsfix.com/?' + encodeURIComponent(url)];
   let lastErr = '';
   for (const u of attempts) {
     try {
@@ -3715,6 +3714,18 @@ function rdWireImg(url) {
   }
   return '';
 }
+function rdWireItem(url) {
+  if (!url) return null;
+  for (const [k, c] of cache) {
+    if (!k.startsWith('n:') || !c || !c.v || !Array.isArray(c.v.items)) continue;
+    for (const i of c.v.items) {
+      if (i.url === url) return i;
+      const g = gnCache.get(i.url);
+      if (g && g.url === url) return i;
+    }
+  }
+  return null;
+}
 function rdWireTitles() {
   const set = new Set();
   for (const [k, c] of cache) {
@@ -4076,10 +4087,11 @@ function rdExtract(html, finalURL) {
     paras: joined, thin: joined.length < 2, videos, blocks: finBlocks
   };
 }
+const CUSTOM_PROXY = process.env.SCRAPER_PROXY || process.env.PROXY_URL || CFG.scraper_proxy || '';
 const RD_PROXIES = [
+  ...(CUSTOM_PROXY ? [u => (CUSTOM_PROXY.includes('%s') ? CUSTOM_PROXY.replace('%s', encodeURIComponent(u)) : CUSTOM_PROXY.replace(/\/+$/, '') + '/?url=' + encodeURIComponent(u))] : []),
   u => 'https://api.codetabs.com/v1/proxy?quest=' + encodeURIComponent(u),
   u => 'https://api.allorigins.win/raw?url=' + encodeURIComponent(u),
-  u => 'https://corsproxy.io/?url=' + encodeURIComponent(u),
   u => 'https://proxy.corsfix.com/?' + encodeURIComponent(u)
 ];
 // Jina reader mengembalikan markdown; ubah jadi bentuk yang kompatibel rdExtract.
@@ -4321,7 +4333,10 @@ async function rdRead(raw, bg) {
     const tryHtml = (html, url) => {
       const d = rdExtract(html, url);
       const blocked = BLOCKED_RE.test(d.title + ' ' + (d.desc || '') + ' ' + html.slice(0, 30000));
-      if (!blocked && !rdOnTopic(d.title, d.desc, d.paras)) { lastErr = new Error('isi tidak nyambung dengan judul'); return null; }
+      if (!blocked && d.paras.length >= 2 && !rdOnTopic(d.title, d.desc, d.paras)) {
+        lastErr = new Error('isi tidak nyambung dengan judul');
+        return null;
+      }
       // halaman JS-rendered: teks tipis tapi meta (og:image/og:video) tetap bernilai → simpan untuk fallback & merge
       if (!blocked && metaScore(d) > (metaD ? metaScore(metaD) : -1)) metaD = d;
       return (d.paras.length < 2 || blocked) ? null : d;
@@ -4485,6 +4500,30 @@ async function rdRead(raw, bg) {
         .filter(b => b.k !== 'p' || paras.includes(b.t));
       fetchMs = Date.now() - t0;
       return await fin(d, target, null, 'meta');   // semua fetch gagal — thumb() juga akan gagal, jangan buang waktu
+    }
+    // jika scraper jaringan gagal total (Cloudflare/datacenter block), periksa cache wire berita
+    const wi = rdWireItem(target) || rdWireItem(raw);
+    if (wi && (wi.title || wi.desc)) {
+      const paras = wi.desc ? [wi.desc] : [];
+      const d = {
+        ok: true,
+        url: target,
+        final: target,
+        title: wi.title || 'Warta Berita',
+        site: wi.pub || rdHost(target),
+        byline: wi.pub || '',
+        time: wi.ts ? new Date(wi.ts).toISOString() : '',
+        img: wi.img || rdWireImg(target) || '',
+        desc: wi.desc || '',
+        paras,
+        thin: true,
+        videos: [],
+        blocks: paras.map(t => ({ k: 'p', t })),
+        via: 'wire-fallback',
+        blocked: true
+      };
+      fetchMs = Date.now() - t0;
+      return await fin(d, target, null, 'wire-fallback');
     }
     // error jujur: pesan aslinya + ringkasan tahap yang dicoba, supaya UI tidak
     // menampilkan 'fetch failed' generik saat sebenarnya direct 403 + jina timeout.

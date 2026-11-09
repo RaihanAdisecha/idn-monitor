@@ -568,3 +568,23 @@ test('globe mobile touch pipeline isolates overlay pointer events and enables no
   assert.ok(ptrEndBlock.includes('showGlobePop(e, hit.d);') && !ptrEndBlock.includes('showGlobeTip(e, hit.d, true);'),
             'ptrEnd touch branch must only showGlobePop without stacking showGlobeTip simultaneously');
 });
+
+test('reader server scraping mitigations and mozaik.inilah.com source ban', () => {
+  const fs = require('fs');
+  const path = require('path');
+  const serverCode = fs.readFileSync(path.join(__dirname, '../server.js'), 'utf8');
+  const indexCode = fs.readFileSync(path.join(__dirname, '../public/index.html'), 'utf8');
+
+  // 1. mozaik.inilah.com source banned in server.js and public/index.html
+  assert.ok(serverCode.includes('mozaik\\.inilah\\.com'), 'server BANNED_SRC must include mozaik.inilah.com');
+  assert.ok(indexCode.includes('mozaik\\.inilah\\.com'), 'frontend NEWS_BANNED must include mozaik.inilah.com');
+
+  // 2. Dead proxy (corsproxy.io) removed and CUSTOM_PROXY supported
+  assert.ok(!serverCode.includes("'https://corsproxy.io/?url='"), 'dead corsproxy.io must be pruned from RD_PROXIES');
+  assert.ok(serverCode.includes('CUSTOM_PROXY = process.env.SCRAPER_PROXY'), 'CUSTOM_PROXY configuration must be supported');
+
+  // 3. rdWireItem fallback to prevent raw ugly error when Cloudflare blocks server scraping
+  assert.ok(serverCode.includes('function rdWireItem(url)'), 'rdWireItem function must exist in server.js');
+  assert.ok(serverCode.includes('rdWireItem(target)'), 'rdRead must fallback to rdWireItem before throwing');
+  assert.ok(serverCode.includes("via: 'wire-fallback'"), 'wire-fallback must be emitted when network scrapers are blocked');
+});
