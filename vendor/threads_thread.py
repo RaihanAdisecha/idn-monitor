@@ -52,9 +52,10 @@ def main():
         return
 
     flat = (root.get("replies") or [])[:40]
-    root["replies"] = build_tree(flat)
-    json.dump({"ok": True, "kind": "threads", "post": root,
-               "count": root.get("reply_count") or len(flat)},
+    tree = build_tree(flat)
+    root["replies"] = tree
+    json.dump({"ok": True, "kind": "threads", "post": root, "replies": tree,
+               "count": root.get("reply_count") if root.get("reply_count") is not None else len(flat)},
               sys.stdout, ensure_ascii=False)
 
 

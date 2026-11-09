@@ -363,4 +363,48 @@ function newsEnglish(title, desc) {
   return en >= 3 && en >= id + 3;
 }
 
-module.exports = { decodeEntities, htmlToText, descFrom, newsEnglish };
+// ---- Clean Title -----------------------------------------------------------
+const TITLE_SRC_TAIL = /(kompas|antara|detik|cnn|tempo|liputan6|republika|tribun|cnbc|jpnn|okezone|jawapos|viva|kumparan|suara|radar|inilah|merdeka|indosport|youtube|news|kabar|berita|radio|bmkg|bnpb|bpbd|kemendagri|kapolri|tni|voice|akurat|acehinfo|polda|polres|polsek|polresta|tribrata|tribatanews|tribratanews|times|update|harian|pos|post|media|koran|portal|suarakalbar|suarasurabaya|conversation|\btv\b)/i;
+const TITLE_DOMAIN_TAIL = /\.(?:com|id|net|org|co|asia|info|tv|xyz|online|site|biz|tech|me|app|pro|co\.[a-z]{2}|go\.[a-z]{2}|or\.[a-z]{2}|ac\.[a-z]{2}|sch\.[a-z]{2}|my\.id|web\.id|biz\.id)(?:\:[0-9]+)?$/i;
+
+function cleanTitle(t, pub) {
+  let s0 = String(t || '').trim();
+  const pp = s0.indexOf(' | ');
+  if (pp > 15) s0 = s0.slice(0, pp).trim();   // "Judul | NamaSitus" — pipe selalu suffix publisher
+  const pcm = s0.match(/\s*::\s*\S/);
+  if (pcm && pcm.index > 15) s0 = s0.slice(0, pcm.index).trim();   // "Judul :: NamaSitus" — pola feed lokal
+
+  // Strip prefix redaksional: "Berita Video - ", "Breaking News - ", "Video - "
+  s0 = s0.replace(/^(?:(?:breaking\s+news|berita\s+video|video|foto|live|eksklusif|update|terkini)\s*[-–—:]\s*)+/i, '').trim();
+
+  // Strip explicit publisher dari Google News <source> kalau cocok persis di ekor
+  if (pub) {
+    const pk = String(pub).trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    if (pk.length >= 3) {
+      s0 = s0.replace(new RegExp('(?:\\s+[-–—]\\s*|\\s*[-–—|•·]\\s*)' + pk + '\\s*$', 'i'), '').trim();
+    }
+  }
+
+  let s = s0.replace(/\s+[-–—]\s*(?:https?:\/\/|www\.)\S+$/i, '').trim();
+  for (let i = 0; i < 4; i++) {
+    // Delimiter wajib ada spasi sebelumnya untuk tanda hubung/strip agar tidak memotong kata ulang (luka-luka, dll.)
+    const m = s.match(/^(.{8,}?)(?:\s+[-–—]\s*|\s*[|•·]\s*)([A-Za-z0-9][A-Za-z0-9.&'®™()_\-\s]{1,70})$/);
+    if (!m) break;
+    const tail = m[2].trim();
+    const words = tail.split(/\s+/).map(w => w.replace(/[®™]/g, '')).filter(Boolean);
+    if (words.length > 6) break;                    // kelanjutan kalimat panjang, bukan label sumber
+
+    const isDomain = TITLE_DOMAIN_TAIL.test(tail) || /\.[a-z]{2,8}$/i.test(tail);
+    const isKnown = TITLE_SRC_TAIL.test(tail);
+    const isTitleCase = words.length <= 5 && words.every(w => /^[A-Z0-9]/.test(w));
+    const isGovPub = /^(?:pemerintah|pemkab|pemkot|polresta|polres|polsek|polda|diskominfo|humas)\b/i.test(tail);
+    const isShortSlug = words.length <= 3 && tail.length <= 30 && !/[,;?!]/.test(tail);
+
+    const isPub = isDomain || isKnown || isTitleCase || isGovPub || (isShortSlug && words.every(w => /^[a-z0-9]/.test(w)));
+    if (!isPub) break;
+    s = m[1].trim();
+  }
+  return s;
+}
+
+module.exports = { decodeEntities, htmlToText, descFrom, newsEnglish, cleanTitle };

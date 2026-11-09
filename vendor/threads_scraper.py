@@ -278,17 +278,27 @@ class Threads:
         if post is None:
             raise ScrapeError(f"Post not found or not public: {url}")
         result = clean_post(post)
-        # Replies sit in a second record with the same id as the post. The "related
-        # posts" elsewhere on the page are recommendations, not replies.
-        post_key = post.get("pk") or post.get("id")
-        host = next((n for n in walk(blobs) if post_key and (n.get("pk") or n.get("id")) == post_key and (n.get("text_post_app_info") or {}).get("direct_replies")), None)
-        replies = (((host or {}).get("text_post_app_info") or {}).get("direct_replies") or {}).get("edges") or []
-        result["replies"] = [
-            clean_post(r["node"])
-            for edge in replies
-            for r in ((edge.get("node") or {}).get("posts") or {}).get("edges") or []
-            if r.get("node")
-        ]
+        # Replies sit in records with direct_replies. Support both modern top-level
+        # direct_replies and legacy text_post_app_info.direct_replies across schema shifts.
+        found_replies = []
+        for n in walk(blobs):
+            dr = n.get("direct_replies")
+            if not dr and isinstance(n.get("text_post_app_info"), dict):
+                dr = n["text_post_app_info"].get("direct_replies")
+            if isinstance(dr, dict) and isinstance(dr.get("edges"), list):
+                for edge in dr["edges"]:
+                    posts_edges = ((edge.get("node") or {}).get("posts") or {}).get("edges") or []
+                    for r in posts_edges:
+                        if r.get("node"):
+                            found_replies.append(clean_post(r["node"]))
+        seen = set()
+        deduped = []
+        for r in found_replies:
+            rid = r.get("id") or r.get("code")
+            if rid and rid not in seen:
+                seen.add(rid)
+                deduped.append(r)
+        result["replies"] = deduped
         return result
 
     # --- search ------------------------------------------------------------

@@ -384,24 +384,43 @@ function parseFeed(xml) {
   return out;
 }
 /* ---------- bersihkan suffix "- Sumber" dari headline, biar judul cuma judul ---------- */
-const SRC_TAIL = /(kompas|antara|detik|cnn|tempo|liputan6|republika|tribun|cnbc|jpnn|okezone|jawapos|viva|kumparan|suara|radar|inilah|merdeka|indosport|youtube|news|kabar|berita|radio|bmkg|bnpb|bpbd|kemendagri|kapolri|tni|voice|akurat|acehinfo|polda|conversation|\btv\b)/i;
-function cleanTitle(t) {
+const SRC_TAIL = /(kompas|antara|detik|cnn|tempo|liputan6|republika|tribun|cnbc|jpnn|okezone|jawapos|viva|kumparan|suara|radar|inilah|merdeka|indosport|youtube|news|kabar|berita|radio|bmkg|bnpb|bpbd|kemendagri|kapolri|tni|voice|akurat|acehinfo|polda|polres|polsek|polresta|tribrata|tribatanews|tribratanews|times|update|harian|pos|post|media|koran|portal|suarakalbar|suarasurabaya|conversation|\btv\b)/i;
+const DOMAIN_TAIL = /\.(?:com|id|net|org|co|asia|info|tv|xyz|online|site|biz|tech|me|app|pro|co\.[a-z]{2}|go\.[a-z]{2}|or\.[a-z]{2}|ac\.[a-z]{2}|sch\.[a-z]{2}|my\.id|web\.id|biz\.id)(?:\:[0-9]+)?$/i;
+
+function cleanTitle(t, pub) {
   let s0 = String(t || '').trim();
   const pp = s0.indexOf(' | ');
   if (pp > 15) s0 = s0.slice(0, pp).trim();   // "Judul | NamaSitus" — pipe selalu suffix publisher
   const pcm = s0.match(/\s*::\s*\S/);
-  if (pcm && pcm.index > 15) s0 = s0.slice(0, pcm.index).trim();   // "Judul :: NamaSitus" — pola feed lokal (mis. Berita Cilegon)
-  let s = s0.replace(/\s[-–—]\s*(?:https?|www)\b[^\s]*(?:\)[^\s]*)?$/i, '').trim();
-  for (let i = 0; i < 3; i++) {   // GN kadang dobel suffix: "judul - domain.id - PENERBIT"
-    const m = s.match(/^(.{8,}?)\s[-–—]\s([A-Za-z0-9][A-Za-z0-9.&'®™ ()]{1,60})$/);
+  if (pcm && pcm.index > 15) s0 = s0.slice(0, pcm.index).trim();   // "Judul :: NamaSitus" — pola feed lokal
+
+  // Strip prefix redaksional: "Berita Video - ", "Breaking News - ", "Video - "
+  s0 = s0.replace(/^(?:(?:breaking\s+news|berita\s+video|video|foto|live|eksklusif|update|terkini)\s*[-–—:]\s*)+/i, '').trim();
+
+  // Strip explicit publisher dari Google News <source> kalau cocok persis di ekor
+  if (pub) {
+    const pk = String(pub).trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    if (pk.length >= 3) {
+      s0 = s0.replace(new RegExp('(?:\\s+[-–—]\\s*|\\s*[-–—|•·]\\s*)' + pk + '\\s*$', 'i'), '').trim();
+    }
+  }
+
+  let s = s0.replace(/\s+[-–—]\s*(?:https?:\/\/|www\.)\S+$/i, '').trim();
+  for (let i = 0; i < 4; i++) {
+    // Delimiter wajib ada spasi sebelumnya untuk tanda hubung/strip agar tidak memotong kata ulang (luka-luka, dll.)
+    const m = s.match(/^(.{8,}?)(?:\s+[-–—]\s*|\s*[|•·]\s*)([A-Za-z0-9][A-Za-z0-9.&'®™()_\-\s]{1,70})$/);
     if (!m) break;
     const tail = m[2].trim();
     const words = tail.split(/\s+/).map(w => w.replace(/[®™]/g, '')).filter(Boolean);
-    if (words.length > 5) break;                    // kelanjutkalimat panjang, bukan label sumber
-    const isPub = (!/[,;.:?!]/.test(tail) && words.every(w => /^[A-Z0-9]/.test(w)))   // title-case = label sumber
-      || (!/[,;.:?!]/.test(tail) && words.length <= 3 && tail.length <= 30 && words.every(w => /^[a-z0-9]/.test(w)))  // lowercase pendek = publisher kecil
-      || /\.(com|id|net|co\.id|go\.id|org|tv|info|media)$/i.test(tail)                  // domain/TLD
-      || SRC_TAIL.test(tail);                                                          // institusi/media dikenal
+    if (words.length > 6) break;                    // kelanjutan kalimat panjang, bukan label sumber
+
+    const isDomain = DOMAIN_TAIL.test(tail) || /\.[a-z]{2,8}$/i.test(tail);
+    const isKnown = SRC_TAIL.test(tail);
+    const isTitleCase = words.length <= 5 && words.every(w => /^[A-Z0-9]/.test(w));
+    const isGovPub = /^(?:pemerintah|pemkab|pemkot|polresta|polres|polsek|polda|diskominfo|humas)\b/i.test(tail);
+    const isShortSlug = words.length <= 3 && tail.length <= 30 && !/[,;?!]/.test(tail);
+
+    const isPub = isDomain || isKnown || isTitleCase || isGovPub || (isShortSlug && words.every(w => /^[a-z0-9]/.test(w)));
     if (!isPub) break;
     s = m[1].trim();
   }
@@ -435,7 +454,7 @@ const news = () => Promise.all(NEWS.map(([id, url]) => memo('n:' + id, 55000, as
         if (!items.length) throw new Error('feed kosong');
         const fresh = items.filter(it => !it.ts || Date.now() - it.ts <= 24 * 3600e3);
         const newest = Math.max(0, ...fresh.map(i => i.ts || 0));
-        return { id, ok: true, stale: !!(newest && Date.now() - newest > 3 * 3600e3), items: fresh.slice(0, 100).map(it => ({ ...it, title: cleanTitle(it.title), src: id })), at: Date.now() };
+        return { id, ok: true, stale: !!(newest && Date.now() - newest > 3 * 3600e3), items: fresh.slice(0, 100).map(it => ({ ...it, title: cleanTitle(it.title, it.pub), src: id })), at: Date.now() };
       } catch (e) {
         lastErr = String(e.message || e);
         if (i === 0) await new Promise(res => setTimeout(res, 350));
@@ -698,11 +717,15 @@ async function xSearchGo(q, cursor, winH) {
   }
   const j = await r.json(), out = new Map(); collect(j, out);
   if (!out.size && !cursor) {   // 200 tapi nol tweet: jangan diam, tampilkan bentuk respons biar kelihatan (IP datacenter / sesi diflag / query kosong)
+    if (q.startsWith('conversation_id:')) return { posts: [], cursor: '' };
     if (j.errors) throw new Error(JSON.stringify(j.errors).slice(0, 200));
     const raw = JSON.stringify(j);
     throw new Error('X HTTP 200 tapi 0 tweet (' + raw.length + 'B): ' + raw.slice(0, 180));
   }
-  if (j.errors && j.errors.length && !out.size) throw new Error(JSON.stringify(j.errors).slice(0, 200));
+  if (j.errors && j.errors.length && !out.size) {
+    if (q.startsWith('conversation_id:')) return { posts: [], cursor: '' };
+    throw new Error(JSON.stringify(j.errors).slice(0, 200));
+  }
   return { posts: [...out.values()].map(p => ({ ...p, q })), cursor: bottomCursor(j) };
 }
 const xSearch = (q, cursor, winH) => xSem(() => xSearchGo(q, cursor, winH));
@@ -1409,7 +1432,20 @@ function xTree(rootId, flat) {
 }
 const xThread = (id) => memo('xth:' + id, 300000, async () => {
   let post = null, err = '';
-  try { post = await synTweet(id); } catch (e) { err = e.message; }
+  for (const p of xHist.values()) {
+    if (p && (p.id === id || tweetId(p.url) === id)) {
+      post = { ...p };
+      break;
+    }
+  }
+  if (!post) {
+    try { post = await synTweet(id); } catch (e) { err = e.message; }
+  } else {
+    try {
+      const syn = await synTweet(id);
+      if (syn) post = { ...post, ...syn };
+    } catch (_) {}
+  }
   let flat = [], cursor = '', pages = 0;
   try {   // conversation_id: paginate sampai 3 halaman / 60 post, jendela 7 hari
     for (;;) {
@@ -1417,7 +1453,12 @@ const xThread = (id) => memo('xth:' + id, 300000, async () => {
       flat.push(...r.posts); cursor = r.cursor; pages++;
       if (!cursor || pages >= 3 || flat.length >= 60) break;
     }
-  } catch (e) { err = err || e.message; }
+  } catch (e) {
+    const msg = String(e && e.message || e);
+    if (!/0 tweet|search_by_raw_query/i.test(msg)) {
+      err = err || msg;
+    }
+  }
   if (!post && !flat.length) throw new Error(err || 'post tidak ditemukan');
   if (!post && flat.length) {
     const f = flat.find(p => p.id === id) || flat[0];
@@ -1433,7 +1474,9 @@ const xThread = (id) => memo('xth:' + id, 300000, async () => {
     for (const r of got) if (r.status === 'fulfilled' && r.value) flat.push({ ...r.value, parent: id });
   }
   const replies = xTree(id, flat.filter(p => p.id !== id));
-  return { ok: true, kind: 'x', post, replies, count: (post && post.replies) || flat.length, err };
+  const cleanErr = (err && !/0 tweet|search_by_raw_query/i.test(err)) ? err : '';
+  const count = (post && typeof post.replies === 'number') ? post.replies : flat.length;
+  return { ok: true, kind: 'x', post, replies, count, err: cleanErr };
 });
 const thThread = (url) => memo('thth:' + url, 300000, async () => {
   if (!PY_BIN) throw new Error('Python tidak ditemukan');
@@ -1446,7 +1489,9 @@ const thThread = (url) => memo('thth:' + url, 300000, async () => {
       });
   }));
   if (!raw.ok) throw new Error(raw.err || 'gagal membaca thread');
-  return raw;
+  const replies = Array.isArray(raw.replies) ? raw.replies : (Array.isArray(raw.post && raw.post.replies) ? raw.post.replies : []);
+  const count = typeof raw.count === 'number' ? raw.count : (raw.post && typeof raw.post.reply_count === 'number' ? raw.post.reply_count : replies.length);
+  return { ...raw, replies, count };
 });
 const threadOf = (raw) => {
   const x = publicURL(raw);
@@ -1518,7 +1563,7 @@ const incidents = () => memo('incidents', 55000, async () => {
       const places = place.all && place.all.length > 1 ? place.all : [place];
       for (const pl of places)
         out.push({ name: pl.name, la: pl.la, lo: pl.lo, prec: pl.prec, prov: pl.prov, kind: cat,
-          label: meta.label, title: it.title, multi: places.length > 1 || undefined,
+          label: meta.label, title: cleanTitle(it.title, it.pub), multi: places.length > 1 || undefined,
           desc: dd.length > 400 ? dd.slice(0, 397).replace(/\s+\S*$/, '') + '…' : (dd || undefined),
           assessment: a, src: s.id, url: it.url, ts: it.ts,
           weight: +(heat / (approx ? 2 : 1) / Math.sqrt(places.length)).toFixed(3), approx: approx || undefined });
@@ -1567,7 +1612,7 @@ const situation = () => memo('situation', 45000, async () => {
       // daftar items (dengan flag) tapi tidak menghitung chip kategori.
       const fr = foreignOf(it.title, a);
       if (fr) foreignN++;
-      items.push({ title: it.title, url: it.url, src: s.id, ts: it.ts, assessment: a,
+      items.push({ title: cleanTitle(it.title, it.pub), url: it.url, src: s.id, ts: it.ts, assessment: a,
         cat, label: meta.label, place: place ? place.name : '', foreign: fr || undefined,
         weight: +(meta.sev * recency).toFixed(3) });
       if (!fr) stats[cat]++;
@@ -2607,7 +2652,7 @@ async function thumbFromHtml(rawHtml, article) {
   // looseOK di bawah tetap mengizinkan square sebagai jalan terakhir.
   const squareMeta = p => p && /^(og|twitter|meta)$/.test(p.kind || '') && p.w / p.h > 0.85 && p.w / p.h < 1.2;
   const strictOK = p => p && p.w >= 600 && !squareMeta(p) && !rdJunkUrl(p.img) && !rdSmallHint(p.img) && !RD_IMG_JUNK.test(p.img.split('?')[0]) && ogReuse(host, p.img, article) < 1;
-  const looseOK = p => p && p.w >= 600 && !rdJunkUrl(p.img) && !rdSmallHint(p.img) && !RD_IMG_JUNK.test(p.img.split('?')[0]);
+  const looseOK = p => p && p.w >= 400 && !rdJunkUrl(p.img) && !rdSmallHint(p.img) && !RD_IMG_JUNK.test(p.img.split('?')[0]);
   // hero = urutan prioritas dokumen (ld+json → og → twitter → meta), bukan score
   // tertinggi: thumbnail harus konsisten dengan gambar yang sama yang dipakai reader.
   // Di dalam satu tier tetap ambil score tertinggi supaya penalti icon/junk bekerja.
@@ -2633,10 +2678,15 @@ async function thumbFromHtml(rawHtml, article) {
   }
   if (!best) {
     // longgar: ogReuse menolak gambar yang sama di banyak artikel — tapi gambar
-    // artikel yang kebetulan dipakai ulang tetap lebih baik daripada tanpa gambar
+    // artikel yang kebetulan dipakai ulang tetap lebih baik daripada tanpa gambar;
+    // p.w>=400 mengizinkan foto berita 500x500/500x375 media lokal (siberriau dll)
     for (const tier of tiers) {
       best = await probeTier(tier, looseOK);
       if (best) break;
+    }
+    if (!best) {
+      const bs = await Promise.all(body.filter(c => !seenU.has(c.url)).slice(0, 8).map(probe));
+      best = bs.filter(Boolean).sort((a, b) => b.score - a.score).find(looseOK) || null;
     }
   }
   const v = best ? { img: best.img, w: best.w, h: best.h, src: article } : { img: '', src: article };
@@ -2706,6 +2756,7 @@ async function thumbFromJina(article) {
   // tolak ikon ~1:1 yang keburu lolos ke markdown Jina — lebih baik tanpa
   // gambar daripada thumbnail logo situs
   const strictOK = p => p && p.w >= 600 && !(p.w / p.h > 0.85 && p.w / p.h < 1.2) && !rdJunkUrl(p.img) && !rdSmallHint(p.img) && !RD_IMG_JUNK.test(p.img.split('?')[0]) && ogReuse(host, p.img, article) < 1;
+  const looseOK = p => p && p.w >= 400 && !rdJunkUrl(p.img) && !rdSmallHint(p.img) && !RD_IMG_JUNK.test(p.img.split('?')[0]);
   // Host gambar bisa kena challenge CF yang sama dengan halamannya — probe
   // direct gagal ≠ gambar jelek. Coba ulang lewat images.weserv.nl (fetch dari
   // IP lain) khusus untuk verifikasi dimensi; URL asli tetap dipakai display.
@@ -2740,6 +2791,15 @@ async function thumbFromJina(article) {
       // tapi tetap gambar artikel — yang kalah adalah badge/footer/terkait.
       const sc = imageScore({ kind: 'body', url: c.img }, dim) + Math.min(45, c.tm * 6) + (c.same ? 4 : 0);
       if (sc > bestSc) { bestSc = sc; best = p; }
+    }
+    if (!best) {
+      for (const { c, dim } of rs) {
+        if (!dim) continue;
+        const p = { img: c.img, w: dim.w, h: dim.h, kind: 'body', src: article };
+        if (!looseOK(p)) continue;
+        const sc = imageScore({ kind: 'body', url: c.img }, dim) + Math.min(45, c.tm * 6) + (c.same ? 4 : 0);
+        if (sc > bestSc) { bestSc = sc; best = p; }
+      }
     }
     return { best, anyDim };
   };
@@ -2838,6 +2898,7 @@ async function thumbRun(u) {
   }
   const v = await thumbFromHtml(html, baseUrl);
   thumbCache.set(u, { v, at: Date.now() });
+  if (baseUrl && baseUrl !== u) thumbCache.set(baseUrl, { v, at: Date.now() });
   if (thumbCache.size > 200) thumbCache.delete(thumbCache.keys().next().value);
   return v;
 }
@@ -4116,6 +4177,11 @@ async function rdFinish(d, url, html, via) {
   try { d = await rdFinalGate(d, url); } catch (e) {}
   try { d = await rdVideoGate(d); } catch (e) {}
   if (!d.img) { const fi = (d.blocks || []).find(b => b.k === 'i' && b.img); if (fi) { d.img = fi.img.url; d.blocks = d.blocks.filter(b => b !== fi); } }   // tanpa og:image → foto badan pertama
+  if (d.img) {
+    const entry = { v: { img: d.img, w: 0, h: 0, src: url }, at: Date.now() };
+    thumbCache.set(url, entry);
+    if (d.final && d.final !== url) thumbCache.set(d.final, entry);
+  }
   d = rdAssembleBlocks(d);
   return d;
 }

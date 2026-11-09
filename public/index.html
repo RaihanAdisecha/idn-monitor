@@ -376,19 +376,19 @@ a{color:inherit;text-decoration:none;text-underline-offset:2px}
 .stk-r1,.stk-r2{flex:1;min-height:0;display:flex;align-items:stretch}
 .stk-r2{border-top:1px solid var(--border)}
 .stk-ihsg{
-  position:relative;flex:0 0 344px;display:flex;align-items:center;gap:14px;
-  padding:0 0 0 18px;border-right:1px solid var(--border);min-width:0;overflow:hidden;
+  position:relative;flex:0 0 344px;display:flex;align-items:center;gap:12px;
+  padding:0 12px 0 16px;border-right:1px solid var(--border);min-width:0;overflow:hidden;
 }
-.stk-hd{position:relative;z-index:2;display:flex;flex-direction:column;gap:5px;min-width:0;flex:0 0 auto}
-.stk-k{position:relative;z-index:2;font:600 8.5px/1 var(--mono);letter-spacing:.12em;color:var(--text3)}
+.stk-hd{position:relative;z-index:2;display:flex;flex-direction:column;gap:2px;min-width:0;flex:none;margin-top:-2px}
+.stk-k{position:relative;z-index:2;font:600 8.5px/1 var(--mono);letter-spacing:.12em;color:var(--text3);flex:none}
 .stk-p{font:600 24px/1 var(--mono);letter-spacing:-.02em;font-variant-numeric:tabular-nums;color:var(--text)}
-.stk-d{font:600 10.5px/1 var(--mono);font-variant-numeric:tabular-nums;letter-spacing:.02em}
+.stk-d{font:600 10.5px/1 var(--mono);font-variant-numeric:tabular-nums;letter-spacing:.02em;margin-top:0}
 .stk-d.up{color:var(--ok)}.stk-d.dn{color:var(--accent)}
 .stk-spark{
-  position:absolute;right:0;bottom:0;width:165px;height:46px;
+  position:relative;flex:1;min-width:0;height:42px;width:100%;
   display:block;pointer-events:none;z-index:1;
-  -webkit-mask-image:linear-gradient(90deg,transparent 0%,#000 28px,#000 100%);
-  mask-image:linear-gradient(90deg,transparent 0%,#000 28px,#000 100%);
+  -webkit-mask-image:linear-gradient(90deg,transparent 0%,#000 12px,#000 100%);
+  mask-image:linear-gradient(90deg,transparent 0%,#000 12px,#000 100%);
 }
 .tape{flex:0 0 auto;height:46px;border-bottom:1px solid var(--border);background:var(--bg);overflow:hidden;position:relative;
   -webkit-mask-image:linear-gradient(90deg,transparent,#000 28px,#000 calc(100% - 28px),transparent);
@@ -1079,9 +1079,9 @@ a{color:inherit;text-decoration:none;text-underline-offset:2px}
   content:"";position:absolute;left:-6px;top:-4px;bottom:12px;width:1px;background:#333;
 }
 
-/* ============================================================ GEO BAR */
+/* ============================================================ GEO BAR (FORWARD-SWEPT DUAL CANTED BLADES) */
 .geobar{
-  flex:none;height:36px;display:flex;align-items:center;gap:11px;padding:0 16px;
+  flex:none;height:36px;display:flex;align-items:center;gap:11px;padding:0 0 0 16px;
   border-top:1px solid var(--border);background:#101010;
   font:400 9.5px/1.2 var(--mono);letter-spacing:.06em;text-transform:uppercase;color:var(--text3);
   white-space:nowrap;overflow:hidden;
@@ -1090,16 +1090,89 @@ a{color:inherit;text-decoration:none;text-underline-offset:2px}
 .geo-live{width:5px;height:5px;border-radius:50%;background:var(--ok);flex:none;animation:pulse 2s infinite}
 .geo-t{overflow:hidden;text-overflow:ellipsis}
 .geo-c{color:var(--text2);font-variant-numeric:tabular-nums}
-.geo-btn{
-  display:inline-flex;align-items:center;gap:6px;height:25px;padding:0 10px;
-  border:1px solid var(--border2);color:var(--text2);
-  font:500 9px/1 var(--mono);letter-spacing:.08em;text-transform:uppercase;
-  transition:background .12s,border-color .12s,color .12s;
+.geo-acts{
+  margin-left:auto;display:inline-flex;align-items:stretch;height:36px;
+  background:transparent;border:none;box-shadow:none;
+  padding:0;gap:0;position:relative;flex:none;
 }
-.geo-acts{margin-left:auto;display:flex;align-items:center;gap:7px;flex:none}
-.geo-btn:hover{background:var(--layer2);border-color:var(--text3);color:var(--text)}
-.geo-btn[aria-expanded="true"]{background:var(--layer2);border-color:var(--text3);color:var(--text)}
-.geo-btn .ic{width:12px;height:12px}
+.geo-btn{
+  position:relative;display:inline-flex;align-items:center;height:36px;
+  background:linear-gradient(180deg,#181820 0%,#0e0e14 100%);
+  border:1px solid #282834;border-top:none;border-bottom:none;border-radius:0;
+  color:#9e9eb0;font:600 8.5px/1 var(--mono);letter-spacing:.09em;text-transform:uppercase;
+  transition:all .14s cubic-bezier(.2,.8,.3,1);cursor:pointer;
+  touch-action:manipulation;-webkit-tap-highlight-color:transparent;
+}
+#btn-tv{
+  gap:7px;padding:0 20px 0 14px;
+  border-right:none;
+  clip-path:polygon(0 0, 100% 0, calc(100% - 12px) 100%, 0 100%);
+  z-index:2;
+}
+#btn-tv::after{
+  content:"";position:absolute;top:0;right:5px;bottom:0;width:1.5px;
+  background:linear-gradient(180deg,rgba(255,255,255,.32) 0%,rgba(255,255,255,.06) 100%);
+  transform:skewX(-18.5deg);pointer-events:none;
+}
+#btn-map{
+  gap:7px;padding:0 18px 0 20px;margin-left:-9px;
+  border-left:none;border-right:none;
+  clip-path:polygon(12px 0, 100% 0, 100% 100%, 0 100%);
+  z-index:1;
+}
+.geo-btn:hover{
+  background:linear-gradient(180deg,#242430 0%,#15151e 100%);
+  color:#fff;
+}
+.geo-btn:active{transform:scale(.98)}
+.geo-btn .ic{width:11.5px;height:11.5px;color:#8a8a9c;transition:color .14s,transform .14s}
+.geo-btn:hover .ic{color:#fff}
+.pod-led{
+  width:5px;height:5px;border-radius:50%;background:#482024;
+  box-shadow:0 0 3px rgba(255,59,65,.3);transition:all .2s;flex:none;
+}
+/* CHIP SIGINT & RADAR DENGAN LESS OPACITY PADA BORDER */
+.pod-tag{
+  font:700 7px/1 var(--mono);letter-spacing:.12em;padding:2px 4px;border-radius:2px;
+  background:rgba(255,255,255,.04);color:#707082;
+  border:1px solid rgba(255,255,255,.04);
+  transition:all .18s;flex:none;
+}
+/* ACTIVE STATE: LIVE TV (CRIMSON BEACON) */
+#btn-tv[aria-expanded="true"]{
+  background:linear-gradient(180deg,rgba(227,27,39,.30) 0%,rgba(142,11,19,.20) 100%);
+  border-color:rgba(255,59,65,.5);color:#fff;
+  box-shadow:inset 0 0 14px rgba(255,59,65,.25);
+}
+#btn-tv[aria-expanded="true"]::after{
+  background:linear-gradient(180deg,#ff3b41,rgba(255,59,65,.4));
+  box-shadow:0 0 8px rgba(255,59,65,.8);
+}
+#btn-tv[aria-expanded="true"] .pod-led{
+  background:#ff3b41;box-shadow:0 0 8px #ff3b41,0 0 14px rgba(255,59,65,.7);
+  animation:livepulse 1.4s ease-in-out infinite;
+}
+#btn-tv[aria-expanded="true"] .pod-tag{
+  background:rgba(255,59,65,.18);color:#ff9fa3;
+  border-color:rgba(255,59,65,.14);
+  text-shadow:0 0 6px rgba(255,59,65,.6);
+}
+#btn-tv[aria-expanded="true"] .ic{color:#ff6b70}
+
+/* ACTIVE STATE: PETA INSIDEN (CYAN RADAR) */
+#btn-map[aria-expanded="true"]{
+  background:linear-gradient(180deg,rgba(0,229,255,.24) 0%,rgba(0,140,160,.16) 100%);
+  border-color:rgba(0,229,255,.5);color:#fff;
+  box-shadow:inset 0 0 14px rgba(0,229,255,.25);
+}
+#btn-map[aria-expanded="true"] .ic{
+  color:#00e5ff;filter:drop-shadow(0 0 5px rgba(0,229,255,.8));
+}
+#btn-map[aria-expanded="true"] .pod-tag{
+  background:rgba(0,229,255,.18);color:#80f0ff;
+  border-color:rgba(0,229,255,.14);
+  text-shadow:0 0 6px rgba(0,229,255,.6);
+}
 
 /* ============================================================ MAP PANEL */
 .mapwrap{
@@ -1438,6 +1511,12 @@ button.mp-src{background:none;border-top:0;border-left:0;border-right:0;cursor:p
   display:none;flex-direction:column;background:var(--bg);border:1px solid var(--border2);
   box-shadow:0 26px 70px rgba(0,0,0,.62),0 0 0 1px rgba(0,0,0,.35);
 }
+.reader.is-post,
+.reader:has(.rd-post){
+  height:auto;
+  min-height:min(200px,50vh);
+  max-height:min(76vh,720px);
+}
 .reader.on{display:flex}
 .reader :focus-visible{outline:1px solid rgba(255,255,255,.28);outline-offset:1px}
 .rd-h{
@@ -1457,7 +1536,7 @@ button.mp-src{background:none;border-top:0;border-left:0;border-right:0;cursor:p
 .rd-x:hover{background:var(--layer2);color:var(--text)}
 .rd-x .ic{width:11px;height:11px}
 .rd-b{flex:1;min-height:0;overflow:auto;padding:20px 26px 30px;overscroll-behavior:contain;scrollbar-gutter:stable;scrollbar-width:thin;scrollbar-color:var(--border2) transparent}
-.rd-art h1{font:600 18px/1.3 var(--sans);letter-spacing:-.01em;color:var(--text);margin:0 0 10px}
+.rd-art h1{font:600 18px/1.3 var(--disp);letter-spacing:-.01em;color:var(--text);margin:0 0 10px}
 .rd-meta{display:flex;flex-wrap:wrap;gap:5px 10px;margin:0 0 14px;font:400 8.5px/1.4 var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--text3)}
 .rd-hero{display:block;width:100%;max-height:230px;object-fit:cover;border:1px solid var(--border);margin:0 0 16px;background:var(--layer)}
 .rd-fig{margin:2px 0 18px}
@@ -1472,7 +1551,7 @@ button.mp-src{background:none;border-top:0;border-left:0;border-right:0;cursor:p
 .rd-facade .rd-play svg{width:18px;height:18px;fill:#fff;margin-left:2px}
 .rd-facade:hover .rd-play{background:#e02020}
 .rd-p{font:400 13px/1.68 var(--sans);color:var(--text2);margin:0 0 14px;overflow-wrap:anywhere}
-.rd-p.rd-lead{font-size:14px;color:var(--text)}
+.rd-p.rd-lead{font-family:var(--disp);font-size:14px;color:var(--text)}
 .rd-p a{color:var(--text);border-bottom:1px solid var(--border2)}
 .rd-p a:hover{color:var(--accent);border-color:var(--accent)}
 .rd-note{border-left:2px solid var(--accent);padding:8px 10px;background:#1b1b1b;font:400 9px/1.55 var(--mono);letter-spacing:.04em;color:var(--text3);margin:0 0 16px}
@@ -1608,15 +1687,20 @@ button.mp-src{background:none;border-top:0;border-left:0;border-right:0;cursor:p
   /* market: IHSG & USD/IDR full-width, chips scroll di bawahnya */
   .stk{flex:none}
   .stk-r1,.stk-r2{flex:none;flex-direction:column}
-  .stk-ihsg{flex:none;width:100%;box-sizing:border-box;padding:10px 0 0 14px;border-right:0;border-bottom:1px solid var(--border)}
+  .stk-ihsg{flex:none;width:100%;box-sizing:border-box;padding:8px 12px 8px 14px;border-right:0;border-bottom:1px solid var(--border);gap:12px}
+  .stk-hd{flex-direction:column;gap:2px;flex:none;padding-right:0;margin-top:-2px}
+  .stk-d{margin-left:0;text-align:left;white-space:nowrap}
+  .stk-spark{flex:1;min-width:0;height:40px;width:100%}
   .stk-chips{flex:none;width:100%;-webkit-overflow-scrolling:touch;scroll-snap-type:x proximity}
   .stk-chip{flex:0 0 138px;scroll-snap-align:start;padding:7px 11px 0}
   .tk-t{max-width:420px}
   .foot{height:auto;padding:8px 12px;flex-wrap:wrap;gap:6px 12px;white-space:normal}
   .foot .sp{margin-left:0}
-  .geobar{padding:0 12px;gap:8px}
+  .geobar{padding:0 0 0 10px;gap:8px}
   .geo-t{display:none}
-  .geo-btn{padding:0 8px}
+  #btn-tv{padding:0 16px 0 10px;gap:5px}
+  #btn-map{padding:0 14px 0 16px;margin-left:-9px;gap:5px}
+  .pod-tag{display:none}
   .mapwrap{top:0;bottom:0;width:100%;border-left:0;box-shadow:none}
   .mapwrap .map-layers{overflow-x:auto;scrollbar-width:none}
   .mapwrap .map-layers::-webkit-scrollbar{display:none}
@@ -1634,6 +1718,8 @@ button.mp-src{background:none;border-top:0;border-left:0;border-right:0;cursor:p
   .soc-tab{padding:0 7px}
   #nlist{grid-template-columns:1fr}
   .reader{right:8px;width:calc(100vw - 16px);top:calc(var(--hdr) + 8px);height:min(70vh,640px)}
+  .reader.is-post,
+  .reader:has(.rd-post){height:auto;min-height:min(180px,45vh);max-height:min(74vh,640px)}
   .rd-h .rd-x{margin-left:auto;border-left:0}
   .rd-b{padding:16px 16px 24px}
   .rd-art h1{font-size:16px}
@@ -2032,10 +2118,15 @@ button.mp-src{background:none;border-top:0;border-left:0;border-right:0;cursor:p
   <span class="geo-c" id="geo-count">— titik</span>
   <span class="geo-acts">
     <button class="geo-btn" id="btn-tv" type="button" aria-expanded="false" aria-controls="tvwrap">
-      <svg class="ic" aria-hidden="true"><use href="#i-tv"></use></svg>Live TV
+      <span class="pod-led tv-led" aria-hidden="true"></span>
+      <svg class="ic" aria-hidden="true"><use href="#i-tv"></use></svg>
+      <span>Live TV</span>
+      <span class="pod-tag">SIGINT</span>
     </button>
     <button class="geo-btn" id="btn-map" type="button" aria-expanded="false" aria-controls="mapwrap">
-      <svg class="ic" aria-hidden="true"><use href="#i-map"></use></svg>Peta Insiden
+      <svg class="ic" aria-hidden="true"><use href="#i-map"></use></svg>
+      <span>Peta Insiden</span>
+      <span class="pod-tag">RADAR</span>
     </button>
   </span>
 </div>
@@ -2311,21 +2402,45 @@ const catOfTitle = t => {
   for (const c of CAT_ORDER) if (CAT_RE[c] && CAT_RE[c].test(t)) return c;
   return '';
 };
-const cleanTitle = t => {
+const SRC_TAIL = /(kompas|antara|detik|cnn|tempo|liputan6|republika|tribun|cnbc|jpnn|okezone|jawapos|viva|kumparan|suara|radar|inilah|merdeka|indosport|youtube|news|kabar|berita|radio|bmkg|bnpb|bpbd|kemendagri|kapolri|tni|voice|akurat|acehinfo|polda|polres|polsek|polresta|tribrata|tribatanews|tribratanews|times|update|harian|pos|post|media|koran|portal|suarakalbar|suarasurabaya|conversation|\btv\b)/i;
+const DOMAIN_TAIL = /\.(?:com|id|net|org|co|asia|info|tv|xyz|online|site|biz|tech|me|app|pro|co\.[a-z]{2}|go\.[a-z]{2}|or\.[a-z]{2}|ac\.[a-z]{2}|sch\.[a-z]{2}|my\.id|web\.id|biz\.id)(?:\:[0-9]+)?$/i;
+const cleanTitle = (t, pub) => {
   let s0 = String(t || '').trim();
   const pp = s0.indexOf(' | ');
   if (pp > 15) s0 = s0.slice(0, pp).trim();   // "Judul | NamaSitus" — pipe selalu suffix publisher
   const pcm = s0.match(/\s*::\s*\S/);
-  if (pcm && pcm.index > 15) s0 = s0.slice(0, pcm.index).trim();   // "Judul :: NamaSitus" — pola feed lokal (mis. Berita Cilegon)
-  const s = s0.replace(/\s[-–—]\s*(?:https?|www)\b[^\s]*(?:\)[^\s]*)?$/i, '').trim();
-  const m = s.match(/^(.{8,}?)\s[-–—]\s([A-Za-z0-9][A-Za-z0-9.&'®™ ()]{1,60})$/);
-  if (!m) return s;
-  const tail = m[2].trim();
-  const words = tail.split(/\s+/).map(w => w.replace(/[®™]/g, '')).filter(Boolean);
-  if (words.length > 5) return s;
-  if (!/[,;.:?!]/.test(tail) && words.every(w => /^[A-Z0-9]/.test(w))) return m[1].trim();
-  if (!/[,;.:?!]/.test(tail) && words.length <= 3 && tail.length <= 30 && words.every(w => /^[a-z0-9]/.test(w))) return m[1].trim();
-  if (/\.(com|id|net|co\.id|go\.id|org|tv|info|media)$/i.test(tail)) return m[1].trim();
+  if (pcm && pcm.index > 15) s0 = s0.slice(0, pcm.index).trim();   // "Judul :: NamaSitus" — pola feed lokal
+
+  // Strip prefix redaksional: "Berita Video - ", "Breaking News - ", "Video - "
+  s0 = s0.replace(/^(?:(?:breaking\s+news|berita\s+video|video|foto|live|eksklusif|update|terkini)\s*[-–—:]\s*)+/i, '').trim();
+
+  // Strip explicit publisher dari Google News <source> kalau cocok persis di ekor
+  if (pub) {
+    const pk = String(pub).trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    if (pk.length >= 3) {
+      s0 = s0.replace(new RegExp('(?:\\s+[-–—]\\s*|\\s*[-–—|•·]\\s*)' + pk + '\\s*$', 'i'), '').trim();
+    }
+  }
+
+  let s = s0.replace(/\s+[-–—]\s*(?:https?:\/\/|www\.)\S+$/i, '').trim();
+  for (let i = 0; i < 4; i++) {
+    // Delimiter wajib ada spasi sebelumnya untuk tanda hubung/strip agar tidak memotong kata ulang (luka-luka, dll.)
+    const m = s.match(/^(.{8,}?)(?:\s+[-–—]\s*|\s*[|•·]\s*)([A-Za-z0-9][A-Za-z0-9.&'®™()_\-\s]{1,70})$/);
+    if (!m) break;
+    const tail = m[2].trim();
+    const words = tail.split(/\s+/).map(w => w.replace(/[®™]/g, '')).filter(Boolean);
+    if (words.length > 6) break;
+
+    const isDomain = DOMAIN_TAIL.test(tail) || /\.[a-z]{2,8}$/i.test(tail);
+    const isKnown = SRC_TAIL.test(tail);
+    const isTitleCase = words.length <= 5 && words.every(w => /^[A-Z0-9]/.test(w));
+    const isGovPub = /^(?:pemerintah|pemkab|pemkot|polresta|polres|polsek|polda|diskominfo|humas)\b/i.test(tail);
+    const isShortSlug = words.length <= 3 && tail.length <= 30 && !/[,;?!]/.test(tail);
+
+    const isPub = isDomain || isKnown || isTitleCase || isGovPub || (isShortSlug && words.every(w => /^[a-z0-9]/.test(w)));
+    if (!isPub) break;
+    s = m[1].trim();
+  }
   return s;
 };
 let SIT = null, SIT_STALE = false;
@@ -2576,7 +2691,7 @@ function showSitAlert(p){
     <div class="sa-tm"><b>${p.ts ? esc(wibTime(p.ts)) : '--:--'}</b><div class="sa-low">${ago ? `<span class="sa-ago">${esc(ago)}</span>` : ''}<span class="sa-cd" aria-hidden="true">${Array.from({ length: 10 }, (_, i) => `<i style="--n:${i}"></i>`).join('')}</span></div></div>
     <div>
       <span class="sa-k2" style="color:${color}">${esc(p.label || CAT_LABEL[cat])}${p.name ? ' · ' + esc(p.name) : ''}</span>
-      <div class="sa-t">${esc(deEmoji(p.title || ''))}</div>
+      <div class="sa-t">${esc(cleanTitle(deEmoji(p.title || ''), p.pub || p.src))}</div>
       <div class="sa-ft"><span class="sa-m">${esc(p.src || '')}${p.n > 1 ? ` · ${p.n} artikel` : ''}</span><span class="sa-go">Buka reader ↗</span></div>
     </div>
   </div>`;
@@ -3027,7 +3142,7 @@ function showGlobeTip(e, d, touch){
   const p = d.p;
   tip.dataset.url = (p && p.url) || '';
   tip.innerHTML = `<div class="tip-k" style="color:${d.color}">${esc(p.label || CAT_LABEL[d.cat])}${p.name ? ' · ' + esc(p.name) : ''}</div>
-    <div class="tip-t">${esc(deEmoji(p.title || ''))}</div>
+    <div class="tip-t">${esc(cleanTitle(deEmoji(p.title || ''), p.pub || p.src))}</div>
     <div class="tip-m">${esc(p.src || '')} · <span class="tip-time">${esc(p.ts ? wibTime(p.ts) + ' WIB' : '')}</span>${precTxt(p) ? ' · ' + esc(precTxt(p)) : ''}</div>${touch && p.url ? '<div class="tip-h">Buka reader ↗</div>' : ''}`;
   tip.hidden = false;
   placeSitTip(e, touch);
@@ -3051,7 +3166,7 @@ function showGlobePop(e, d){
   sitPopUrl = p.url || '';
   pop.dataset.url = sitPopUrl;
   pop.innerHTML = `<div class="tip-k" style="color:${d.color}">${esc(p.label || CAT_LABEL[d.cat])}${p.name ? ' · ' + esc(p.name) : ''}</div>
-    <div class="tip-t">${esc(deEmoji(p.title || ''))}</div>
+    <div class="tip-t">${esc(cleanTitle(deEmoji(p.title || ''), p.pub || p.src))}</div>
     <div class="tip-m">${esc(p.src || '')} · <span class="tip-time">${esc(p.ts ? wibTime(p.ts) + ' WIB' : '')}</span>${precTxt(p) ? ' · ' + esc(precTxt(p)) : ''}</div>
     <div class="pop-ft"><span class="pop-go">Buka reader ↗</span></div>`;
   pop.hidden = false;
@@ -3324,7 +3439,7 @@ function clusterHtml(g, i){
   const pips = wMax >= 0.6 ? 3 : wMax >= 0.35 ? 2 : 1;
   const lines = g.items.slice(0, 6).map(x =>
     `<div class="cl-line"><time>${esc(x.ts ? wibTime(x.ts) : '')}</time>
-      <span><a href="${esc(x.url)}" target="_blank" rel="noopener">${esc(deEmoji(x.title))}</a><span class="cl-s">${esc(x.src || '')}</span></span></div>`).join('');
+      <span><a href="${esc(x.url)}" target="_blank" rel="noopener">${esc(cleanTitle(deEmoji(x.title || ''), x.pub || x.src))}</a><span class="cl-s">${esc(x.src || '')}</span></span></div>`).join('');
   return `<div class="cl" data-cat="${g.cat}" data-id="${esc(g.id)}">
     <div class="cl-main">
       <div class="cl-hd"><i class="cl-dot" aria-hidden="true"></i>
@@ -3332,7 +3447,7 @@ function clusterHtml(g, i){
         <span class="cl-place">${esc(g.place || 'Wilayah belum pasti')}</span>
         <span class="cl-pips" title="Tingkat keparahan">${'<i class="on"></i>'.repeat(pips)}${'<i></i>'.repeat(3 - pips)}</span>
         <span class="cl-srcs">${g.sources.size} sumber</span></div>
-      <div class="cl-t">${esc(deEmoji(lead.title))}</div>
+      <div class="cl-t">${esc(cleanTitle(deEmoji(lead.title || ''), lead.pub || lead.src))}</div>
       <div class="cl-f"><span>${g.items.length} kabar</span>
         ${g.earliest && g.latest && g.latest > g.earliest ? `<span>·</span><span>${esc(wibTime(g.earliest))} - ${esc(wibTime(g.latest))}</span>` : ``}
         <button class="cl-more" type="button" data-toggle="${esc(g.id)}" aria-expanded="${open ? 'true' : 'false'}">${open ? 'tutup' : 'timeline'}</button></div>
@@ -3470,7 +3585,7 @@ function clToastCard(c){
   el.innerHTML =
     `<i class="cl-c ptl"></i><i class="cl-c ptr"></i><i class="cl-c pbl"></i><i class="cl-c pbr"></i>` +
     `<div class="cl-tk"><i></i>${c.isNew ? 'Klaster baru' : 'Kabar baru'} · ${esc(wibTime(lead.ts))}</div>` +
-    `<div class="cl-th">${esc(deEmoji(lead.title || ''))}</div>` +
+    `<div class="cl-th">${esc(cleanTitle(deEmoji(lead.title || ''), lead.pub || lead.src))}</div>` +
     // n>1 hanya bermakna kalau ada wilayah: tanpa place, grup = cat|'', jadi
     // "2 kabar" bisa menggabung dua kejadian berbeda di dua tempat.
     `<div class="cl-tf"><span>${esc(lead.place || (lead.foreign ? 'Global' : 'Wilayah belum pasti'))}` +
@@ -3502,7 +3617,7 @@ function clToastDigest(cards, total, nNew, placesAll){
   el.innerHTML =
     `<i class="cl-c ptl"></i><i class="cl-c ptr"></i><i class="cl-c pbl"></i><i class="cl-c pbr"></i>` +
     `<div class="cl-tk"><i></i>${head} · ${esc(wibTime(lead.ts))}</div>` +
-    `<div class="cl-th">${esc(deEmoji(lead.title || ''))}</div>` +
+    `<div class="cl-th">${esc(cleanTitle(deEmoji(lead.title || ''), lead.pub || lead.src))}</div>` +
     `<div class="cl-tf"><span>${esc(placeTxt)}</span></div>` +
     `<i class="cl-cd"></i>`;
   clToastMount(box, el);
@@ -3868,9 +3983,19 @@ function paintSparks(el, items){
   });
 }
 function paintHeroes(){
-  if (IHSG) drawSpark($('#stk-spark'), CLOSES['IDX:COMPOSITE'], IHSG.pct >= 0);
+  const cv1 = $('#stk-spark');
+  if (cv1 && IHSG) {
+    const rw = cv1.clientWidth || cv1.width || 180;
+    if (rw && cv1.width !== rw) cv1.width = rw;
+    drawSpark(cv1, CLOSES['IDX:COMPOSITE'], IHSG.pct >= 0);
+  }
+  const cv2 = $('#fx-spark');
   const idr = FX && (FX.items || []).find(x => x.ticker === 'USDIDR');
-  if (idr) drawSpark($('#fx-spark'), idr.closes || CLOSES['FX_IDC:USDIDR'], idr.pct >= 0);
+  if (cv2 && idr) {
+    const rw = cv2.clientWidth || cv2.width || 180;
+    if (rw && cv2.width !== rw) cv2.width = rw;
+    drawSpark(cv2, idr.closes || CLOSES['FX_IDC:USDIDR'], idr.pct >= 0);
+  }
 }
 async function loadCloses(){
   const items = [...STK_VIEW, ...FX_VIEW];
@@ -4636,7 +4761,7 @@ function fallbackImgOK(u){
   try { p = new URL(u, location.origin).pathname; } catch (e) {}
   if (/\/(image[-_]?404|404[-_]?image|no[-_]?image|not[-_]?found)[^/]*$/i.test(p)) return false;
   const m = u.match(/[?&](?:w|width)=(\d{2,4})/i) || u.match(/\/(\d{2,4})x(\d{2,4})\//);
-  return !(m && parseInt(m[1], 10) < 600);
+  return !(m && parseInt(m[1], 10) < 400);
 }
 function leadHtml(h, imageUrl = '', isLatest = true){
   const cat = newsCat(h);
@@ -4659,6 +4784,7 @@ const leadThumbs = new Map();
 function preloadLeadImage(src){
   return new Promise(resolve => {
     const img = new Image();
+    img.referrerPolicy = 'no-referrer';
     const done = ok => { clearTimeout(t); resolve(ok ? src : ''); };
     const t = setTimeout(() => done(false), 12000);   // host gambar hang → jangan biarkan skeleton macet
     img.onload = () => done(img.naturalWidth > 0);
@@ -4872,7 +4998,7 @@ function dedupWire(mapped){
 }
 function renderNews(){
   const mapped = mergedMedia().map(h => {
-    const title = stripPubTail(cleanTitle(h.title), tkPub(h.pub));
+    const title = stripPubTail(cleanTitle(h.title, h.pub), tkPub(h.pub));
     const m = { ...h, title, desc: cleanDesc(h.desc) || descForItem(h) };
     m.cat = newsCatOf(m);   // versi assessment dicek di helper — judul sudah clean untuk fallback
     return m;
@@ -5266,7 +5392,7 @@ const renderTk = (h, isNew) => {
   return `<a class="tk${isNew ? ' tk-new' : ''}" data-cat="${cat}" href="${esc(h.url)}" target="_blank" rel="noopener" title="${esc(h.label || CAT_LABEL[cat] || '')}">` +
     `<svg class="ic tk-sig" aria-hidden="true"><use href="${TK_SIG[cat] || '#i-pin'}"></use></svg>` +
     `<span class="tk-time">${esc(h.ts ? wibTime(h.ts) : '')}</span>` +
-    `<span class="tk-t">${esc(deEmoji(h.title))}</span>` +
+    `<span class="tk-t">${esc(cleanTitle(deEmoji(h.title || ''), h.pub || h.src))}</span>` +
     `<span class="tk-src">${esc(tkPub(h.pub) || h.src)}</span>` +
   `</a>`;
 };
@@ -5394,7 +5520,7 @@ async function pullBreaking(){
       if (d && d.ok) { items = d.items || []; scanned = d.total || 0; }
     }
     if (!items) items = mergedMedia().map(h => {
-      const title = cleanTitle(h.title);
+      const title = cleanTitle(h.title, h.pub);
       const m = { ...h, title };
       const cat = newsCatOf(m);
       return cat ? { ...m, cat, label: CAT_LABEL[cat] } : null;
@@ -5855,7 +5981,7 @@ function mapPopup(it){
   const kc = CAT_COLOR[it.kind] || KIND_COLOR[it.kind] || '';
   const dsc = cleanDesc(it.desc);   // desc insiden bisa mentah — bersihkan sebelum render
   return `<div class="mp-k"${kc ? ` style="color:${kc}"` : ''}>${esc(it.label || KIND_LABEL[it.kind] || 'Insiden')} · ${esc(it.name)}</div>
-    <div class="mp-t">${esc(deEmoji(it.title))}</div>
+    <div class="mp-t">${esc(cleanTitle(deEmoji(it.title || ''), it.pub || it.src))}</div>
     ${dsc ? `<div class="mp-desc">${esc(deEmoji(dsc))}</div>` : ''}
     <div class="mp-m">${esc(it.src)} · ${esc(wibFull(it.ts))} WIB${precTxt(it) ? '<br>' + esc(precTxt(it)) : ''}</div>
     ${it.url ? `<button type="button" class="mp-src mp-read" data-read="${esc(it.url)}">Baca${ic('out')}</button>` : ''}`;
@@ -6435,6 +6561,7 @@ async function pullIncidents(fresh){
       const GEMPA_AID = /bantuan|relief|kemanusiaan|donasi|salurkan|penyintas|pemulihan|posko|logistik|pengungsian|rehabilitasi|rekonstruksi|bansos/i;
       const GEMPA_SIG = /\b(?:m|mag)\.?\s*[:=]?\s*\d+[.,]\d|magnitudo|richter|gempa tektonik|gempa susulan|aftershock|diguncang|guncang|berpusat|episenter|tsunami/i;
       for (const it of mapData) {
+        it.title = cleanTitle(it.title || '', it.pub || it.src);
         const t = it.title || '';
         if (it.kind === 'disaster' && /\bgempa\b|gempabumi/i.test(t) && !GEMPA_SKIP.test(t) && !GEMPA_AID.test(t) && GEMPA_SIG.test(t)) it.sub = 'gempa';
       }
@@ -6783,7 +6910,7 @@ async function pullDisaster(){
           iconSize: [56, 56], iconAnchor: [28, 28],
           html: `<div class="mk-gempa" style="--mc:#ff3b30;--gs:1.4"><i class="mk-rip"></i><i class="mk-rip r2"></i><i class="mk-rip r3"></i><b class="mk-gempa-dot"></b></div>` }) });
         m.bindPopup(`<div class="mp-k" style="color:#ff6b5e">GEMPA · WIRE</div>
-          <div class="mp-t">${esc(deEmoji(p.title || p.name || 'Gempa'))}</div>
+          <div class="mp-t">${esc(cleanTitle(deEmoji(p.title || p.name || 'Gempa'), p.pub || p.src))}</div>
           <div class="mp-m">${esc(p.src || '')} · ${esc(p.ts ? wibTime(p.ts) : '')}</div>`);
         m.bindTooltip('Gempa (berita)', { direction: 'top', offset: [0, -16], opacity: .9 });
         gempaMarkers.push(m);
@@ -7798,6 +7925,16 @@ function rdPlace(x, y) {
   w.style.right = 'auto';
   w.style.bottom = 'auto';
 }
+function rdFitView() {
+  const w = $('#reader');
+  if (!w || !rdOn) return;
+  const r = w.getBoundingClientRect();
+  const m = innerWidth <= 820 ? 8 : 12;
+  if (r.bottom > innerHeight - m) {
+    const newTop = Math.max(m, innerHeight - r.height - m);
+    w.style.top = Math.round(newTop) + 'px';
+  }
+}
 function rdDefaultPlace() {
   const w = $('#reader');
   w.removeAttribute('style');
@@ -7967,16 +8104,19 @@ async function rdLoadThread(kind, url) {
     }
     if (seq !== rdThreadSeq || rdCurrent !== url) return;
     if (!d || !d.ok) throw new Error((d && d.err) || 'tidak ada respons');
-    const list = d.replies || (d.post && d.post.replies) || [];
-    const total = d.count || (d.post && d.post.reply_count) || list.length;
+    const list = Array.isArray(d.replies) ? d.replies : (Array.isArray(d.post && d.post.replies) ? d.post.replies : []);
+    const total = typeof d.count === 'number' ? d.count : ((d.post && typeof d.post.reply_count === 'number') ? d.post.reply_count : (typeof (d.post && d.post.replies) === 'number' ? d.post.replies : list.length));
     if (!list.length) {
-      const why = d.err ? esc(String(d.err).slice(0, 180)) : 'Belum ada balasan publik yang bisa dibaca.';
+      const isSearchDiag = d.err && /0 tweet|search_by_raw_query/i.test(d.err);
+      const why = (d.err && !isSearchDiag) ? esc(String(d.err).slice(0, 180)) : 'Belum ada interaksi publik pada kiriman ini.';
       box.innerHTML = `<div class="rd-rep"><div class="rd-rh"><b>Balasan</b><span>0</span></div>
         <p class="rd-empty">${why}</p></div>`;
+      rdFitView();
       return;
     }
     box.innerHTML = `<div class="rd-rep"><div class="rd-rh"><b>Balasan</b><span>${list.length} dari ${num(total)}</span></div>
       ${list.map(r => rdReplyNode(r, kind, 0)).join('')}</div>`;
+    rdFitView();
   } catch (e) {
     if (seq !== rdThreadSeq || rdCurrent !== url) return;
     box.innerHTML = `<div class="rd-rep"><div class="rd-rh"><b>Balasan</b><span>gagal</span></div>
@@ -8006,6 +8146,7 @@ async function rdOpenSocial(url, trigger, push) {
   if (push && rdCurrentView && !(rdCurrentView.kind === 'web' && rdCurrentView.url === url)) rdPushView();
   const wasOpen = rdOn;
   if (!wasOpen) { rdSetOpen(true); rdDefaultPlace(); }
+  $('#reader').classList.add('is-post');
   rdSyncBack();
   rdCurrent = url;
   rdCurrentView = { kind: 'web', url };
@@ -8080,6 +8221,7 @@ async function rdOpen(url, trigger, push = true, hero = '') {
   rdTrigger = trigger || rdTrigger;
   const wasOpen = rdOn;
   if (!wasOpen) { rdSetOpen(true); rdDefaultPlace(); }
+  $('#reader').classList.remove('is-post');
   rdSyncBack();
   $('#rd-kind').textContent = 'Baca';
   $('#rd-host').textContent = rdHostOf(url);
@@ -8126,6 +8268,7 @@ function rdPost(kind, p, trigger, push = true) {
   rdTrigger = trigger || rdTrigger;
   const wasOpen = rdOn;
   if (!wasOpen) { rdSetOpen(true); rdDefaultPlace(); }
+  $('#reader').classList.add('is-post');
   rdSyncBack();
   $('#rd-kind').textContent = isX ? 'Post · X' : 'Post · Threads';
   $('#rd-host').textContent = isX ? 'x.com' : 'threads.com';
@@ -8163,6 +8306,7 @@ function rdPost(kind, p, trigger, push = true) {
   $('#rd-state').textContent = isX ? 'post x' : 'post threads';
   $('#rd-body').scrollTop = 0;
   if (!wasOpen) { try { $('#rd-close').focus({ preventScroll: true }); } catch (e) {} }
+  rdFitView();
   rdLoadThread(isX ? 'x' : 'threads', url);
 }
 function rdBack() {
@@ -8175,6 +8319,7 @@ function rdBack() {
 function rdClose() {
   if (!rdOn) return;
   rdSetOpen(false);
+  $('#reader').classList.remove('is-post');
   rdStopMedia();   // video/iframe artikel jangan bunyi terus setelah reader tutup
   rdCurrent = ''; rdCurrentView = null; rdStack = [];
   rdSyncBack();
@@ -8216,6 +8361,7 @@ function rdDrop(e) {
 addEventListener('pointerup', rdDrop);
 addEventListener('pointercancel', rdDrop);
 addEventListener('resize', () => {
+  paintHeroes();
   if (!rdOn) return;
   const r = $('#reader').getBoundingClientRect();
   rdPlace(r.left, r.top);
@@ -8260,6 +8406,7 @@ $$('.pane').forEach(p => {
   ph.addEventListener('click', e => {
     if (e.target.closest('button, a, input, select, textarea, .soc-tabs')) return;
     p.classList.toggle('open');
+    if (p.classList.contains('mkt')) paintHeroes();
   });
 });
 if (matchMedia('(max-width: 820px)').matches) {

@@ -145,3 +145,25 @@ test('newsEnglish: berita Indonesia tidak ikut terbuang', () => {
   assert.equal(newsEnglish('Rupiah menguat ke Rp18.250 per dolar AS', 'Nilai tukar rupiah terhadap dolar Amerika Serikat diprediksi fluktuasi ketat pekan ini.'), false);
   assert.equal(newsEnglish('Gempa M5.2 guncang Maluku, 3 meninggal', ''), false);
 });
+
+test('cleanTitle: strips uncleaned source domains and suffixes without cutting compound words', () => {
+  const { cleanTitle } = require('../feedtext');
+  // Outlet domain tails and hyphens
+  assert.equal(cleanTitle('Polisi Tangkap Pengedar Narkoba - tribatanews.com', 'tribatanews.com'), 'Polisi Tangkap Pengedar Narkoba');
+  assert.equal(cleanTitle('Patroli Malam di Wilayah Rawan - tribratanews.com'), 'Patroli Malam di Wilayah Rawan');
+  assert.equal(cleanTitle('Kecelakaan Tol Cipali, 2 Orang Luka-Luka - tribratanews-polrescirebon.com', 'tribratanews-polrescirebon.com'), 'Kecelakaan Tol Cipali, 2 Orang Luka-Luka');
+  assert.equal(cleanTitle('Dua Pelaku Curanmor Diamankan – Polresta Cirebon'), 'Dua Pelaku Curanmor Diamankan');
+  assert.equal(cleanTitle('Waspada Cuaca Ekstrem di Kaltim - Niaga.Asia', 'Niaga.Asia'), 'Waspada Cuaca Ekstrem di Kaltim');
+  assert.equal(cleanTitle('Harga Kebutuhan Pokok Naik - Jambiupdate.co'), 'Harga Kebutuhan Pokok Naik');
+  assert.equal(cleanTitle('Penyelundupan Rokok Ilegal Digagalkan - Batamtimes.co'), 'Penyelundupan Rokok Ilegal Digagalkan');
+  assert.equal(cleanTitle('Pelantikan Pejabat Baru - pemerintah Kabupaten Aceh Barat Daya'), 'Pelantikan Pejabat Baru');
+
+  // Reduplication and Indonesian compound word preservation
+  assert.equal(cleanTitle('Anak-anak Korban Bencana Trauma, Mengaku Pura-pura Sakit - Detikcom', 'detikcom'), 'Anak-anak Korban Bencana Trauma, Mengaku Pura-pura Sakit');
+  assert.equal(cleanTitle('Jalur Tol Pejagan-Pemalang Macet Parah - Radar Tegal', 'radar tegal'), 'Jalur Tol Pejagan-Pemalang Macet Parah');
+  assert.equal(cleanTitle('Konflik Tambang-Sawit Diselesaikan Warga Kassi-Kassi - Tribunnews', 'tribunnews'), 'Konflik Tambang-Sawit Diselesaikan Warga Kassi-Kassi');
+
+  // Editorial prefix stripping
+  assert.equal(cleanTitle('Berita Video - Evakuasi Korban Longsor Berlanjut - Kompas.com', 'kompas.com'), 'Evakuasi Korban Longsor Berlanjut');
+  assert.equal(cleanTitle('Breaking News - Gunung Merapi Luncurkan Awan Panas - CNN Indonesia', 'cnn indonesia'), 'Gunung Merapi Luncurkan Awan Panas');
+});
