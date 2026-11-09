@@ -356,13 +356,13 @@ a{color:inherit;text-decoration:none;text-underline-offset:2px}
   border:1px solid var(--border);border-radius:9px;font:700 9px/1 var(--mono);letter-spacing:.05em;
   text-transform:uppercase;vertical-align:1px}
 .mkt-pill i{width:6px;height:6px;border-radius:50%;flex:none}
-.mkt-pill.open{color:var(--ok);border-color:rgba(66,190,101,.45);background:rgba(66,190,101,.14)}
+.mkt-pill.open{color:var(--ok);border-color:rgba(66,190,101,.2);background:rgba(66,190,101,.07)}
 .mkt-pill.open i{background:var(--ok);animation:pulse 1.8s infinite}
-.mkt-pill.pre,.mkt-pill.post{color:var(--warn);border-color:rgba(241,194,27,.45);background:rgba(241,194,27,.13)}
+.mkt-pill.pre,.mkt-pill.post{color:var(--warn);border-color:rgba(241,194,27,.2);background:rgba(241,194,27,.07)}
 .mkt-pill.pre i,.mkt-pill.post i{background:var(--warn);animation:pulse 1.8s infinite}
-.mkt-pill.break{color:var(--warn);border-color:rgba(241,194,27,.35);background:rgba(241,194,27,.09)}
+.mkt-pill.break{color:var(--warn);border-color:rgba(241,194,27,.16);background:rgba(241,194,27,.05)}
 .mkt-pill.break i{background:var(--warn);opacity:.7}
-.mkt-pill.closed{color:#ff6b6b;border-color:rgba(218,30,40,.5);background:rgba(218,30,40,.15)}
+.mkt-pill.closed{color:#ff6b6b;border-color:rgba(218,30,40,.22);background:rgba(218,30,40,.07)}
 .mkt-pill.closed i{background:var(--accent);opacity:.8}
 .pb{flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;scrollbar-gutter:stable;scrollbar-width:thin;scrollbar-color:#454545 transparent}
 .pb::-webkit-scrollbar{width:8px;height:8px}
@@ -3855,30 +3855,34 @@ function drawChips(el, items, view){
   loadCloses();
 }
 // Sesi bursa IDX (WIB): pra-bursa 08:45–09:00, Sesi I 09:00–12:00,
-// istirahat 12:00–13:30, Sesi II 13:30–15:15, pasca-bursa 15:15–15:30.
+// istirahat 12:00–13:30, Sesi II 13:30–15:45, pasca-bursa 15:50–16:00.
 function idxSession(){
   const w = new Date(Date.now() + (420 + new Date().getTimezoneOffset()) * 60000);
   const t = w.getHours() * 60 + w.getMinutes(), d = w.getDay();
-  if (d === 0 || d === 6) return { k: 'closed', l: 'Tutup' };
-  if (t >= 525 && t < 540) return { k: 'pre', l: 'Pra-bursa' };
-  if ((t >= 540 && t < 720) || (t >= 810 && t < 915)) return { k: 'open', l: 'Bursa buka' };
-  if (t >= 720 && t < 810) return { k: 'break', l: 'Istirahat' };
-  if (t >= 915 && t < 930) return { k: 'post', l: 'Pasca-bursa' };
-  return { k: 'closed', l: 'Tutup' };
+  if (d === 0 || d === 6) return { k: 'closed', l: 'Libur Akhir Pekan' };
+  if (t < 525) return { k: 'pre', l: 'Pra-pasar · Buka 09:00 WIB' };
+  if (t >= 525 && t < 540) return { k: 'pre', l: 'Pra-bursa (08:45–09:00)' };
+  if (t >= 540 && t < 720) return { k: 'open', l: 'Sesi I Live' };
+  if (t >= 720 && t < 810) return { k: 'break', l: 'Istirahat (Sesi II 13:30)' };
+  if (t >= 810 && t < 945) return { k: 'open', l: 'Sesi II Live' };
+  if (t >= 945 && t < 960) return { k: 'post', l: 'Pasca-bursa' };
+  return { k: 'closed', l: 'Pasar Tutup · Buka Besok 09:00' };
 }
 function renderChips(){
   if (!STK) return;
   const all = (STK.items || []).slice().sort((a, b) => (b.vol || 0) - (a.vol || 0));
   const list = all.slice(0, 12);
   drawChips(document.getElementById('stk-chips'), list, STK_VIEW);
-  // umur feed: MKT_AT = timestamp data dari server — tampilkan selisih supaya
-  // staleness terlihat (dulu cuma jam data, user harus hitung sendiri)
-  const mktAgeS = MKT_AT ? Math.max(0, Math.floor((Date.now() - MKT_AT) / 1000)) : -1;
-  const mktAgeTxt = mktAgeS < 0 ? '' : mktAgeS < 90 ? 'baru saja' :
-    mktAgeS < 3600 ? Math.floor(mktAgeS / 60) + ' mnt lalu' : Math.floor(mktAgeS / 3600) + ' jam lalu';
+  // Telemetri feed: deteksi kesegaran data dan status sesi bursa
   const ses = idxSession();
+  const mktAgeS = MKT_AT ? Math.max(0, Math.floor((Date.now() - MKT_AT) / 1000)) : -1;
+  const syncTxt = document.hidden ? 'Sync: Paused'
+    : mktAgeS < 0 ? 'Sync: Connecting'
+    : mktAgeS < 60 ? (ses.k === 'closed' ? 'Sync: Settled' : 'Sync: Live')
+    : mktAgeS < 300 ? `Sync: ${Math.floor(mktAgeS / 60)}m`
+    : 'Sync: Paused';
   $('#stk-meta').innerHTML = `<span class="mkt-pill ${ses.k}"><i></i>${ses.l}</span>` +
-    all.length + ' emiten · ' + (mktAgeTxt || 'menunggu data');
+    all.length + ' emiten · ' + syncTxt;
 }
 function renderFx(){
   if (!FX) return;
