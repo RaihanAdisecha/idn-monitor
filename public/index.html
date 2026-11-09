@@ -59,7 +59,7 @@ a{color:inherit;text-decoration:none;text-underline-offset:2px}
 .hdr{
   position:relative;flex:none;height:var(--hdr);display:flex;align-items:center;gap:16px;
   padding:0 14px;
-  background:linear-gradient(90deg,#0c0c10 0%,#111117 45%,#0b0b0e 100%);
+  background:#00000008;
   border-bottom:1px solid #26262f;
   box-shadow:inset 0 1px 0 rgba(255,255,255,.045),0 2px 12px rgba(0,0,0,.35);
   z-index:10;overflow:hidden;
@@ -294,18 +294,26 @@ a{color:inherit;text-decoration:none;text-underline-offset:2px}
 .tk-rail .tk-set{display:flex;align-items:stretch;flex:none}
 .tk-live{
   position:relative;display:inline-flex;align-items:center;gap:7px;height:var(--tick);
-  padding:0 16px 0 10px;flex:none;font:700 8.5px/1 var(--mono);letter-spacing:.18em;color:#ff6b70;
+  padding:0 20px 0 10px;margin-right:8px;flex:none;font:700 8.5px/1 var(--mono);letter-spacing:.18em;color:#ff6b70;
+  background:#171112;border:1px solid rgba(255,59,65,.25);border-right:none;
+  clip-path:polygon(0 0,100% 0,calc(100% - 8px) 100%,0 100%);
+}
+.tk-live::after{
+  content:"";position:absolute;top:0;right:4px;bottom:0;width:1.5px;
+  background:linear-gradient(180deg,#ff3b41 0%,rgba(255,59,65,.3) 100%);
+  transform:skewX(-18.5deg);
+  box-shadow:0 0 6px rgba(255,59,65,.45);
+  pointer-events:none;
 }
 .tk-live i{width:6.5px;height:6.5px;border-radius:50%;background:#ff3b41;box-shadow:0 0 4px rgba(255,59,65,.5);animation:livepulse 1.6s ease-in-out infinite}
 .tk-live .tk-fresh{font:600 8px/1 var(--mono);letter-spacing:.04em;color:#9a9aa6;font-variant-numeric:tabular-nums}
 @keyframes livepulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.3;transform:scale(.7)}}
-.tk-sig{width:var(--tk-ic);height:var(--tk-ic);flex:none;color:color-mix(in srgb,var(--cat,#8a8a94) 64%,#fff)}
-/* kotak kategori: bg tipis nempel pojok kiri item, glyph sedikit lebih terang dari bg-nya */
+.tk-sig{width:var(--tk-ic);height:var(--tk-ic);flex:none;color:var(--cat,#8a8a94)}
+/* wadah ikon kategori: tanpa container background, hanya glyph vektor yang berwarna */
 .tk-mk{
   display:flex;align-items:center;justify-content:center;
   width:var(--tk-box);height:100%;flex:none;
-  background:rgba(255,255,255,.03);
-  background:color-mix(in srgb,var(--cat,#8a8a94) 10%,transparent);
+  background:none;border:none;
 }
 .tk[data-cat="demo"]{--cat:#f1c21b}
 .tk[data-cat="fire"]{--cat:#ff6b70}
@@ -317,14 +325,31 @@ a{color:inherit;text-decoration:none;text-underline-offset:2px}
 .tk[data-cat="kesehatan"]{--cat:#ff8ab5}
 .tk[data-cat="ekonomi"]{--cat:#6fe7b6}
 .tk[data-cat="politik"]{--cat:#93bcff}
+/* individual marquee item: kartu telemetri diagonal canted (-18.5deg) tanpa gradient bg, zero overlap */
 .tk{
+  --tk-cant:10px;
   position:relative;display:grid;align-items:center;
   grid-template-columns:var(--tk-box) var(--tk-tm) minmax(0,1fr) var(--tk-src);
   column-gap:var(--tk-gap);
-  height:var(--tick);padding:0 18px 0 0;
+  height:var(--tick);padding:0 24px 0 0;
+  margin-right:8px;
+  background:#141418;
+  border-top:1px solid rgba(255,255,255,.07);
+  border-bottom:1px solid rgba(255,255,255,.03);
+  border-left:1px solid rgba(255,255,255,.06);
+  border-right:none;
+  clip-path:polygon(0 0,100% 0,calc(100% - var(--tk-cant)) 100%,0 100%);
   font:500 12.5px/1 var(--disp);color:#d2d2d8;white-space:nowrap;
 }
-/* tanpa garis pemisah: kotak ikon di awal tiap item sudah jadi batas visual */
+/* bilah diagonal taktis 1.5px di tepi kanan kartu (model #btn-tv::after di geo-acts) */
+.tk::after{
+  content:"";position:absolute;top:0;right:5px;bottom:0;width:1.5px;
+  background:linear-gradient(180deg,var(--cat,#8a8a94) 0%,color-mix(in srgb,var(--cat,#8a8a94) 30%,transparent) 100%);
+  transform:skewX(-18.5deg);
+  box-shadow:0 0 6px color-mix(in srgb,var(--cat,#8a8a94) 45%,transparent);
+  pointer-events:none;
+}
+.tk.tk-empty::after{display:none}
 /* hover tanpa perubahan terang: cuma garis bawah netral di judul */
 .tk:hover .tk-t{text-decoration:underline;text-decoration-thickness:1px;text-decoration-color:#3a3a44;text-underline-offset:3px}
 .tk:focus-visible{outline:1px solid rgba(255,255,255,.28);outline-offset:-1px}

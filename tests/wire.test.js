@@ -209,7 +209,7 @@ test('in-app reader media uses adaptive mosaic grid classes and bounded layout',
   assert.ok(html.includes('class="rd-media rd-m-${mCount}"'), 'rdPost must attach dynamic rd-m-${mCount} class to media container');
 });
 
-test('breaking ticker uses a fixed column grid, straight hairlines and a fading gutter mark instead of animation slop', () => {
+test('breaking ticker uses a fixed column grid, canted telemetry blades and a fading gutter mark instead of animation slop', () => {
   const fs = require('fs');
   const path = require('path');
   const html = fs.readFileSync(path.join(__dirname, '../public/index.html'), 'utf8');
@@ -217,16 +217,16 @@ test('breaking ticker uses a fixed column grid, straight hairlines and a fading 
   // grid kolom tetap: kotak ikon, waktu, judul fleksibel, sumber
   assert.ok(html.includes('grid-template-columns:var(--tk-box) var(--tk-tm) minmax(0,1fr) var(--tk-src);'), 'ticker item must use the fixed four-column grid');
   assert.ok(html.includes('--tk-ic:14px;--tk-box:30px;--tk-tm:38px;--tk-src:76px;--tk-gap:10px;'), 'ticker column tokens must be declared once on .ticker');
-  assert.ok(html.includes('height:var(--tick);padding:0 18px 0 0;'), 'item must have zero left padding so the icon box hugs the left edge');
+  assert.ok(html.includes('height:var(--tick);padding:0 24px 0 0;'), 'item must have zero left padding so the icon box hugs the left edge, and 24px right padding for canted blade clearance');
 
   // ornamen bergerak yang dibuang
   assert.ok(!html.includes('tk-sheen'), 'shimmer sheen must not exist');
   assert.ok(!html.includes('tk-laser') && !html.includes('tk-newflash') && !html.includes('tkpulse'), 'laser, flash and pulse animations must not exist');
   assert.ok(!html.includes('drop-shadow(0 0 4px rgba(241,194,27'), 'category glyphs must not glow');
 
-  // ikon dibalut kotak bg tipis; glyph lebih terang dari bg-nya
-  assert.ok(html.includes('background:color-mix(in srgb,var(--cat,#8a8a94) 10%,transparent);'), 'icon box must use a low-opacity category tint');
-  assert.ok(html.includes('color:color-mix(in srgb,var(--cat,#8a8a94) 64%,#fff)'), 'glyph must be brighter than its box');
+  // ikon kategori murni berwarna tanpa background container box
+  assert.ok(html.includes('.tk-mk{') && html.includes('background:none;border:none'), 'icon container must have no background box or border');
+  assert.ok(html.includes('color:var(--cat,#8a8a94)'), 'glyph itself must be colored by category token');
   assert.ok(!html.includes('.tk-mk::after{'), 'the 2px underline mark must be gone');
   assert.ok(html.includes('class="tk-mk"><svg class="ic tk-sig"'), 'renderTk must wrap the glyph in .tk-mk');
 
@@ -234,9 +234,13 @@ test('breaking ticker uses a fixed column grid, straight hairlines and a fading 
   assert.ok(html.includes('.tk.tk-new::before{') && html.includes('animation:tk-mark 6s linear forwards'), 'new items must use a self-extinguishing gutter mark');
   assert.ok(html.includes('@media (prefers-reduced-motion:reduce){.tk.tk-new::before{animation:none}}'), 'gutter mark must respect reduced motion');
 
-  // tanpa garis pemisah yang digambar
-  assert.ok(!html.includes('.tk::after{'), 'items must be delimited by the icon block, not a drawn rule');
-  assert.ok(!html.includes('.tk-live::after{'), 'LIVE chip must not draw a divider');
+  // kartu marquee individual diagonal (canted telemetry pod -18.5deg) tanpa background gradient, bilah diagonal kanan berwarna
+  assert.ok(html.includes('background:#141418;') && html.includes('--tk-cant:10px;'), 'marquee item must use solid background without gradient');
+  assert.ok(html.includes('clip-path:polygon(0 0,100% 0,calc(100% - var(--tk-cant)) 100%,0 100%);'), 'individual ticker item must be canted diagonally');
+  assert.ok(html.includes('.tk::after{') && html.includes('width:1.5px;') && html.includes('transform:skewX(-18.5deg);'), 'ticker item right diagonal blade must be 1.5px laser canted blade');
+  assert.ok(html.includes('margin-right:8px;'), 'ticker items must maintain positive separation gap to prevent overlap');
+  assert.ok(html.includes('.tk-live{') && html.includes('clip-path:polygon(0 0,100% 0,calc(100% - 8px) 100%,0 100%);'), 'LIVE chip must use matching canted diagonal cut');
+  assert.ok(html.includes('.hdr{') && html.includes('background:#00000008;'), 'top header nav must use #00000008 background');
 
   // hover tanpa efek menyala: no background/opacity/color lift
   assert.ok(!html.includes('.tk:hover{') && !html.includes('.tk:hover .tk-mk') && !html.includes('.tk:hover .tk-time'), 'ticker must not brighten on hover');
