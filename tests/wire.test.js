@@ -406,3 +406,49 @@ test('globe focus & alert toast pipeline enforces camera override, home return a
   // 6. cl-toasts card click flies to location if coordinates exist
   assert.ok(html.includes("if (!closeBtn && frontCard.dataset.la && frontCard.dataset.lo)"), 'cl-toasts card click must fly camera to incident coordinates when present');
 });
+
+test('demo detection, geocoding and social orchestration pipeline fixes', () => {
+  const GEO = require('../geocode');
+  const ASSESS = require('../assessment');
+  const SOC = require('../social');
+  const fs = require('fs');
+  const path = require('path');
+  const serverCode = fs.readFileSync(path.join(__dirname, '../server.js'), 'utf8');
+  const html = fs.readFileSync(path.join(__dirname, '../public/index.html'), 'utf8');
+
+  // 1. Geocode: Polda Metro Jaya does not reject valid location; Tugu Tani resolved
+  const tuguTani = GEO.locate('Polda Metro Jaya Siapkan Pengamanan Demo di Tugu Tani');
+  assert.ok(tuguTani, 'Headline mentioning Polda Metro Jaya and Tugu Tani must resolve');
+  assert.equal(tuguTani.name, 'Tugu Tani');
+  assert.equal(tuguTani.prec, 'poi');
+  assert.equal(tuguTani.la, -6.1834);
+  assert.equal(tuguTani.lo, 106.8339);
+
+  // 2. Geocode: Istana disambiguation avoids Desa Istana in Riau
+  const istana = GEO.locate('Gibran dimakzulkan di Istana');
+  assert.ok(istana, 'Istana headline must resolve to Istana Merdeka POI');
+  assert.equal(istana.name, 'Istana Merdeka');
+  assert.equal(istana.prec, 'poi');
+
+  // 3. Assessment: Demo mobilization verbs qualify as signalEligible demo events
+  const demoNews = ASSESS.assess('Antisipasi Demo 10 November di DPR RI, Polda Metro Jaya Kerahkan Ribuan Personel', SOC.SOC_TOPICS);
+  assert.ok(demoNews.topics.includes('demo'), 'Must include demo topic');
+  assert.equal(demoNews.signalEligible, true, 'Security mobilization for demo must be signalEligible');
+  assert.ok(demoNews.events.some(e => e.category === 'demo' && e.location && e.location.name.includes('DPR')), 'Event must be anchored to DPR');
+
+  // 4. Metaphor & Listing shielding: Real-estate listing does not trigger flood incident
+  const adText = 'Rumah Dijual di Sentul Cluster Bebas Banjir DP 0% Cicilan KPR Murah';
+  const adResult = SOC.socAssess(adText);
+  assert.equal(adResult.signalEligible, false, 'Property listing cannot be signalEligible');
+  assert.equal(adResult.events.length, 0, 'Property listing must have 0 events');
+
+  // 5. Server: DEFAULT_TH_WATCH restricts to emergency authorities; media blacklist active
+  assert.ok(serverCode.includes("DEFAULT_TH_WATCH = ['infobmkg', 'bnpb_indonesia']"), 'DEFAULT_TH_WATCH must contain only crisis authorities');
+  assert.ok(serverCode.includes('TH_MEDIA_BLACKLIST'), 'server.js must define TH_MEDIA_BLACKLIST');
+
+  // 6. Server: newsKeywords and synthQueries enforce Compound Crisis Anchoring & negative filters
+  assert.ok(serverCode.includes('-dijual -kpr -rumah -sewa -properti -cluster'), 'X queries must include negative real-estate filters');
+
+  // 7. Frontend: CAT_SKIP does not suppress demo titles
+  assert.ok(html.includes('const isDemo = CAT_RE.demo && CAT_RE.demo.test(t);') && html.includes('if (CAT_SKIP.test(t) && !isDemo) return \'\';'), 'Frontend catOfTitle must preserve demo categories');
+});

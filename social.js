@@ -346,12 +346,14 @@ function socAdhoc(phrases) {
 /* ---------- post yang layak (buang balasan obrolan) ---------- */
 function socKeepX(p) {
   if (/^\s*@\w+/.test(p.text || '') && (p.likes || 0) < 10) return false;      // reply chatter
+  if (!p.assessment?.signalEligible && SOC_LISTING_RE.test(p.text || '') && SOC_LISTING_DEAL.test(p.text || '')) return false;
   return true;
 }
 function socKeepTh(p) {
   // reply tanpa engagement dibuang — kecuali ia match topik (tag() sudah jalan
   // lebih dulu dan mengisi p.topics), karena Threads itu reply-heavy
   if (p.is_reply && (p.like_count || 0) < 5 && !(p.topics || []).length) return false;
+  if (!p.assessment?.signalEligible && SOC_LISTING_RE.test(p.text || '') && SOC_LISTING_DEAL.test(p.text || '')) return false;
   return true;
 }
 

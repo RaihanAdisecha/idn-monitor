@@ -45,7 +45,7 @@ const CUE_FROM = new Set(['dari', 'asal', 'warga', 'asal-usul']);
 const DEST_VERB = new Set(['dipulangkan', 'dikirim', 'dibawa', 'dilarikan', 'dirujuk', 'diterbangkan', 'diberangkatkan', 'dikembalikan', 'menuju', 'kembali', 'pulang', 'mudik', 'dipindahkan', 'dievakuasi', 'diangkut']);
 const SEP_OK = new Set(['dan', 'serta', 'hingga', 'sampai', 'maupun', 'atau', 'juga', 'sekitarnya', 'dll', 'lainnya']);
 // frasa yang kelihatan seperti lokasi tapi bukan
-const NOT_PLACE = /\b(polda metro jaya|metro tv|metro jaya|batu bara kalori|harga batu bara|pembangkit batu bara|tambang batu bara|serang(?:an)? (?:balik|udara|siber))\b/;
+const NOT_PLACE = /\b(polda metro jaya|metro tv|metro jaya|batu bara kalori|harga batu bara|pembangkit batu bara|tambang batu bara|serang(?:an)? (?:balik|udara|siber))\b/gi;
 
 const kabByCode = {}, provByCode = {};
 for (const p of G.prov) provByCode[p.code] = p;
@@ -149,6 +149,7 @@ POI.push({ re: /(?:^| )istana maimun(?= |$)/, e: { id: 'istana-maimun', level: '
 POI.push({ re: /(?:^| )istana (?:pagaruyung|basa pagaruyung)(?= |$)/, e: { id: 'istana-pagaruyung', level: 'poi', name: 'Istana Pagaruyung', la: -0.4712, lo: 100.6212, prov: 'Sumatera Barat', prec: 'poi' } });
 LM('istana', 'Istana Merdeka', -6.1702, 106.8272, /(?:^| )(?:istana (?:negara|merdeka|presiden)|(?:gedung|depan|sekitar|area|kawasan|menuju|geruduk|segel|kepung|demo di|aksi di|rapat di|panggil ke|di|ke) istana|\bistana(?!\s+(?:maimun|pagaruyung|kadriah|siak|alwatzikhoebillah|bogor|cipanas|tampaksiring|garuda|anak anak))\b)(?= |$)/);
 LM('dpr', 'DPR / MPR Senayan', -6.2185, 106.8002, /(?:^| )(?:(?:gedung|depan|kompleks|kawasan|menuju|geruduk|segel|kepung|demo di|aksi di|di|ke) (?:dpr|mpr|dpr ri|parlemen)|senayan|\bdpr ri\b)(?= |$)/);
+LM('tugu-tani', 'Tugu Tani', -6.1834, 106.8339, /(?:^| )(?:tugu tani|patung pahlawan)(?= |$)/);
 LM('monas', 'Monas', -6.1754, 106.8272, /(?:^| )(?:monas|patung kuda|medan merdeka|lapangan banteng|bundaran hi)(?= |$)/);
 LM('mk', 'Mahkamah Konstitusi', -6.1751, 106.8228, /(?:^| )(?:gedung mk|mahkamah konstitusi)(?= |$)/);
 LM('kpk', 'Gedung KPK', -6.2115, 106.8315, /(?:^| )(?:gedung kpk|kantor kpk|kpk ri)(?= |$)/);
@@ -383,8 +384,10 @@ for (const [key, rows] of villageIdx) {
 BIG = null; // release the parsed source tables after building compact runtime indexes
 
 function locate(title) {
-  const text = norm(title);
-  if (!text || NOT_PLACE.test(text)) return null;
+  let text = norm(title);
+  if (!text) return null;
+  text = text.replace(NOT_PLACE, ' ').replace(/\s+/g, ' ').trim();
+  if (!text) return null;
   const tk = text.split(' ');
   const cands = [];
   const padded = ' ' + text;

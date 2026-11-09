@@ -489,7 +489,7 @@ const CATS = [
 // Nama negara/kota SENGAJA tidak ikut: filter letak geografis crude dan membunuh
 // berita relevan ("WNI dievakuasi dari Tokyo"). Berita luar boleh tampil di wire;
 // pencegahan pin tetap structural via gazetteer Indonesia-only + scope foreign.
-const SKIP_JUNK = /(pascabencana|pascagempa|pascabanjir|mitigasi|kesiapsiagaan|potensi bencana|rawan bencana|risiko bencana|kajian risiko|simulasi|edukasi|sosialisasi|pelatihan|antisipasi|siaga bencana|hadapi bencana|menghadapi bencana|peringatan dini|early warning|asuransi|operasi patuh|imbau|himbau|ingatkan|waspada|waspadai|ranperda|perda|godok|korupsi|dana bencana|tas bencana|go[- ]?bag|pusdalops|kebutuhan darurat|peralatan bencana|salurkan bantuan|menyalurkan|penyaluran|modus|ruu|boikot dirinya|perang harga|perang dagang|joget|liga|top skor|voli|sepak bola|piala|kualifikasi|gaun|mahalini|fashion|film|sinema|bioskop|trailer|teaser|poster|nonton|netflix|zombie|mayat hidup|hantu|sekuel|layar lebar|sinetron|sinetrik|penghargaan|jasa raharja|warisan|turun-temurun|sepanjang 20\d\d|berdampak ke ekonomi)/i;
+const SKIP_JUNK = /(pascabencana|pascagempa|pascabanjir|mitigasi|kesiapsiagaan(?!\s*(?:pengamanan|aparat|pasukan|personel|polri|tni|demo|unjuk rasa|aksi))|potensi bencana|rawan bencana|risiko bencana|kajian risiko|simulasi|edukasi|sosialisasi|pelatihan|antisipasi(?!\s*(?:demo|unjuk rasa|aksi|massa|kerusuhan|bentrok|keamanan|pengamanan))|siaga bencana|hadapi bencana|menghadapi bencana|asuransi|operasi patuh|ranperda|perda|godok|korupsi|dana bencana|tas bencana|go[- ]?bag|pusdalops|kebutuhan darurat|peralatan bencana|salurkan bantuan|menyalurkan|penyaluran|modus|ruu|boikot dirinya|perang harga|perang dagang|joget|liga|top skor|voli|sepak bola|piala|kualifikasi|gaun|mahalini|fashion|film|sinema|bioskop|trailer|teaser|poster|nonton|netflix|zombie|mayat hidup|hantu|sekuel|layar lebar|sinetron|sinetrik|penghargaan|jasa raharja|warisan|turun-temurun|sepanjang 20\d\d|berdampak ke ekonomi)/i;
 // SKIP_RE = junk + geo — hanya untuk jalur sosial/tren yang memang mau fokus Indonesia.
 const SKIP_FOREIGN = /(brasil|brazil|amerika serikat|filipina|thailand|malaysia|korea|jepang|tiongkok|china|inggris|prancis|perancis|paris|jerman|australia|india|pakistan|iran|israel|palestina|ukraina|rusia|gaza|poland|polandia|polonia|krakow|warsaw|warszawa|lublin|czechia|ceko|prague|austria|wina|vienna|finland|finlandia|singapura|singapore|suriah|syria|irak|iraq|mesir|egypt|libya|libia|maroko|morocco|aljazair|algeria|tunisia|sudan|ethiopia|kenya|ghana|myanmar|kamboja|cambodia|laos|srilanka|sri lanka|bangladesh|lebanon|yordania|jordan|yaman|yemen|oman|qatar|uea|hungaria|hungary|rumania|romania|bulgaria|serbia|kroasia|croatia|slowakia|slovakia|slovenia|belgia|belgium|irlandia|ireland|estonia|latvia|lithuania|belarus|mongolia|maladewa|maldives|timor leste|selandia baru|new zealand|kuba|cuba|jamaika|jamaica|haiti|nikaragua|kosta rika|costa rica|kolombia|colombia|venezuela|bolivia|ekuador|ecuador|peru|paraguay|uruguay|congo|rwanda|uganda|tanzania|zambia|zimbabwe|mozambique|angola|namibia|botswana|lesotho|madagascar|mauritius|somalia|eritrea|djibouti|afghanistan|bhutan|brunei|albania|armenia|azerbaijan|cyprus|iceland|kosovo|luxembourg|malta|moldova|montenegro|san marino|vatikan|vatican|monako|monaco|georgia|jordan|panama|senegal|cameroon|gambia|guinea|sierra leone|liberia|mauritania|burkina faso|tokyo|seoul|beijing|shanghai|hong kong|taipei|bangkok|hanoi|manila|kualalumpur|kathmandu|moskwa|moscow|berlin|rome|roma|madrid|amsterdam|brussels|zurich|stockholm|oslo|copenhagen|helsinki|dublin|budapest|bucharest|sofia|belgrade|zagreb|vilnius|riga|tallinn|minsk|kiev|kyiv|istanbul|ankara|tehran|baghdad|beirut|riyadh|cairo|tunis|algiers|rabat|tripoli|khartoum|nairobi|kampala|kigali|lusaka|harare|pretoria|mogadishu|bamako|dakar|abuja|lagos|accra|kinshasa|bangui|yaounde|conakry|lome|cotonou|abidjan|nouakchott|maseru|mbabane|gaborone|windhoek|maputo|antananarivo|moroni|port louis|sao paulo|rio de janeiro|brasilia|buenos aires|bogota|caracas|la paz|asuncion|montevideo|kingston|havana|santo domingo|port-au-prince|nassau|bridgetown|castries|paramaribo|managua|tegucigalpa|san salvador|san jose|guatemala city|mexico city|sucre|guayaquil)/i;
 const SKIP_RE = new RegExp('(?:' + SKIP_JUNK.source.slice(1, -1) + ')|(?:' + SKIP_FOREIGN.source.slice(1, -1) + ')', 'i');
@@ -519,7 +519,11 @@ const catOf = (t, a) => {
   // Feed categorization = topic relevance, BUKAN signal eligibility.
   // events[] hanya untuk alarm/klaster; headline berita jarang punya EVENT_ACTION
   // jadi events kosong untuk sebagian besar judul legit.
-  if (!a.topics.length || SKIP_JUNK.test(t)) return '';
+  if (!a.topics.length) return '';
+  if (SKIP_JUNK.test(t)) {
+    const isCrisisOrDemo = /(?:demo|unjuk rasa|aksi massa|protes|mogok|kerusuhan|bentrok|tsunami|gempa|erupsi|kebakaran|banjir|pengamanan|siagakan|siapkan)/i.test(t);
+    if (!isCrisisOrDemo) return '';
+  }
   // Scope foreign TIDAK membuang kategori: berita luar boleh berlabel (badge +
   // flag 'foreign' → UI tandai Global). Pencegahan geo tetap structural di
   // incidents()/situation()/breaking() via foreignOf — bukan di sini.
@@ -847,39 +851,45 @@ const NEWS_KW_RE = /[a-z][a-z'-]{3,}/g;
 const NEWS_KW_STOP = new Set(('dalam atas bawah antara belum saja hanya lagi harus masih namun tetapi nanti kemarin lusa dekat jauh setiap semua banyak sedikit sedang pernah bukan yaitu yakni bila agar supaya tersebut kaum kaumnya atau rumah warga orang anak pria wanita ibu bapak mobil motor gedung kantor tanah lahan desa kota jalan hari bulan tahun waktu tempat kerja loker jasa harga biaya uang pasar toko produk barang sekolah kampus kuliah teman keluarga makan minum hidup mati kabar cerita kisah acara kegiatan program situasi kondisi proses sistem bentuk bagian nomor nama sosok').split(' '));
 const newsKeywords = () => memo('newskw', 600000, async () => {
   try {
-    const srcs = await news(), now = Date.now(), df = new Map(); let n = 0;
+    const srcs = await news(), now = Date.now(), pairs = new Map(); let n = 0;
     for (const s of srcs) {
       if (!s.ok) continue;
       for (const it of s.items) {
         if (!Number.isFinite(it.ts) || it.ts <= 0 || it.ts > now || now - it.ts > 24 * 3600e3) continue;
-        if (!GEO_INC_RE.test(it.title)) continue;   // keyword berita HANYA ditambang dari berita insiden/krisis
+        const title = String(it.title || '');
+        if (!GEO_INC_RE.test(title)) continue;   // keyword berita HANYA ditambang dari berita insiden/krisis
         n++;
-        const seen = new Set();
-        for (const m of String(it.title + ' ' + (it.desc || '')).toLowerCase().matchAll(NEWS_KW_RE)) {
-          const w = m[0].replace(/^[-']+|[-']+$/g, '');
-          if (w.length < 4 || seen.has(w)) continue;
-          seen.add(w);   // df: satu dokumen cukup dihitung sekali per term
-          if (TSTOP.has(w) || TBLK.has(w) || NEWS_KW_STOP.has(w) || SOC.SOC_FOREIGN_RE.test(w)) continue;
-          df.set(w, (df.get(w) || 0) + 1);
+        const actMatch = title.match(GEO_INC_RE);
+        const action = actMatch ? actMatch[0].toLowerCase().trim() : '';
+        if (!action || action.length < 3 || TSTOP.has(action) || NEWS_KW_STOP.has(action)) continue;
+        let locName = '';
+        try {
+          const loc = GEO.locate(title);
+          if (loc && loc.name) locName = loc.name.toLowerCase().trim();
+        } catch (_) {}
+        if (!locName) {
+          const capMatch = title.match(/[A-Z][A-Za-z'-]{3,}(?:\s+[A-Z][A-Za-z'-]{3,})?/g);
+          if (capMatch) {
+            for (const cm of capMatch) {
+              const cml = cm.toLowerCase().trim();
+              if (!TSTOP.has(cml) && !TBLK.has(cml) && !NEWS_KW_STOP.has(cml) && !SOC.SOC_FOREIGN_RE.test(cml) && cml !== action) {
+                locName = cml;
+                break;
+              }
+            }
+          }
         }
+        if (!locName || locName === action) continue;
+        const compound = `${action} ${locName}`.trim();
+        pairs.set(compound, (pairs.get(compound) || 0) + 1);
       }
     }
     if (!n) return [];
-    const min = Math.max(4, Math.ceil(n * 0.005));
-    // df mentah memihak token umum — selain stopword, buang nama tempat murni
-    // (jakarta/jawa timur/dki/dst akan jadi query junk yang di-forced tiap
-    // siklus). GEO dideklarasikan lebih bawah di file ini tapi sudah ter-init
-    // sebelum memo callback pertama jalan. locate() sekali per term unik, bukan
-    // per dokumen — murah karena memo 10 menit.
-    const out = [];
-    for (const [term, dfv] of [...df.entries()].filter(([, d]) => d >= min).sort((a, b) => b[1] - a[1])) {
-      let isPlace = false;
-      try { isPlace = !!GEO.locate(term); } catch (e) { /* gazetteer aneh → biarkan */ }
-      if (isPlace) continue;
-      out.push({ term, df: dfv });
-      if (out.length >= 5) break;
-    }
-    return out;
+    return [...pairs.entries()]
+      .filter(([, df]) => df >= 2)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5)
+      .map(([term, df]) => ({ term, df }));
   } catch (e) { return []; }
 });
 // frasa yang lagi naik DI SOSIAL — beda dengan trendingQueries (dari judul berita).
@@ -955,13 +965,13 @@ function synthQueries(kind, adhoc, trends, base, phrases, kw, newsKw) {
   // hanya frasa satu kata; '#dua kata' dirapatkan jadi tag yang tak pernah ada
   for (const a of adhoc || []) {
     const id = String(a.id);
-    if (kind === 'x') add('adhoc2:' + id, id + ' -filter:replies');
+    if (kind === 'x') add('adhoc2:' + id, id + ' -dijual -kpr -rumah -sewa -filter:replies');
     else if (!/\s/.test(id)) add('adhoc2:' + id, '#' + id);
   }
   // tren X: nama tren jadi query exact-phrase ala adhoc ('"' distrip biar query nggak patah)
   for (const n of trends || []) {
     const nm = String(n).replace(/"/g, '');
-    add('xtrend:' + nm.toLowerCase(), '"' + nm + '" -filter:replies');
+    add('xtrend:' + nm.toLowerCase(), '"' + nm + '" -dijual -kpr -rumah -sewa -filter:replies');
   }
   // frasa sosial native: x exact-phrase, th teks polos (+hashtag untuk kata
   // tunggal — beda dengan varian adhoc yang cuma hashtag)
@@ -969,7 +979,7 @@ function synthQueries(kind, adhoc, trends, base, phrases, kw, newsKw) {
     const ph = String((p && (p.ph || p.id)) || '').replace(/"/g, '').trim().toLowerCase();
     if (ph.length < 3 || ph.length > 42) continue;
     const id = 'socphrase:' + ph.replace(/\s+/g, '-');
-    if (kind === 'x') addP(id, '"' + ph + '" -filter:replies');
+    if (kind === 'x') addP(id, '"' + ph + '" -dijual -kpr -rumah -sewa -filter:replies');
     else { addP(id, ph); if (!/\s/.test(ph)) addP(id, '#' + ph); }
   }
   // keyword mining: term = query polos untuk th; x ikut gaya registry —
@@ -977,17 +987,20 @@ function synthQueries(kind, adhoc, trends, base, phrases, kw, newsKw) {
   for (const k of kw || []) for (const term of (k.terms || []).slice(0, 4)) {
     const tm = String(term || '').replace(/"/g, '').trim();
     if (tm.length < 3 || tm.length > 42) continue;
-    addK(k.t, kind === 'x' ? (/\s/.test(tm) ? '"' + tm + '" -filter:replies' : tm + ' -filter:replies') : tm);
+    addK(k.t, kind === 'x' ? (/\s/.test(tm) ? '"' + tm + '" -dijual -kpr -rumah -sewa -filter:replies' : tm + ' -dijual -kpr -rumah -sewa -filter:replies') : tm);
   }
-  // keyword berita 24 jam: term = token tunggal → x polos + -filter:replies;
-  // th teks polos, plus varian hashtag hanya untuk term >=5 huruf (gaya
-  // registry th yang mencampur kata polos & tag; '#x' 4 huruf hampir pasti junk)
+  // keyword berita 24 jam: compound anchor [Action] + [Entity/Location]
   (newsKw || []).forEach((k, i) => {
     const tm = String((k && k.term) || '').replace(/"/g, '').trim().toLowerCase();
-    if (tm.length < 4 || /\s/.test(tm)) return;
+    if (tm.length < 4) return;
     const id = 'newskw:' + i;
-    if (kind === 'x') addN(id, tm + ' -filter:replies');
-    else { addN(id, tm); if (tm.length >= 5) addN(id, '#' + tm); }
+    if (kind === 'x') {
+      const qText = tm.includes(' ') ? `"${tm}"` : tm;
+      addN(id, `${qText} -dijual -kpr -rumah -sewa -properti -cluster -filter:replies`);
+    } else {
+      addN(id, tm);
+      if (!tm.includes(' ') && tm.length >= 5) addN(id, '#' + tm);
+    }
   });
   return out;
 }
@@ -1205,16 +1218,28 @@ function thCollect(rs, extra) {
 // Indonesia + penulis yang post-nya sudah lolos klasifier di history — dinamis,
 // bukan tebakan handle. Profile posts dipakai karena search logged-out cuma
 // dapat ~20 hasil tanpa halaman 2.
-const DEFAULT_TH_WATCH = ['hariankompas', 'tribunnews', 'liputan6', 'tempodotco', 'suarasurabayamedia', 'indonesiaraya_kita.id'];
+const DEFAULT_TH_WATCH = ['infobmkg', 'bnpb_indonesia'];
+const TH_MEDIA_BLACKLIST = new Set([
+  'hariankompas', 'tribunnews', 'liputan6', 'tempodotco', 'suarasurabayamedia',
+  'indonesiaraya_kita.id', 'detikcom', 'kompascom', 'cnnindonesia', 'cnbcindonesia',
+  'kumparancom', 'republikaonline', 'merdekadotcom', 'sindonews', 'okezonecom',
+  'jawapos', 'inewsdotid', 'antaranews', 'tvonenews', 'metrotv'
+]);
 const TH_WATCH = ((Array.isArray(TH.watch) && TH.watch.length) ? TH.watch : DEFAULT_TH_WATCH)
-  .map(s => String(s).replace(/^@/, '').trim()).filter(Boolean);
+  .map(s => String(s).replace(/^@/, '').trim())
+  .filter(u => u && !TH_MEDIA_BLACKLIST.has(u));
 const dynWatch = (now) => {
   const uc = Object.create(null);
   for (const p of tHist.values()) {
-    const u = String(p.username || '').toLowerCase();
-    if (u && histTs(p) > now - 24 * 3600e3) uc[u] = (uc[u] || 0) + 1;
+    if (String(p.q || '').startsWith('@')) continue; // Must be discovered via topic query search
+    if (!p.assessment || p.assessment.signalEligible !== true) continue; // Verified crisis signal only
+    const u = String(p.username || '').toLowerCase().replace(/^@/, '');
+    if (!u || TH_MEDIA_BLACKLIST.has(u) || TH_WATCH.includes(u)) continue;
+    if (histTs(p) > now - 24 * 3600e3) {
+      uc[u] = (uc[u] || 0) + 1;
+    }
   }
-  return Object.entries(uc).sort((a, b) => b[1] - a[1]).slice(0, 16).map(([u]) => u);
+  return Object.entries(uc).sort((a, b) => b[1] - a[1]).slice(0, 8).map(([u]) => u);
 };
 const thSeen = new Map(), thYield = new Map(), thTopicOff = new Map();   // topik -> ts fetch terakhir, yield, & offset rotasi query
 let thTick = 0;
@@ -1356,14 +1381,26 @@ function socialResponse(result, map, keep) {
   let c = socialRespCache.get(map);
   if (!c || c.fp !== fp) {
     histRetag(map, keep);
-    // lane profil Threads (q='@user') di-cap 4/akun di response — akun watchlist
-    // di-fetch tiap siklus jadi post-nya selalu fresh dan bisa mendominasi feed;
-    // post dari search (akun siapapun) tidak dibatasi di sini
-    const pc = Object.create(null);
+    // Universal author diversity cap: tidak ada satu akun yang bisa mendominasi feed,
+    // baik dari search query maupun profil (X & Threads), kecuali kanal otoritas (@infobmkg).
+    const authorHourly = Object.create(null);
+    const authorTotal = Object.create(null);
     c = { fp, posts: HISTORY.snapshot(map, now).posts.filter(p => {
-      if (!String(p.q || '').startsWith('@')) return true;
-      if (p.assessment && p.assessment.signalEligible) return true;
-      const u = histUser(p); return (pc[u] = (pc[u] || 0) + 1) <= 4;
+      const u = String(p.handle || p.username || p.user || '').toLowerCase().replace(/^@/, '');
+      if (!u) return true;
+      if (u === 'infobmkg' || u === 'bnpb_indonesia') return true;
+      const isSig = !!(p.assessment && p.assessment.signalEligible);
+      const ts = histTs(p) || now;
+      const hourBucket = Math.floor(ts / 3600e3);
+      const hKey = `${u}|${hourBucket}`;
+      const maxPerHour = isSig ? 3 : 2;
+      const maxTotal = isSig ? 6 : 4;
+      const currentH = authorHourly[hKey] || 0;
+      const currentTot = authorTotal[u] || 0;
+      if (currentH >= maxPerHour || currentTot >= maxTotal) return false;
+      authorHourly[hKey] = currentH + 1;
+      authorTotal[u] = currentTot + 1;
+      return true;
     }) };
     socialRespCache.set(map, c);
   }
@@ -1513,7 +1550,10 @@ const placeOf = t => GEO.locate(t);
 // Dipakai hanya untuk titik peta/statistik wilayah; berita tetap tampil di news wire.
 const NOT_EVENT_RE = /\b(reses|apresiasi|penghargaan|salurkan|menyalurkan|penyaluran|bantuan (?:rp|tahap|untuk|bagi|kemanusiaan)|kirim bantuan|donasi|santunan|gagasan|webinar|seminar|rakor|rapat koordinasi|kunjungan kerja|kunker|dipulangkan|pemulangan|ucapan duka|doa bersama|pekarangan|ketahanan pangan|kesejahteraan|proklim|sinkronkan|disinkronkan|inovasi|sosialisasi|edukasi|kesiapsiagaan|mitigasi|pencegahan|simulasi|pelatihan|resmikan|launching|dihadiri|hadiri|tinjau|opini|analisis|kolom|imbau|pemakaman)\b/i;
 const HEALTH_EVENT_RE = new RegExp('(?:' + HEALTH_DZ + '|' + HEALTH_EVT + ')', 'i');
-const plotOk = (title, cat) => !NOT_EVENT_RE.test(title) && (cat !== 'kesehatan' || HEALTH_EVENT_RE.test(title));
+const plotOk = (title, cat) => {
+  if (cat === 'demo') return !/\b(reses|apresiasi|penghargaan|webinar|seminar|rakor|kunjungan kerja|kunker|opini|analisis|kolom)\b/i.test(title);
+  return !NOT_EVENT_RE.test(title) && (cat !== 'kesehatan' || HEALTH_EVENT_RE.test(title));
+};
 const GEO_WINDOW = 24 * 3600e3;
 const incidents = () => memo('incidents', 55000, async () => {
   const srcs = await news(), now = Date.now(), out = [], seen = new Set(), aOf = assessCycle();
