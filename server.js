@@ -1567,7 +1567,7 @@ const incidents = () => memo('incidents', 55000, async () => {
         out.push({ name: pl.name, la: pl.la, lo: pl.lo, prec: pl.prec, prov: pl.prov, kind: cat,
           label: meta.label, title: cleanTitle(it.title, it.pub), multi: places.length > 1 || undefined,
           desc: dd.length > 400 ? dd.slice(0, 397).replace(/\s+\S*$/, '') + '…' : (dd || undefined),
-          assessment: a, src: s.id, url: it.url, ts: it.ts,
+          assessment: a, src: s.id, url: it.url, ts: it.ts, pub: it.pub || undefined,
           weight: +(heat / (approx ? 2 : 1) / Math.sqrt(places.length)).toFixed(3), approx: approx || undefined });
     }
   }
@@ -1615,7 +1615,7 @@ const situation = () => memo('situation', 45000, async () => {
       const fr = foreignOf(it.title, a);
       if (fr) foreignN++;
       items.push({ title: cleanTitle(it.title, it.pub), url: it.url, src: s.id, ts: it.ts, assessment: a,
-        cat, label: meta.label, place: place ? place.name : '', foreign: fr || undefined,
+        cat, label: meta.label, place: place ? place.name : '', foreign: fr || undefined, pub: it.pub || undefined,
         weight: +(meta.sev * recency).toFixed(3) });
       if (!fr) stats[cat]++;
       // guard scope yang sama dengan incidents(): judul all-non-Indonesia tidak
