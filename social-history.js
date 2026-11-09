@@ -21,10 +21,16 @@ const bodyLen = s => String(s).replace(/https?:\/\/\S+/g, ' ').replace(/[#@]\S+/
 function tag(p, extra = [], now = Date.now()) {
   const ts = tsOf(p);
   if (!Number.isFinite(ts) || ts <= 0 || ts > now || now - ts > AGE) return false;
+  if (typeof p.text === 'string' && p.text.includes('&')) {
+    p.text = p.text.replace(/&amp;?/gi, '&').replace(/&lt;?/gi, '<').replace(/&gt;?/gi, '>').replace(/&quot;?/gi, '"').replace(/&#0*39;?|&apos;?/gi, "'");
+  }
   const text = String(p.text || '');
+  const handle = String(p.handle || p.username || p.user || '').toLowerCase().replace(/^@/, '');
+  if (/^(501awani|bernamadotcom|beritartm|astroawani|utusanonline|sinarharian|bharianmy|hmetromy|malaysiakini)$/i.test(handle)) return false;
   // prioritas ID + EN: aksara non-Latin/Vietnam-diakritik dominan = spam luar negeri;
   // hashtag-stuffing = kampanye/crypto, bukan konten kejadian
   if (SOC.socNonLatin(text) || SOC.socVi(text) || SOC.socHashJunk(text) || SOC.socForeignLang(text)) return false;
+  if (SOC.SOC_FOREIGN_RE.test(text) && !SOC.SOC_LOCAL_RE.test(text)) return false;
   p.ts = ts;
   p.assessment = SOC.socAssess(p.text, extra);
   // denied/historical/educational = bukan materi liputan feed

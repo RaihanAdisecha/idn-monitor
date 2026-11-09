@@ -17,7 +17,9 @@ def build_tree(flat):
     for raw in flat:
         node = dict(raw)
         node["replies"] = []
-        level = node.get("reply_level") or 1
+        raw_level = node.get("reply_level")
+        level = raw_level if isinstance(raw_level, int) and raw_level >= 1 else 1
+        node["reply_level"] = level
         parent = None
         if level > 1:
             who = node.get("reply_to_username")
@@ -31,13 +33,20 @@ def build_tree(flat):
 
 
 def main():
-    req = json.loads(sys.argv[1]) if len(sys.argv) > 1 else {}
+    try:
+        req = json.loads(sys.argv[1]) if len(sys.argv) > 1 else {}
+    except Exception:  # noqa: BLE001
+        req = {}
+    if not isinstance(req, dict):
+        req = {}
     url = req.get("url")
     if not url:
         json.dump({"ok": False, "err": "url kosong"}, sys.stdout)
         return
+    auth = req.get("auth") if isinstance(req.get("auth"), dict) else None
+    proxy = req.get("proxy") if isinstance(req.get("proxy"), str) else None
     try:
-        root = Threads().post(url)
+        root = Threads(proxy=proxy, cookies=auth).post(url)
     except Exception as exc:  # noqa: BLE001
         json.dump({"ok": False, "err": "%s: %s" % (type(exc).__name__, exc)}, sys.stdout)
         return

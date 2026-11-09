@@ -82,11 +82,17 @@ function mergeEvents(out, prevPins, opts) {
   }
 
   const groups = new Map();
+  const groupDf = new Map();   // berapa grup (kind|place) berbeda yang memuat token t
   for (const p of (out || [])) {
     const pk = normPlace(p.name);
     const key = p.kind + '|' + pk;
     if (!groups.has(key)) groups.set(key, []);
     groups.get(key).push({ p, rs: rare(p.title, pk) });
+  }
+  for (const [, members0] of groups) {
+    const seenInGroup = new Set();
+    for (const m of members0) for (const t of m.rs) seenInGroup.add(t);
+    for (const t of seenInGroup) groupDf.set(t, (groupDf.get(t) || 0) + 1);
   }
 
   const merged = [];
@@ -95,14 +101,16 @@ function mergeEvents(out, prevPins, opts) {
     const cat = key.slice(0, cut), pk = key.slice(cut + 1);
     const hz = members0.map(m => hazardOf(m.p.title));
 
-    // Document-frequency guard: token yang muncul di >30% judul grup adalah kata
-    // umum lokal (bukan entitas peristiwa) — tidak boleh dihitung "rare".
-    // Batas bawah 2 supaya grup kecil (2-3 artikel) tetap bisa merge.
+    // Document-frequency guard: token yang muncul di >30% judul grup DAN juga
+    // tersebar di >=3 grup lokasi/kategori lain adalah kata umum jurnalistik —
+    // sedangkan token entitas spesifik peristiwa (mis. "plaza", "senayan" saat
+    // 8 media memberitakan kebakaran Plaza Senayan) hanya dominan di grup ini
+    // dan TIDAK boleh dihapus oleh dfMax.
     const n = members0.length;
     const df = new Map();
     for (const m of members0) for (const t of m.rs) df.set(t, (df.get(t) || 0) + 1);
     const dfMax = Math.max(2, Math.floor(n * 0.3));
-    const eff = members0.map(m => new Set([...m.rs].filter(t => (df.get(t) || 0) <= dfMax)));
+    const eff = members0.map(m => new Set([...m.rs].filter(t => (df.get(t) || 0) <= dfMax || (groupDf.get(t) || 0) < 3)));
 
     const sharedCount = (i, j) => { let c = 0; for (const t of eff[i]) if (eff[j].has(t)) c++; return c; };
     // gempa/erupsi/banjir di tempat sama dalam jendela singkat = satu rangkaian peristiwa,

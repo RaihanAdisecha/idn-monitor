@@ -32,7 +32,7 @@
         const i = idx.get(k);
         if (i === undefined) { idx.set(k, out.length); out.push(h); return; }
         if ((h.desc || '').length > (out[i].desc || '').length) {
-          out[i] = { ...out[i], desc: h.desc, pub: h.pub, src: h.src, img: h.img };
+          out[i] = { ...out[i], desc: h.desc, img: out[i].img || h.img };
         }
       });
     return out;

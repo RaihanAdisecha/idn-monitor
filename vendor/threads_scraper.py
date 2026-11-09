@@ -166,10 +166,12 @@ class Threads:
         # The same redirect shows up when it rate-limits an IP, so the message names both.
         if resp.status_code in (301, 302) and ("/login" in where or "error=" in where):
             raise ScrapeError(
-                f"Not found: {url}. If it does exist, Threads may be rate-limiting this IP; "
+                f"Not found: {url}. If it does exist, Threads redirected to login/error; "
                 "try again, use a home connection or --proxy."
             )
-        if resp.status_code in (301, 302, 401, 403, 429):
+        if resp.status_code in (301, 302):
+            raise ScrapeError(f"Threads redirected HTTP {resp.status_code} for {url} -> {where}")
+        if resp.status_code in (401, 403, 429):
             raise ScrapeError(
                 f"Threads answered HTTP {resp.status_code}: rate-limited or blocked. "
                 "Cloud and datacenter IPs are blocked most; try a home connection or --proxy."
@@ -231,7 +233,10 @@ class Threads:
             info = feed.get("page_info") or {}
             if len(out) >= limit or not info.get("has_next_page") or not info.get("end_cursor"):
                 break
-            feed = self._more_posts(str(user.get("pk") or user.get("id")), info["end_cursor"])
+            try:
+                feed = self._more_posts(str(user.get("pk") or user.get("id")), info["end_cursor"])
+            except ScrapeError:
+                break
         return out[:limit]
 
     def _more_posts(self, user_id, cursor):
@@ -275,7 +280,8 @@ class Threads:
         result = clean_post(post)
         # Replies sit in a second record with the same id as the post. The "related
         # posts" elsewhere on the page are recommendations, not replies.
-        host = next((n for n in walk(blobs) if n.get("id") == post.get("id") and (n.get("text_post_app_info") or {}).get("direct_replies")), None)
+        post_key = post.get("pk") or post.get("id")
+        host = next((n for n in walk(blobs) if post_key and (n.get("pk") or n.get("id")) == post_key and (n.get("text_post_app_info") or {}).get("direct_replies")), None)
         replies = (((host or {}).get("text_post_app_info") or {}).get("direct_replies") or {}).get("edges") or []
         result["replies"] = [
             clean_post(r["node"])
@@ -293,7 +299,7 @@ class Threads:
         results = next((n for n in walk(blobs) if isinstance(n.get("edges"), list)
                         and any(isinstance((e.get("node") or {}).get("thread"), dict) for e in n["edges"])), None)
         if results is None:
-            raise ScrapeError(f"No search results for {keyword!r}.")
+            return []
         out = []
         for edge in results["edges"]:
             for item in edge["node"]["thread"].get("thread_items") or []:

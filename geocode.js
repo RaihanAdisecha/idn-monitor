@@ -33,7 +33,7 @@ const provKey = p => { const k = norm(p); return PROV_CANON[k] || k; };
 const LEVEL = { poi: 7, village: 7.2, kec: 6.5, kab: 6, region: 3.5, prov: 3 };
 
 // nama kab/kota yang juga kata umum / nama institusi: wajib ada penanda lokatif tepat sebelumnya
-const AMBIG = new Set(['batang', 'batu', 'batu bara', 'puncak', 'metro', 'serang', 'malang', 'buru', 'pati', 'sula', 'banjar', 'bone', 'kaur', 'tanah laut', 'kota baru', 'seribu', 'jaya', 'raya', 'mamasa', 'lahat', 'medan', 'subang', 'kudus']);
+const AMBIG = new Set(['batang', 'batu', 'batu bara', 'puncak', 'metro', 'serang', 'malang', 'buru', 'pati', 'sula', 'banjar', 'bone', 'kaur', 'tanah laut', 'kota baru', 'seribu', 'jaya', 'raya', 'mamasa', 'lahat', 'medan', 'subang', 'kudus', 'kuningan', 'negara', 'sumber', 'benteng', 'pandan', 'pinang', 'manggar']);
 const LOC_CUE = new Set(['di', 'ke', 'kota', 'kabupaten', 'kab', 'pemkot', 'pemkab', 'walikota', 'bupati', 'kodya', 'kecamatan', 'kec', 'wilayah', 'kapolres', 'polres', 'polresta', 'polrestabes', 'kodim', 'bpbd']);
 const PREFIX_KAB = new Set(['kabupaten', 'kab', 'pemkab', 'bupati']);
 const PREFIX_KOTA = new Set(['kota', 'kodya', 'pemkot', 'walikota', 'polresta', 'polrestabes']);
@@ -59,10 +59,11 @@ const put = (key, e, minLen) => {
   const a = idx.get(key); if (a) { if (!a.some(x => x.id === e.id)) a.push(e); } else idx.set(key, [e]);
 };
 const LABEL_FIX = { 'Palangkaraya': 'Palangka Raya', 'Bau Bau': 'Baubau', 'Kep. Siau Tagulandang Biaro': 'Sitaro', 'Toli-Toli': 'Tolitoli' };
-const displayKab = k => (!k.kota && kotaNames.has(norm(k.name)) ? 'Kab. ' : '') + (LABEL_FIX[k.name] || k.name);
+const displayKab = k => { const nm = String(k.name || '').trim(); return (!k.kota && kotaNames.has(norm(nm)) ? 'Kab. ' : '') + (LABEL_FIX[nm] || nm); };
 const bigKabNameByCode = new Map(BIG.kabupatenKota.map(([code, name]) => [code, name]));
 for (const k of G.kab) {
-  const e = { id: k.code, level: 'kab', kota: k.kota, name: displayKab(k), la: k.la, lo: k.lo, prov: provByCode[k.prov].name, prec: 'kab' };
+  k.name = String(k.name || '').trim();
+  const e = { id: k.code, level: 'kab', kota: k.kota, name: displayKab(k), la: k.la, lo: k.lo, prov: provByCode[k.prov].name, provCode: k.prov, kabCode: k.code, prec: 'kab' };
   kabByCode[k.code] = e;
   const n = norm(k.name);
   put(n, e);
@@ -83,7 +84,7 @@ for (const [code, fullName] of BIG.kabupatenKota) {
 }
 // ibukota kabupaten sebagai alias (Ruteng, Labuan Bajo, Sigli...): hanya yang unik secara nasional,
 // bukan kata generik, dan tidak bentrok dengan nama kab/kota lain
-const IK_GENERIC = new Set(['tanjung', 'kuala', 'muara', 'sungai', 'simpang', 'pulau', 'bukit', 'batu', 'air', 'pasar', 'kota', 'teluk', 'padang', 'lubuk', 'pangkalan', 'labuhan', 'sei', 'karang', 'sinar', 'baru', 'mekar', 'tebing', 'talang', 'ujung', 'mandiri', 'jaya', 'wonosari', 'bangkinang']);
+const IK_GENERIC = new Set(['tanjung', 'kuala', 'muara', 'sungai', 'simpang', 'pulau', 'bukit', 'batu', 'air', 'pasar', 'kota', 'teluk', 'padang', 'lubuk', 'pangkalan', 'labuhan', 'sei', 'karang', 'sinar', 'baru', 'mekar', 'tebing', 'talang', 'ujung', 'mandiri', 'jaya', 'wonosari', 'bangkinang', 'negara', 'sumber', 'benteng', 'pandan', 'pinang', 'manggar', 'kalianda', 'kuningan']);
 const ikCount = {};
 for (const k of G.kab) { const ik = norm(k.ibukota.replace(/^Kota /, '')); ikCount[ik] = (ikCount[ik] || 0) + 1; }
 for (const k of G.kab) {
@@ -184,7 +185,7 @@ cpoi('kebayoran', 'Kebayoran', -6.2372, 106.7825, J, ['kebayoran']);
 cpoi('ciracas', 'Ciracas', -6.3296, 106.8766, J, ['ciracas']);
 cpoi('duren-sawit', 'Duren Sawit', -6.2341, 106.9192, J, ['duren sawit']);
 cpoi('jagakarsa', 'Jagakarsa', -6.3301, 106.8222, J, ['jagakarsa']);
-cpoi('pondok-gede', 'Pondok Gede', -6.2896, 106.8959, J, ['pondok gede']);
+cpoi('pondok-gede', 'Pondok Gede', -6.2896, 106.8959, 'Jawa Barat', ['pondok gede']);
 cpoi('sawah-besar', 'Sawah Besar', -6.1607, 106.8277, J, ['sawah besar']);
 cpoi('johar-baru', 'Johar Baru', -6.1831, 106.8553, J, ['johar baru']);
 cpoi('gunung-sahari', 'Gunung Sahari', -6.1368, 106.8324, J, ['gunung sahari']);
@@ -289,14 +290,39 @@ for (const c of CITY) POI.push(c);
 
 /* Kecamatan unik: hanya sah dengan penanda "kecamatan/kec" (nama kecamatan sering kata umum) */
 const KEC_LOOSE = new Set(['di', 'ke', 'warga', 'wilayah', 'desa']);
-const KEC_STOP = new Set(['kampung baru', 'pasar baru', 'tanjung raya', 'sungai raya', 'bukit raya', 'kota baru', 'pulau besar', 'air besar', 'indonesia raya', 'jalan raya', 'cipta karya', 'karya jaya', 'sumber jaya', 'harapan jaya', 'makmur jaya', 'mandiri jaya']);
+const KEC_STOP = new Set(['kampung baru', 'pasar baru', 'tanjung raya', 'sungai raya', 'bukit raya', 'kota baru', 'pulau besar', 'air besar', 'indonesia raya', 'jalan raya', 'cipta karya', 'karya jaya', 'sumber jaya', 'harapan jaya', 'makmur jaya', 'mandiri jaya', 'pesantren', 'kantor', 'bandara', 'pelabuhan', 'stadion', 'perbatasan', 'pedalaman', 'kejaksaan', 'lapangan', 'alun alun', 'bendungan', 'terminal', 'stasiun', 'pasar', 'perguruan', 'perkebunan', 'pertanian', 'perikanan', 'kehutanan', 'kesehatan', 'pendidikan', 'keamanan', 'pertahanan']);
 const VILLAGE_TYPE_CUE = { desa: 'desa', kelurahan: 'kelurahan', kel: 'kelurahan', kalurahan: 'kelurahan' };
 const VILLAGE_GENERIC_CUE = new Set(['gampong', 'nagari', 'kampung', 'negeri', 'pekon', 'tiyuh', 'lembang']);
 const VILLAGE_LOC_CUE = new Set(['di', 'ke', 'wilayah', 'sekitar', 'area', 'lokasi']);
 const VILLAGE_DEST_CUE = new Set(['untuk', 'kepada']);
 // BIG also contains a desa named Jepang and one named London; bare foreign-place mentions
 // must not silently become local villages in the event-scope classifier.
-const VILLAGE_FOREIGN_COLLISIONS = new Set(['jepang', 'london']);
+const VILLAGE_FOREIGN_COLLISIONS = new Set(['jepang', 'london', 'kelantan', 'pulau pinang', 'sabah', 'sarawak', 'selangor', 'johor', 'pahang', 'terengganu', 'kedah', 'perak', 'melaka', 'negeri sembilan', 'empat negeri']);
+// Kata benda/kerja/sifat umum Bahasa Indonesia yang kebetulan menjadi nama desa di BIG:
+// tidak boleh match tanpa prefix eksplisit "Desa/Kelurahan" (typeCue).
+const VILLAGE_STOP = new Set([
+  'jatuh', 'besar', 'tengah', 'dalam', 'atas', 'bawah', 'depan', 'belakang', 'utara', 'selatan', 'timur', 'barat', 'pusat',
+  'indah', 'baru', 'lama', 'raya', 'jaya', 'mulia', 'makmur', 'harapan', 'damai', 'sejahtera', 'sentosa', 'maju', 'sukses',
+  'pertama', 'utama', 'ujung', 'hulu', 'hilir', 'kantor', 'lapangan', 'kejaksaan', 'pengadilan', 'bandara', 'pelabuhan',
+  'stadion', 'stasiun', 'terminal', 'dermaga', 'perbatasan', 'pedalaman', 'bendungan', 'waduk', 'pesantren', 'kampung',
+  'alun alun', 'turunan', 'tanjakan', 'tikungan', 'simpang', 'bundaran', 'jembatan', 'jalan', 'lorong', 'gang',
+  'negara', 'sumber', 'benteng', 'pandan', 'pinang', 'manggar', 'korban', 'warga', 'polisi', 'tentara', 'aparat', 'petugas',
+  'tersangka', 'pelaku', 'saksi', 'rumah', 'gedung', 'sekolah', 'kampus', 'masjid', 'gereja', 'pura', 'wihara', 'asrama',
+  'penjara', 'lapas', 'rutan', 'polsek', 'polres', 'polda', 'kodim', 'koramil', 'puskesmas', 'klinik', 'apotek', 'hotel',
+  'mall', 'plaza', 'taman', 'pasar', 'toko', 'warung', 'kios', 'gudang', 'pabrik', 'bengkel', 'tambang', 'kebun', 'hutan',
+  'lahan', 'sawah', 'ladang', 'sungai', 'danau', 'laut', 'pulau', 'pantai', 'teluk', 'tanjung', 'muara', 'kuala', 'gunung',
+  'bukit', 'lembah', 'banjir', 'longsor', 'gempa', 'kebakaran', 'kecelakaan', 'bencana', 'darurat', 'harapan baru',
+  'kampung baru', 'pasar baru', 'kota baru', 'sumber baru', 'sumber jaya', 'mekar jaya', 'mekar sari', 'suka maju',
+  'suka makmur', 'suka damai', 'suka mulia', 'suka rame', 'suka karya', 'durian runtuh'
+]);
+const POI_CITY = {
+  'simpang-lima': 'semarang', 'banyumanik': 'semarang', 'pedurungan': 'semarang', 'genuk': 'semarang', 'tembalang': 'semarang',
+  'pasar-kliwon': 'surakarta', 'jebres': 'surakarta', 'laweyan': 'surakarta',
+  'sukolilo': 'surabaya', 'wonokromo': 'surabaya', 'rungkut': 'surabaya', 'mulyorejo': 'surabaya', 'gunungsari': 'surabaya',
+  'siwalankerto': 'surabaya', 'tandes': 'surabaya', 'kenjeran': 'surabaya',
+  'klojen': 'malang', 'lowokwaru': 'malang', 'sukun': 'malang', 'blimbing': 'malang',
+  'gondokusuman': 'yogyakarta', 'umbulharjo': 'yogyakarta', 'mantrijeron': 'yogyakarta'
+};
 const kecIdx = new Map(Object.entries(G.kec));
 const BIG_COUNTS = { ...BIG.counts };
 const bigKecByCode = new Map();
@@ -389,16 +415,18 @@ function locate(title) {
       // pilih entri: prefix eksplisit > kota (bila kembar kab/kota) > pertama
       let e = list[0];
       if (list.length > 1) {
+        const wantProv = PREFIX_PROV.has(prev) || PREFIX_PROV.has(prev2);
         const wantKab = PREFIX_KAB.has(prev) || (prev === 'kota' ? false : PREFIX_KAB.has(prev2));
         const wantKota = PREFIX_KOTA.has(prev) || PREFIX_KOTA.has(prev2) && !PREFIX_KAB.has(prev);
-        e = (wantKab && list.find(x => x.level === 'kab' && !x.kota)) || (wantKota && list.find(x => x.kota)) || list.find(x => x.kota) || list[0];
+        e = (wantProv && list.find(x => x.level === 'prov')) || (wantKab && list.find(x => x.level === 'kab' && !x.kota)) || (wantKota && list.find(x => x.kota)) || list.find(x => x.kota) || list[0];
       }
-      if (e.level === 'prov' && PREFIX_PROV.has(prev)) { /* eksplisit */ }
       // Jakarta/Yogyakarta/Bali.. nama provinsi sama dengan kota: prefix "kota" memaksa kota, "provinsi" memaksa prov
       let cue = 0;
       if (CUE_IN.has(prev) || prev === 'di') cue += 1.5;
       if (CUE_FROM.has(prev)) cue -= 1.5;
       if (PREFIX_KAB.has(prev) || PREFIX_KOTA.has(prev) || PREFIX_PROV.has(prev)) cue += 0.5;
+      const destFacility = /^(rsud|rs|rsup|rsu|rumah|puskesmas|klinik)$/.test(prev) && ((prev2 === 'ke' || prev2 === 'kepada') && DEST_VERB.has(tk[i - 3] || '') || DEST_VERB.has(prev2));
+      if (destFacility) { for (let j = 0; j < n; j++) used[i + j] = true; break; }
       if ((prev === 'ke' || prev === 'kepada') && DEST_VERB.has(prev2)) { for (let j = 0; j < n; j++) used[i + j] = true; break; }   // tujuan, bukan lokasi kejadian
       if (DEST_VERB.has(prev) && !PREFIX_KAB.has(prev)) { for (let j = 0; j < n; j++) used[i + j] = true; break; }
       cands.push({ e, pos: i, n, cue, score: LEVEL[e.level], key });
@@ -480,7 +508,12 @@ function locate(title) {
       const kecContext = kecs.some(m => m.codes.has(e.kecCode));
       const parentContext = kabs.has(e.kabCode) || provs.has(e.provCode);
       const locCue = VILLAGE_LOC_CUE.has(prev);
-      if (VILLAGE_FOREIGN_COLLISIONS.has(key) && !explicitCue && !kecContext && !parentContext) continue;
+      if (VILLAGE_FOREIGN_COLLISIONS.has(key) && !typeCue && !kecContext) continue;
+      if (VILLAGE_STOP.has(key) && !typeCue) continue;
+      // Tanpa cue tipe desa/kelurahan eksplisit, jangan bajak token yang sudah
+      // terpakai atau terdaftar sebagai provinsi/kab/kota/region di gazetteer.
+      if (!explicitCue && (idx.has(key) || used.slice(i, i + n).some(Boolean))) continue;
+      if (!explicitCue && !kecContext && !locCue) continue;
       if (genericCue && !typeCue && !kecContext && !parentContext && !(allRows.length === 1 && key.length >= 6)) continue;
       if (!explicitCue && !kecContext && !parentContext && !(allRows.length === 1 && locCue && key.length >= 6)) continue;
       const exactNamedPoi = cands.some(c => c.e.level === 'poi' && c.specific &&
@@ -514,7 +547,8 @@ function locate(title) {
     const alt = cands.find(c => c !== top &&
       (c.e.level === 'kab' || c.e.level === 'village' ||
        (c.e.level === 'prov' && (c.cue || 0) > 0)) &&
-      c.e.prov && provKey(c.e.prov) !== provKey(top.e.prov));
+      ((c.e.prov && provKey(c.e.prov) !== provKey(top.e.prov)) ||
+       (c.e.level === 'kab' && POI_CITY[top.e.id] && !norm(c.e.name).includes(POI_CITY[top.e.id]))));
     if (!alt) break;
     cands.splice(cands.indexOf(top), 1);
   }
@@ -538,6 +572,9 @@ function locate(title) {
     }
   }
   return { name: e.name, la: e.la, lo: e.lo, prec: e.prec, prov: e.prov, via: best.key || e.id, all,
+    ...(e.provCode ? { provCode: e.provCode } : {}),
+    ...(e.kabCode ? { kabCode: e.kabCode } : {}),
+    ...(e.kecCode ? { kecCode: e.kecCode } : {}),
     ...(e.code ? { code: e.code, coordinateSource: e.coordinateSource, boundaryStatus: e.boundaryStatus } : {}) };
 }
 

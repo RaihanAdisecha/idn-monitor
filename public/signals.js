@@ -99,9 +99,9 @@
     // ransomware/dll) di tempat spesifik (POI/kab/kota) boleh strong dengan
     // overlap >= 1. Tipe umum (kebakaran/demo) di tempat umum butuh overlap >= 2.
     const precA = normalize(a.location && a.location.prec), precB = normalize(b.location && b.location.prec);
-    const specific = (placeA && placeA === placeB && /^(poi|kab|kota|kodya|city|district|kecamatan)/.test(precA || precB || '')) ||
+    const specific = (placeA && placeA === placeB && /^(poi|desa|kelurahan|kec|kab|kota|kodya|city|district|kecamatan)/.test(precA || precB || '')) ||
       (targetA && targetA === targetB);
-    const rare = /gempa|earthquake|tsunami|erupsi|eruption|letusan|ransomware|data_breach|ddos|wabah|outbreak|penembakan|pembunuhan|homicide|longsor|landslide|karhutla|karhutla|tenggelam|ambruk|collapse|maritime|narkoba|penculian|perkosaan|rudapaksa/i.test(normalize(a.type));
+    const rare = /gempa|earthquake|tsunami|erupsi|eruption|letusan|ransomware|data_breach|ddos|wabah|outbreak|penembakan|pembunuhan|homicide|longsor|landslide|karhutla|tenggelam|ambruk|collapse|maritime|narkoba|penculikan|perkosaan|rudapaksa/i.test(normalize(a.type));
     if (anchorStrong && (overlap >= 2 || (overlap >= 1 && jac >= 0.18) || (overlap >= 1 && specific && rare))) return 'strong';
     if ((anchorStrong || anchorWeak) && overlap >= 1) return 'weak';
     return null;
@@ -118,7 +118,12 @@
     let overlap = 0;
     for (const token of left) if (right.has(token)) overlap++;
     const union = left.size + right.size - overlap;
-    return overlap >= 2 && union > 0 && overlap / union >= 0.18;
+    const precA = normalize(a.location && a.location.prec), precB = normalize(b.location && b.location.prec);
+    const specific = Boolean((placeA && placeA === placeB && /^(poi|desa|kelurahan|kec|kab|kota|kodya|city|district|kecamatan)/.test(precA || precB || '')) ||
+      (targetA && targetA === targetB));
+    const rare = /gempa|earthquake|tsunami|erupsi|eruption|letusan|ransomware|data_breach|ddos|wabah|outbreak|penembakan|pembunuhan|homicide|longsor|landslide|karhutla|tenggelam|ambruk|collapse|maritime|narkoba|penculikan|perkosaan|rudapaksa/i.test(normalize(a.type));
+    return Boolean((overlap >= 2 && union > 0 && overlap / union >= 0.18) ||
+      (overlap >= 1 && specific && rare && union > 0 && overlap / union >= 0.12));
   }
 
   function platform(post) { return normalize(post.from); }

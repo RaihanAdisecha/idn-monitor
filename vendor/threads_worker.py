@@ -71,6 +71,7 @@ def main():
             sekali per kegagalan (tiap except hanya menangani satu exception)."""
             nonlocal consec_rl, halt
             if not RATE_LIMIT_RE.search(str(exc)):
+                consec_rl = 0
                 return False
             consec_rl += 1
             if consec_rl >= MAX_CONSEC_RL:

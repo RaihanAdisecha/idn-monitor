@@ -53,14 +53,14 @@ function decodeEntities(s) {
       return '';
     }
   });
-  // named refs — all except amp
-  out = out.replace(/&([a-zA-Z][a-zA-Z0-9]*);?/g, function (m, name) {
+  // named refs — all except amp (require trailing semicolon so URL query params like &reg=1 stay intact)
+  out = out.replace(/&([a-zA-Z][a-zA-Z0-9]*);/g, function (m, name) {
     if (name === 'amp' || name === 'AMP') return m; // decoded last
     const v = ENT[name];
     return v === undefined ? m : v;
   });
   // amp LAST so "&amp;mdash;" does not double-decode
-  out = out.replace(/&amp;/g, '&');
+  out = out.replace(/&amp;/gi, '&');
   return out;
 }
 
@@ -73,6 +73,7 @@ const DROP_RE = /<(script|style|noscript|template|svg|iframe|object|form|button|
 const BLOCK_RE = /<\/(?:p|div|li|ul|ol|h[1-6]|tr|table|section|article|blockquote|dd|dt)\s*>|<br\s*\/?>/gi;
 // Tolerant tag regex: <...> where quoted attr values may contain '>'.
 const TAG_RE = /<[^>"']*(?:"[^"]*"[^>"']*|'[^']*'[^>"']*)*>/g;
+const UNCLOSED_TAG_RE = /<\/?[a-zA-Z][^>]*$/g;
 // CDATA wrapper unwrap — tagRaw feeds may still carry it.
 const CDATA_RE = /<!\[CDATA\[([\s\S]*?)\]\]>/g;
 
@@ -83,6 +84,7 @@ function htmlToText(html) {
   t = t.replace(DROP_RE, ' ');
   t = t.replace(BLOCK_RE, ' ');
   t = t.replace(TAG_RE, ' ');
+  t = t.replace(UNCLOSED_TAG_RE, ' ');
   t = decodeEntities(t);
   t = t.replace(/\s+/g, ' ').trim();
   return t;
@@ -128,10 +130,9 @@ const PHONE_RE = /\b(?:wa|whatsapp|telp|telepon|hubungi|sms)\s*[:：.]?\s*(?:\+?
 // "sumber" is a common noun ("sumber daya/energi") — credit form requires an
 // explicit separator (:, –, —, -) or it eats real prose.
 const SUMBER_RE = /sumber\s*(?:[:：]|[-–—]{1,2})\s*[^.,;!)\]\-–—]{0,60}/gi;
-// Credit content: first word always allowed; subsequent chars stop before a
-// capitalized sentence-initial word ("Foto: Istimewa Paragraf..." must not
-// swallow the next sentence) but ALL-CAPS outlet names still pass through.
-const MEDIA_CREDIT_RE = /(?:foto|illustrasi|gambar|video|dokumen|dokumentasi|dok\.)\s*[:.\-–—]?\s*(?:oleh\s+)?[^\s.,;)\]]+(?:(?!\s+[A-Z][a-z])[^.,;)\]]){0,89}/gi;
+// Credit content: requires explicit separator (:, -, –) so prose like "video amatir..." stays intact.
+// Case-sensitive (no /i) so (?!\s+[A-Z][a-z]) stops before a Capitalized sentence word while allowing ALL-CAPS outlet names.
+const MEDIA_CREDIT_RE = /(?:[Ff]oto|FOTO|[Ii]ll?ustrasi|ILUSTRASI|[Gg]ambar|GAMBAR|[Vv]ideo|VIDEO|[Dd]okumen(?:tasi)?|DOKUMEN(?:TASI)?|[Dd]ok\.|DOK\.)\s*(?:[:：]|[-–—]{1,2})\s*(?:[Oo]leh\s+)?[^\s.,;)\]]+(?:(?!\s+[A-Z][a-z])[^.,;)\]]){0,89}/g;
 const PAREN_CREDIT_RE = /\([^)]{1,90}(?:foto|dok|sumber|istimewa|illustrasi|dokumen|istock|shutterstock|getty|antaranews|pexels|pixabay|unsplash|freepik|alamy|dreamstime|123rf)[^)]*\)/gi;
 const AGENCY_PAREN_RE = /\((?:antaranews|antara news|reuters|afp|getty images?|istimewa|dokumen|ilustrasi|pexels|pixabay|unsplash|freepik|alamy|dreamstime|123rf)\)/gi;
 const URL_RE = /(?:https?:\/\/|www\.)\S+/gi;
@@ -154,7 +155,7 @@ function cleanDescText(t) {
     // em-dash ("...kebijakan baru — tempo.co") is a publisher tail, not a
     // dateline, and must survive to the tail-strip step.
     t = t.replace(
-      /^(?:[A-Z][A-Z0-9 .&'()\-]{0,40}?(?:,|\s+)\s*){1,3}(?:--|–|—)\s+/,
+      /^[A-Z][A-Z0-9 .,&'()\-]{0,90}\s*(?:--|–|—)\s+/,
       ''
     );
     // ALL-CAPS dateline without comma: "YOGYAKARTA - Jerawatan...", "JAKARTA -- Aktris..."
@@ -265,10 +266,19 @@ const CHROME_HEAD_RE = new RegExp('^(?:' +
 
 // First 1-3 sentence-ish segments of prose, skipping leading chrome.
 // Returns '' when nothing usable; callers fall back to the full text.
+const ABBR_END_RE = /\b(?:Dr|Prof|Ir|H|Hj|Bp|Bpk|Sdr|Ny|Tn|Jend|Letjen|Mayjen|Brigjen|Kol|Letkol|Mayor|Kapt|Lettu|Letda|Kombes|AKBP|Kompol|AKP|Iptu|Ipda|Bripka|Brigadir|Briptu|Bripda|Pol|TNI|PT|CV|UD|Tb|Tbk|Jl|Jln|No|Rp|Kec|Kab|Prov|Kel|Ds|RT|RW|KM|Km|St|Mt)\.\s*$/i;
 function ledeText(t) {
   t = (t || '').replace(/\s+/g, ' ').trim();
   if (!t) return '';
-  const segs = t.split(/(?<=[.!?…])\s+/);
+  const rawSegs = t.split(/(?<=[.!?…])\s+/);
+  const segs = [];
+  for (const s of rawSegs) {
+    if (segs.length && ABBR_END_RE.test(segs[segs.length - 1])) {
+      segs[segs.length - 1] += ' ' + s;
+    } else {
+      segs.push(s);
+    }
+  }
   let i = 0;
   while (i < segs.length) {
     const s = segs[i].trim();
