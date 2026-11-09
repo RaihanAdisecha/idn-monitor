@@ -514,7 +514,7 @@ a{color:inherit;text-decoration:none;text-underline-offset:2px}
   position:absolute;z-index:6;max-width:230px;pointer-events:none;
   padding:2px 0;
 }
-@media (hover:none){
+@media (hover:none), (pointer:coarse){
   .sit-tip{pointer-events:auto;cursor:pointer;touch-action:manipulation;-webkit-tap-highlight-color:transparent}
 }
 /* SCRIM bersama (tooltip globe + popup tap + toast fokus): gelap + blur progresif KIRI -> KANAN, atas/bawah tetap penuh */
@@ -535,8 +535,15 @@ a{color:inherit;text-decoration:none;text-underline-offset:2px}
   touch-action:manipulation;-webkit-tap-highlight-color:transparent;
 }
 .pop-ft{display:flex;align-items:center;justify-content:flex-end;gap:10px;margin-top:8px;
-  padding-top:7px;border-top:1px solid rgba(255,255,255,.12)}
-.pop-go{font:600 8px/1 var(--mono);letter-spacing:.1em;text-transform:uppercase;color:#f4f4f4;opacity:.85}
+  padding-top:7px;border-top:1px solid rgba(255,255,255,.12);pointer-events:auto}
+.pop-go{
+  display:inline-flex;align-items:center;justify-content:center;
+  font:600 8.5px/1 var(--mono);letter-spacing:.09em;text-transform:uppercase;
+  color:#f4f4f4;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.18);
+  border-radius:2px;padding:4px 8px;cursor:pointer;line-height:1;white-space:nowrap;
+  touch-action:manipulation;pointer-events:auto;transition:all .15s ease;
+}
+.pop-go:active{background:rgba(255,255,255,.22);border-color:rgba(255,255,255,.36);color:#fff}
 .sit-alert{
   position:absolute;z-index:7;top:50px;right:12px;
   width:max-content;max-width:min(280px,calc(100% - 24px));pointer-events:auto;cursor:pointer;
@@ -3051,7 +3058,8 @@ const view = { lon: 118, lat: -2.5, zoom: 2.2 };
 const ZOOM_MAX = 48;   // cukup dalam untuk inspeksi node/kab; zoomTaper + hit-floor menjaga dot & node tetap terlihat/terklik
 const clampN = (v, a, b) => Math.min(b, Math.max(a, v));
 let flyAnim = null, lastGestEnd = -1e9, globeSuppressClick = 0, gesture = null;
-let globePtrType = 'mouse';   // mobile: tap insiden → popup "Buka reader", tap node → fokus langsung
+let globePtrType = 'mouse';   // mobile: tap insiden → popup "Buka reader", tap node → pratinjau / fokus
+let globeActNodeKey = '', globeActNodeAt = 0;
 const ptrs = new Map();
 
 const hexA = (hex, a) => {
@@ -3811,9 +3819,11 @@ function showNodeTip(e, d, touch){
   const tip = $('#sit-tip');
   const n = d.node;
   tip.dataset.url = '';
+  tip.dataset.nodeLa = (n && n.la != null) ? String(n.la) : '';
+  tip.dataset.nodeLo = (n && n.lo != null) ? String(n.lo) : '';
   tip.innerHTML = `<div class="tip-k" style="color:#8d8d8d">NODE PEMANTAUAN</div>
     <div class="tip-t">${esc(n.name || '')}</div>
-    <div class="tip-m">${esc(n.prov || '')} · ${touch ? 'ketuk untuk fokus' : 'klik untuk fokus wilayah'}</div>`;
+    <div class="tip-m">${esc(n.prov || '')} · ${touch ? 'ketuk lagi untuk fokus' : 'klik untuk fokus wilayah'}</div>`;
   tip.hidden = false;
   placeSitTip(e, touch);
 }
@@ -3843,7 +3853,8 @@ function showGlobePop(e, d){
 }
 const hideGlobeTip = () => {
   activeGlobeQuake = null;
-  const tip = $('#sit-tip'); if (tip) { tip.hidden = true; tip.dataset.url = ''; }
+  globeActNodeKey = '';
+  const tip = $('#sit-tip'); if (tip) { tip.hidden = true; tip.dataset.url = ''; tip.dataset.nodeLa = ''; tip.dataset.nodeLo = ''; }
   const pop = $('#sit-pop'); if (pop) { pop.hidden = true; sitPopUrl = ''; }
 };
 function ptrEnd(e){
@@ -3866,15 +3877,26 @@ function ptrEnd(e){
         const rect = c.getBoundingClientRect();
         const hit = pickGlobe(e.clientX - rect.left, e.clientY - rect.top, 24, false);
         if (hit && hit.node) {
-          hideGlobeTip();
-          lastGestEnd = performance.now();
-          focusedHome = false;
-          flyTo(hit.d.node.la, hit.d.node.lo, Math.max(view.zoom, 11), 'node');
+          const n = hit.d.node;
+          const nodeKey = 'node:' + (n.name || '') + '|' + (n.prov || '');
+          if (globeActNodeKey === nodeKey && performance.now() - globeActNodeAt < 5000) {
+            globeActNodeKey = '';
+            hideGlobeTip();
+            lastGestEnd = performance.now();
+            focusedHome = false;
+            flyTo(n.la, n.lo, Math.max(view.zoom, 11), 'node');
+          } else {
+            globeActNodeKey = nodeKey;
+            globeActNodeAt = performance.now();
+            hideGlobeTip();
+            showNodeTip(e, hit.d, true);
+          }
         } else if (hit && hit.d && hit.d.p) {
+          globeActNodeKey = '';
           hideGlobeTip();
           showGlobePop(e, hit.d);
-          showGlobeTip(e, hit.d, true);
         } else {
+          globeActNodeKey = '';
           hideGlobeTip();
         }
       }
@@ -3959,23 +3981,38 @@ function bindGlobeEvents(){
     zoomAt(e.clientX, e.clientY, f);
     lastGestEnd = now;
   }, { passive: false });
-  c.addEventListener('mouseleave', () => { if (!ptrs.size) { hideGlobeTip(); globeActInc = globeActNode = ''; } });
-  // popup & tooltip "Buka reader" — kartu itu sendiri tombolnya (pola toast .sa-go)
+  c.addEventListener('mouseleave', () => {
+    if (globePtrType === 'touch' || globePtrType === 'pen') return;   // di mobile sentuh jangan dismiss akibat synthetic mouseleave
+    if (!ptrs.size) { hideGlobeTip(); globeActInc = globeActNode = ''; }
+  });
+  // popup & tooltip "Buka reader" — isolasi event sentuh agar tidak tembus/bleed ke canvas
   const pop = $('#sit-pop');
+  const tip = $('#sit-tip');
+  const stopGlobeBleed = ev => {
+    if (ev) ev.stopPropagation();
+  };
+  ['pointerdown', 'touchstart', 'touchend', 'pointerup'].forEach(evt => {
+    if (pop) pop.addEventListener(evt, stopGlobeBleed, { passive: true });
+    if (tip) tip.addEventListener(evt, stopGlobeBleed, { passive: true });
+  });
   if (pop) pop.addEventListener('click', ev => {
     if (ev) ev.stopPropagation();
     const u = pop.dataset.url || sitPopUrl; sitPopUrl = ''; pop.dataset.url = '';
-    pop.hidden = true;
-    const tipEl = $('#sit-tip'); if (tipEl) tipEl.hidden = true;
+    hideGlobeTip();
     if (u) rdOpen(u, null, true, '').catch(() => window.open(u, '_blank', 'noopener'));
   });
-  const tip = $('#sit-tip');
   if (tip) tip.addEventListener('click', ev => {
     if (ev) ev.stopPropagation();
     const u = tip.dataset.url;
     if (u) {
       hideGlobeTip();
       rdOpen(u, null, true, '').catch(() => window.open(u, '_blank', 'noopener'));
+    } else if (tip.dataset.nodeLa && tip.dataset.nodeLo) {
+      const la = parseFloat(tip.dataset.nodeLa), lo = parseFloat(tip.dataset.nodeLo);
+      hideGlobeTip();
+      lastGestEnd = performance.now();
+      focusedHome = false;
+      flyTo(la, lo, Math.max(view.zoom, 11), 'node');
     }
   });
   c.addEventListener('click', e => {

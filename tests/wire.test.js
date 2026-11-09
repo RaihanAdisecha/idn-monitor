@@ -537,3 +537,34 @@ test('05 CCTV regional citybar uses Swiss Index Register with canted diagonal sh
   assert.ok(html.includes('<span class="cb-name">${esc(d)}</span>'), 'drawCityBar must render cb-name span');
   assert.ok(html.includes('<span class="cb-n">${n}</span>'), 'drawCityBar must render cb-n span');
 });
+
+test('globe mobile touch pipeline isolates overlay pointer events and enables node preview focus', () => {
+  const fs = require('fs');
+  const path = require('path');
+  const html = fs.readFileSync(path.join(__dirname, '../public/index.html'), 'utf8');
+
+  // 1. CSS touch & coarse pointer support: sit-tip pointer-events auto on coarse screens
+  assert.ok(html.includes('@media (hover:none), (pointer:coarse)'), 'sit-tip must enable pointer-events on coarse pointer / touch devices');
+  assert.ok(html.includes('.pop-go{') && html.includes('pointer-events:auto;'), 'pop-go button must have explicit pointer-events auto');
+
+  // 2. Event bleed isolation: overlays stop propagation on pointerdown/touchstart/touchend/pointerup
+  assert.ok(html.includes("['pointerdown', 'touchstart', 'touchend', 'pointerup'].forEach(evt => {") &&
+            html.includes('if (pop) pop.addEventListener(evt, stopGlobeBleed') &&
+            html.includes('if (tip) tip.addEventListener(evt, stopGlobeBleed'),
+            'pop and tip overlays must stop pointerdown/touchstart propagation to prevent canvas dismiss');
+
+  // 3. Canvas mouseleave guard: synthetic mouseleave on touch devices must not dismiss mobile popups
+  assert.ok(html.includes("if (globePtrType === 'touch' || globePtrType === 'pen') return;"),
+            'canvas mouseleave must ignore touch/pen pointers to prevent premature popup destruction');
+
+  // 4. Node tap two-step lifecycle: first tap previews node via showNodeTip, second tap focuses via flyTo
+  assert.ok(html.includes('let globeActNodeKey = \'\', globeActNodeAt = 0;'), 'globeActNodeKey and timer must be declared for node tap state');
+  assert.ok(html.includes('showNodeTip(e, hit.d, true);') && html.includes('globeActNodeKey = nodeKey;'),
+            'first tap on node in ptrEnd must show node preview tooltip instead of immediately dismissing');
+
+  // 5. Single popup on incident tap: mobile touch must not render conflicting overlapping tip
+  const ptrEndIdx = html.indexOf('function ptrEnd(e){');
+  const ptrEndBlock = html.slice(ptrEndIdx, ptrEndIdx + 2200);
+  assert.ok(ptrEndBlock.includes('showGlobePop(e, hit.d);') && !ptrEndBlock.includes('showGlobeTip(e, hit.d, true);'),
+            'ptrEnd touch branch must only showGlobePop without stacking showGlobeTip simultaneously');
+});
