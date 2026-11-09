@@ -86,13 +86,36 @@ a{color:inherit;text-decoration:none;text-underline-offset:2px}
   color:#767682;font:500 7px/1 var(--mono);letter-spacing:.16em;text-transform:uppercase;
 }
 .brand-case{
-  display:inline-flex;align-items:center;gap:8px;
-  font:400 10px/1.2 var(--mono);letter-spacing:.09em;text-transform:uppercase;color:#82828e;
-  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  display:inline-flex;align-items:center;min-width:0;
+  white-space:nowrap;overflow:hidden;
 }
-.bc-loc{color:#c8c8d2;font-weight:600;letter-spacing:.11em}
-.bc-sep{color:#464652}
-.bc-x{color:#50505c;margin:0 1px}
+/* ganti opsi: <header class="hdr" data-bc="a|b"> */
+.hdr[data-bc="a"] .bc-b,.hdr[data-bc="b"] .bc-a{display:none}
+.brand-case .bc-loc{
+  font:600 19px/1 var(--disp);font-optical-sizing:auto;letter-spacing:-.025em;color:#f3f3f6;
+}
+
+/* Opsi A: masthead + komposisi. Judul besar, scope di atas mix bar proporsi kategori */
+.bc-a{display:inline-flex;align-items:center;gap:12px}
+.bc-a .bc-meta{display:flex;flex-direction:column;gap:5px;min-width:0}
+.bc-a .bc-scope{font:400 12px/1 var(--disp);letter-spacing:-.005em;color:#a6a6b2}
+.bc-a .bc-mixrow{display:flex;align-items:center;gap:8px}
+.bc-a .bc-mix{display:flex;gap:2px;width:72px;height:3px;flex:none}
+.bc-a .bc-mix i{flex:1 1 0;min-width:3px;border-radius:1px;background:var(--c);opacity:.85;transition:flex-grow .6s cubic-bezier(.2,.8,.3,1)}
+.bc-a .bc-mix[data-empty] i{background:#2a2a33;opacity:1}
+.bc-a .bc-sum{font:500 9px/1 var(--mono);letter-spacing:.04em;color:#6e6e7a;font-variant-numeric:tabular-nums}
+
+/* Opsi B: ledger. Judul + tiga angka live per kategori */
+.bc-b{display:inline-flex;align-items:center;gap:14px}
+.bc-b .bc-rule{width:1px;height:20px;background:linear-gradient(180deg,transparent,#34343f,transparent);flex:none}
+.bc-b .bc-stats{display:inline-flex;align-items:center;gap:14px}
+.bc-b .bc-stat{display:inline-flex;align-items:baseline;gap:5px;position:relative;padding-left:7px}
+.bc-b .bc-stat::before{
+  content:"";position:absolute;left:0;top:50%;width:2px;height:11px;margin-top:-5.5px;
+  border-radius:1px;background:var(--c);
+}
+.bc-b .bc-stat b{font:600 15px/1 var(--disp);letter-spacing:-.02em;color:#ededf2;font-variant-numeric:tabular-nums}
+.bc-b .bc-stat span{font:400 11.5px/1 var(--disp);color:#8a8a96}
 .hdr-tools{margin-left:auto;display:flex;align-items:center;gap:10px;flex:none}
 .hdr-dock{
   display:inline-flex;align-items:center;height:30px;padding:0 11px;gap:11px;
@@ -1258,42 +1281,52 @@ a{color:inherit;text-decoration:none;text-underline-offset:2px}
   overflow:hidden;
 }
 .soc-tab{
-  position:relative;display:inline-flex;align-items:center;gap:3.5px;
-  height:100%;padding:0 5px;border:none;background:none;cursor:pointer;
-  font:600 8px/1 var(--mono);letter-spacing:-.01em;text-transform:uppercase;color:#787885;
+  position:relative;display:inline-flex;align-items:flex-end;justify-content:center;
+  height:100%;padding:0 5px 9px;border:none;background:none;cursor:pointer;
+  font:700 9px/1 var(--mono);letter-spacing:.04em;text-transform:uppercase;color:#8a8a96;
   white-space:nowrap;touch-action:manipulation;-webkit-tap-highlight-color:transparent;
   transition:background .14s cubic-bezier(.2,.8,.3,1),color .14s;
 }
-.soc-tab .ic{width:11px;height:11px;flex:none;transition:transform .12s,color .12s}
-.soc-tab b{font:500 8px/1 var(--mono);color:#70707a;font-variant-numeric:tabular-nums;transition:color .12s}
-.soc-tab:hover{color:#c0c0cc;background:rgba(255,255,255,.03)}
-.soc-tab:hover b{color:#a0a0b0}
-.soc-tab:hover .ic{transform:scale(1.08)}
-
-/* DIAGONAL CANTED INTERFACE */
-#tab-x{
-  padding-left:7px;padding-right:15px;
-  clip-path:polygon(0 0, 100% 0, calc(100% - 12px) 100%, 0 100%);
-  z-index:2;
+/* logo watermark di belakang label: sepertiga bawahnya ketutup teks */
+.soc-tab .lbl{position:relative;display:inline-block}
+.soc-tab .ic{
+  position:absolute;left:50%;bottom:3px;width:21px;height:21px;
+  color:#fff;opacity:.13;pointer-events:none;z-index:0;
+  transform:translateX(-50%);transform-origin:50% 100%;
+  transition:opacity .14s,transform .18s cubic-bezier(.2,.8,.3,1);
 }
-#tab-x::after{
-  content:"";position:absolute;top:0;right:0;bottom:0;width:1.5px;
-  background:linear-gradient(180deg,rgba(255,255,255,.36) 0%,rgba(255,255,255,.06) 100%);
-  transform-origin:100% 0;transform:skewX(-18deg);pointer-events:none;
+.soc-tab .tx{position:relative;z-index:1;text-shadow:0 0 3px #0d0d12,0 1px 0 rgba(0,0,0,.7)}
+.soc-tab:hover{color:#d0d0da;background:rgba(255,255,255,.03)}
+.soc-tab:hover .ic{opacity:.22;transform:translateX(-50%) scale(1.06)}
+
+/* DIAGONAL CANTED INTERFACE: satu --cant buat clip, overlap dan garis biar seam-nya presisi */
+.soc-tabs{--cant:12px;--tw:66px}
+#tab-x,#tab-th{width:var(--tw);flex:none}
+/* padding asimetris: pusat label = pusat area kelihatan di tinggi teks (~75% dari atas) */
+#tab-x{
+  padding-left:4px;padding-right:calc(var(--cant) * .75 + 4px);
+  clip-path:polygon(0 0, 100% 0, calc(100% - var(--cant)) 100%, 0 100%);
+  z-index:1;
 }
 #tab-th{
-  padding-left:15px;padding-right:7px;margin-left:-11px;
-  clip-path:polygon(12px 0, 100% 0, 100% 100%, 0 100%);
+  padding-left:calc(var(--cant) * .25 + 4px);padding-right:4px;margin-left:calc(-1 * var(--cant));
+  clip-path:polygon(var(--cant) 0, 100% 0, 100% 100%, 0 100%);
   z-index:1;
+}
+/* garis seam: diagonal kanan-atas → kiri-bawah dalam kotak selebar --cant, tepat di atas sambungan */
+.soc-tabs::after{
+  content:"";position:absolute;top:0;bottom:0;z-index:3;pointer-events:none;
+  left:calc(var(--tw) - var(--cant));width:var(--cant);
+  background:linear-gradient(to bottom right,transparent calc(50% - .75px),rgba(255,255,255,.3) 50%,transparent calc(50% + .75px));
+  -webkit-mask-image:linear-gradient(180deg,#000 0%,rgba(0,0,0,.35) 100%);
+          mask-image:linear-gradient(180deg,#000 0%,rgba(0,0,0,.35) 100%);
 }
 .soc-tab[aria-selected="true"]{
   background:linear-gradient(180deg,#242432 0%,#161620 100%);
   color:#fff;
 }
-.soc-tab[aria-selected="true"] b{color:#e0e0ea;font-weight:600}
-#tab-x[aria-selected="true"]::after{
-  background:linear-gradient(180deg,rgb(255 255 255 / 17%) 0%,rgba(255,255,255,.18) 100%);
-}
+.soc-tab[aria-selected="true"] .ic{opacity:.34}
+.soc-tab[aria-selected="true"] .tx{text-shadow:0 0 3px #1a1a24,0 1px 0 rgba(0,0,0,.8)}
 #xmeta,#tmeta{display:none!important}
 
 /* ============================================================ THREADS */
@@ -2176,7 +2209,6 @@ button.mp-src{background:none;border-top:0;border-left:0;border-right:0;cursor:p
   .map-m{display:none}
   .map-f .sp{display:none}
   .map-hint{display:none}
-  .soc-tab{padding:0 7px}
   #nlist{grid-template-columns:1fr}
   .reader{right:8px;width:calc(100vw - 16px);top:calc(var(--hdr) + 8px);height:min(70vh,640px)}
   .reader.is-post,
@@ -2408,7 +2440,7 @@ button.mp-src{background:none;border-top:0;border-left:0;border-right:0;cursor:p
 
 </svg>
 
-<header class="hdr">
+<header class="hdr" data-bc="a">
   <div class="brand">
     <span class="mark">
       <svg class="mark-ret" viewBox="0 0 16 16" aria-hidden="true"><path class="crn" d="M2.5 6V2.5h3.5M13.5 6V2.5H10M2.5 10v3.5h3.5M13.5 10v3.5H10"/><path class="crn hot" d="M13.5 10v3.5H10"/></svg>
@@ -2418,9 +2450,27 @@ button.mp-src{background:none;border-top:0;border-left:0;border-right:0;cursor:p
       </span>
     </span>
     <span class="brand-case">
-      <span class="bc-loc">Indonesia</span>
-      <span class="bc-sep">·</span>
-      <span>Demo <span class="bc-x">×</span> Insiden <span class="bc-x">×</span> Bencana</span>
+      <span class="bc-a">
+        <span class="bc-loc">Indonesia</span>
+        <span class="bc-meta">
+          <span class="bc-scope">Demo, insiden &amp; bencana</span>
+          <span class="bc-mixrow">
+            <span class="bc-mix" id="bc-mix" data-empty aria-hidden="true">
+              <i style="--c:#f1c21b"></i><i style="--c:#8d8d8d"></i><i style="--c:#be95ff"></i>
+            </span>
+            <span class="bc-sum" id="bc-sum">— titik · 24j</span>
+          </span>
+        </span>
+      </span>
+      <span class="bc-b">
+        <span class="bc-loc">Indonesia</span>
+        <span class="bc-rule" aria-hidden="true"></span>
+        <span class="bc-stats">
+          <span class="bc-stat" style="--c:#f1c21b"><b data-bc="demo">–</b><span>Demo</span></span>
+          <span class="bc-stat" style="--c:#8d8d8d"><b data-bc="insiden">–</b><span>Insiden</span></span>
+          <span class="bc-stat" style="--c:#be95ff"><b data-bc="bencana">–</b><span>Bencana</span></span>
+        </span>
+      </span>
     </span>
   </div>
   <div class="hdr-tools">
@@ -2533,10 +2583,10 @@ button.mp-src{background:none;border-top:0;border-left:0;border-right:0;cursor:p
       <h2 class="ph-t">Social</h2>
       <div class="soc-tabs" role="tablist" aria-label="Sumber sosial">
         <button class="soc-tab" id="tab-x" type="button" role="tab" aria-selected="true" aria-controls="pane-x" data-tab="x">
-          <svg class="ic" aria-hidden="true"><use href="#i-x"></use></svg>Tweets <b id="xcount">—</b>
+          <span class="lbl"><svg class="ic" aria-hidden="true"><use href="#i-x"></use></svg><span class="tx">Tweets</span></span>
         </button>
         <button class="soc-tab" id="tab-th" type="button" role="tab" aria-selected="false" aria-controls="pane-th" data-tab="threads">
-          <svg class="ic" aria-hidden="true"><use href="#i-threads"></use></svg>Threads <b id="tcount">—</b>
+          <span class="lbl"><svg class="ic" aria-hidden="true"><use href="#i-threads"></use></svg><span class="tx">Threads</span></span>
         </button>
       </div>
       <span class="ph-m" id="xmeta" hidden aria-hidden="true">—</span>
@@ -4556,6 +4606,23 @@ addEventListener('pagehide', () => {
   const box = $('#cl-toasts'); if (box) box.innerHTML = '';
 });
 
+// header brand-case: kebakaran ikut insiden, banjir ikut bencana (3 bucket = 3 label di header)
+function renderBrandCase(st){
+  const g = {
+    demo: st.demo || 0,
+    insiden: (st.insiden || 0) + (st.fire || 0),
+    bencana: (st.disaster || 0) + (st.flood || 0),
+  };
+  const total = g.demo + g.insiden + g.bencana;
+  document.querySelectorAll('.bc-stat b[data-bc]').forEach(b => { b.textContent = g[b.dataset.bc]; });
+  const mix = $('#bc-mix');
+  if (mix) {
+    mix.toggleAttribute('data-empty', !total);
+    [g.demo, g.insiden, g.bencana].forEach((n, i) => { mix.children[i].style.flexGrow = total ? n : 1; });
+  }
+  const sum = $('#bc-sum');
+  if (sum) sum.textContent = total + ' titik · 24j';
+}
 function renderSituation(){
   if (!SIT) return;
   const st = { ...(SIT.stats || {}) };
@@ -4568,6 +4635,7 @@ function renderSituation(){
   const sitLbl = $('#sit-total-lbl');
   if (sitLbl) sitLbl.textContent = sitLocated > 0 ? `${sitTotal} berita · 24 jam` : '24 jam';
   renderMapLegend(st);
+  renderBrandCase(st);
   $('#dmeta').textContent = (SIT.total || 0) + ' insiden';
   const syncBox = document.querySelector('.sit-kpi-sync');
   syncBox.dataset.state = SIT_STALE ? 'stale' : 'live';
@@ -5315,8 +5383,6 @@ function renderX(){
     (!xQuery || xMatchQ(p, xQuery)) &&
     (!q || ((p.text || '') + ' ' + (p.handle || '') + ' ' + (p.name || '')).toLowerCase().includes(q)));
   if ($('#xmeta')) $('#xmeta').textContent = list.length + ' post';
-  $('#xcount').textContent = num(xPosts.length);
-  $('#xcount').title = xPosts.length + ' post';
   const page = list.slice(0, xShown);
   $('#xlist').innerHTML = (page.length ? page.map(tweetCard).join('')
     : `<div class="empty">${xPosts.length ? 'Tidak ada post yang cocok dengan saringan ini.' : 'Belum ada post X' + (xLastErr ? ': ' + esc(xLastErr.slice(0, 220)) : '. Server belum selesai menarik, atau X mengembalikan hasil kosong.')}</div>`) +
@@ -5406,8 +5472,6 @@ function renderThreads(){
   const list = tPosts.filter(p =>
     (!tQuery || tMatchQ(p, tQuery)) &&
     (!q || ((p.text || '') + ' ' + (p.username || '') + ' ' + (p.full_name || '')).toLowerCase().includes(q)));
-  $('#tcount').textContent = num(tPosts.length);
-  $('#tcount').title = tPosts.length + ' post';
   // umur post terbaru: utamakan newestTs dari server, fallback hitung dari posts
   const tNew = tNewestTs > 0 ? tNewestTs
     : Math.max(0, ...tPosts.map(p => p.ts || Date.parse(p.created_at || '') || 0));

@@ -189,3 +189,51 @@ Cari kriteria :
   assert.ok(r3.topics.includes('pendidikan'), 'legitimate teacher protest must match pendidikan');
   assert.equal(r3.feedEligible, true, 'legitimate protest must be feed-eligible');
 });
+
+test('romantic confessions, dating drama, and shooting metaphors are rejected while real shooting incidents pass', () => {
+  const romanticPost = "prtm kl ditembak duluan. malem kmrn 3 jam di obrolan ini lbh bnyk gua nya minta maaf, krn gua ngerasa jahat. i swear to god gua lg ga mau pacaran. thn ini berat buat gua, gua lg memperbaiki diri. td gua ajak dia makan malem bareng, bcs i didn’t want her to feel some type of way.";
+  const res1 = S.socAssess(romanticPost);
+  assert.equal(res1.feedEligible, false, 'romantic confession must not be feed-eligible');
+  assert.equal(res1.signalEligible, false, 'romantic confession must not be signal-eligible');
+  assert.equal(res1.topics.length, 0, 'romantic confession must have zero topics');
+  assert.equal(res1.reportType, 'irrelevant');
+  assert.ok(res1.reasons.includes('metaphor_or_nonincident_usage') || res1.reasons.includes('spam'));
+
+  const gebetan = 'kemarin gue ditembak gebetan di kafe, tapi gue bingung mau jawab apa krn blm siap pacaran';
+  const res2 = S.socAssess(gebetan);
+  assert.equal(res2.feedEligible, false);
+  assert.equal(res2.topics.length, 0);
+
+  const mantanRp = 'mantan rp gw cuma satu, sering banget ngedrama kecelakaan, mamanya meninggal, bapaknya meninggal, keluarganya bankrut dll tapi kadang flexing juga. setaun pacaran sering mau gw putusin dia gak pernah mau, terus bilang mau nyamperin gw tiap gw putusin';
+  const resRp = S.socAssess(mantanRp);
+  assert.equal(resRp.feedEligible, false, 'fake drama accident / roleplay post must not be feed-eligible');
+  assert.equal(resRp.topics.length, 0, 'fake drama accident must have zero topics');
+
+  const bareShooting = 'kemarin dia ditembak tapi tidak jelas siapa orangnya';
+  const res3 = S.socAssess(bareShooting);
+  assert.equal(res3.topics.includes('penembakan'), false, 'bare ditembak without weapon/police context must not qualify for penembakan');
+
+  const figurativeKriminal = 'malam ini aku dibunuh rasa rindu dan sepi di kosan';
+  const res4 = S.socAssess(figurativeKriminal);
+  assert.equal(res4.topics.includes('kriminal'), false, 'figurative dibunuh rindu must not qualify for kriminal');
+
+  const figurativePencurian = 'ada pencuri hati yang bikin senyum-senyum sendiri';
+  const res5 = S.socAssess(figurativePencurian);
+  assert.equal(res5.topics.includes('pencurian'), false, 'figurative pencuri hati must not qualify for pencurian');
+
+  // Real shooting incidents MUST pass and remain feedEligible
+  const realShooting1 = 'Pelaku begal ditembak polisi saat berusaha kabur di Bekasi';
+  const resReal1 = S.socAssess(realShooting1);
+  assert.ok(resReal1.topics.includes('penembakan'), 'real police shooting must match penembakan');
+  assert.equal(resReal1.feedEligible, true);
+
+  const realShooting2 = 'Baku tembak pecah antara TNI dan KKB di Intan Jaya Papua';
+  const resReal2 = S.socAssess(realShooting2);
+  assert.ok(resReal2.topics.includes('penembakan'), 'gunfight must match penembakan');
+  assert.equal(resReal2.feedEligible, true);
+
+  const realShooting3 = 'Seorang pria tewas tertembak peluru nyasar di Cakung Jakarta Timur';
+  const resReal3 = S.socAssess(realShooting3);
+  assert.ok(resReal3.topics.includes('penembakan'), 'stray bullet shooting casualty must match penembakan');
+  assert.equal(resReal3.feedEligible, true);
+});

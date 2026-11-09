@@ -182,14 +182,16 @@ test('social pane tabs use canted twin blades diagonal divider with far-right al
 
   // Verify .soc-tabs positioned on far right via margin-left: auto and styling
   assert.ok(html.includes('margin-left:auto;') && html.includes('position:relative;'), 'soc-tabs must align to the far right with margin-left: auto');
-  assert.ok(html.includes('#tab-x::after{') && html.includes('right:0;bottom:0;width:1.5px;'), 'tab-x must have diagonal divider pseudo-element');
-  assert.ok(html.includes('transform-origin:100% 0;transform:skewX(-18deg);pointer-events:none;'), 'diagonal divider must use top-right origin and matching -18deg skew to prevent cutoff');
-  assert.ok(html.includes('clip-path:polygon(0 0, 100% 0, calc(100% - 12px) 100%, 0 100%);'), 'tab-x must have canted clip path');
-  assert.ok(html.includes('clip-path:polygon(12px 0, 100% 0, 100% 100%, 0 100%);'), 'tab-th must have matching canted clip path');
+  assert.ok(html.includes('.soc-tabs::after{') && html.includes('left:calc(var(--tw) - var(--cant));width:var(--cant);'), 'seam line must sit exactly over the canted joint');
+  assert.ok(html.includes('#tab-x,#tab-th{width:var(--tw);flex:none}'), 'both tabs must share one fixed width');
+  assert.ok(html.includes('clip-path:polygon(0 0, 100% 0, calc(100% - var(--cant)) 100%, 0 100%);'), 'tab-x must have canted clip path');
+  assert.ok(html.includes('clip-path:polygon(var(--cant) 0, 100% 0, 100% 100%, 0 100%);'), 'tab-th must have matching canted clip path');
 
   // Verify xmeta/tmeta removed from visual presentation
   assert.ok(html.includes('#xmeta,#tmeta{display:none!important}'), 'xmeta and tmeta must be hidden from display');
-  assert.ok(html.includes('.soc-tab[aria-selected="true"] b{color:#e0e0ea;font-weight:600}'), 'active tab number must be bright light gray, not red');
+  assert.ok(!html.includes('id="xcount"') && !html.includes('id="tcount"'), 'social tabs must not render post counts');
+  assert.ok(html.includes('.soc-tab .ic{\n  position:absolute;'), 'tab logo must sit absolutely behind the label');
+  assert.ok(html.includes('.soc-tab .tx{position:relative;z-index:1;'), 'tab label must stack above the logo');
 });
 
 test('in-app reader media uses adaptive mosaic grid classes and bounded layout', () => {
