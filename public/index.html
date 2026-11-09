@@ -694,8 +694,8 @@ a{color:inherit;text-decoration:none;text-underline-offset:2px}
 @media (max-width:640px){.tr-lanes{grid-template-columns:1fr}}
 .tr-lanes.solo-soc,.tr-lanes.solo-news{grid-template-columns:1fr}
 .tr-lane{padding:10px 12px}
-.tr-lane.soc{background:rgba(69,137,255,.028);border:1px solid rgba(122,169,255,.4)}
-.tr-lane.news{background:rgba(241,194,27,.026);border:1px solid rgba(241,194,27,.45)}
+.tr-lane.soc{background:rgba(69,137,255,.028);border:1px solid rgba(122,169,255,.18)}
+.tr-lane.news{background:rgba(241,194,27,.026);border:1px solid rgba(241,194,27,.18)}
 .tr-lane-h{display:flex;align-items:center;gap:6px;padding:0 0 6px;font:600 8.5px/1 var(--mono);letter-spacing:.1em;text-transform:uppercase}
 .tr-lane.soc .tr-lane-h{color:#7aa9ff}
 .tr-lane.news .tr-lane-h{color:#f1c21b}
@@ -730,24 +730,7 @@ a{color:inherit;text-decoration:none;text-underline-offset:2px}
 .flt-drawer{display:grid;grid-template-rows:0fr;transition:grid-template-rows .22s cubic-bezier(.2,.8,.3,1)}
 .flt-wrap.open .flt-drawer{grid-template-rows:1fr}
 .flt-in{min-height:0;overflow:hidden;display:flex;align-items:center;gap:8px;padding:0 12px;background:var(--bg);border-bottom:1px solid transparent;transition:padding .22s,border-color .22s}
-.flt-wrap.open .flt-in{padding:10px 12px 14px;border-bottom-color:var(--border)}
-/* form pencarian: satu field dengan ikon, hint tombol "/", tombol hapus; Topik sebagai chip toggle */
-.flt-field{position:relative;flex:1;min-width:0;display:flex;align-items:center;height:34px;background:var(--field);border:1px solid var(--border);border-bottom-color:var(--border2);transition:border-color .12s,box-shadow .12s}
-.flt-field:focus-within{border-color:var(--text3);box-shadow:inset 0 -1px 0 var(--text3)}
-.flt-si{flex:none;width:14px;height:14px;margin-left:10px;color:var(--text3);transition:color .12s}
-.flt-field:focus-within .flt-si{color:var(--text)}
-.flt-in .flt-field .inp{flex:1;min-width:0;height:100%;padding:0 8px;background:transparent;border:0;box-shadow:none;outline:0}
-.flt-in .flt-field .inp::-webkit-search-cancel-button,.flt-in .flt-field .inp::-webkit-search-decoration{-webkit-appearance:none;display:none}
-.flt-kb{flex:none;margin-right:8px;padding:2px 5px;border:1px solid var(--border2);font:600 8px/1 var(--mono);color:var(--text3)}
-.flt-field.has .flt-kb{display:none}
-.flt-x{display:none;flex:none;width:26px;height:100%;align-items:center;justify-content:center;border:0;background:transparent;color:var(--text3);cursor:pointer}
-.flt-x:hover{color:var(--text)}
-.flt-field.has .flt-x{display:inline-flex}
-.flt-chip{flex:none;display:inline-flex;align-items:center;gap:6px;height:34px;padding:0 11px;background:transparent;border:1px solid var(--border);color:var(--text3);cursor:pointer;font:600 9px/1 var(--mono);letter-spacing:.1em;text-transform:uppercase;transition:color .12s,border-color .12s,background .12s}
-.flt-chip:hover{color:var(--text2);border-color:var(--text3)}
-.flt-chip svg{width:10px;height:10px;opacity:0;transition:opacity .12s}
-.flt-chip[aria-pressed="true"]{background:var(--text);border-color:var(--text);color:#161616}
-.flt-chip[aria-pressed="true"] svg{opacity:1}
+.flt-wrap.open .flt-in{padding:8px 12px;border-bottom-color:var(--border)}
 .flt-tab{position:absolute;right:0;top:100%;margin-top:-1px;display:inline-flex;align-items:center;gap:6px;height:18px;padding:0 12px;
   background:var(--bg);border:1px solid var(--border);border-top-color:var(--bg);border-radius:0 0 0 8px;cursor:pointer;
   font:600 8px/1 var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--text3);transition:color .12s,border-color .12s}
@@ -1434,6 +1417,103 @@ a{color:inherit;text-decoration:none;text-underline-offset:2px}
 }
 .mp-kpi-foot b{color:#a2a2b0;font-weight:500}
 .mp-kpi-note{color:#646472;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* Dual-Metric Tactical HUD (Gempa BMKG) */
+.mp-pulse-dot{display:inline-block;width:6px;height:6px;border-radius:50%;margin-right:5px;box-shadow:0 0 6px currentColor;vertical-align:middle}
+.mp-hud-card{display:flex;flex-direction:column;gap:6px;min-width:220px;max-width:285px}
+.mp-hud-head{display:flex;align-items:center;justify-content:space-between;gap:6px}
+.mp-hud-tag{
+  font:600 7px/1 var(--mono);letter-spacing:.08em;text-transform:uppercase;
+  padding:2px 5px;border-radius:2px;background:rgba(255,255,255,.05);
+  border:1px solid rgba(255,255,255,.14);color:#a8a8b6;white-space:nowrap;
+}
+.mp-hud-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.mp-hud-box{
+  background:color-mix(in srgb,var(--box-c,#ffffff) 10%,#101016);
+  border:1px solid color-mix(in srgb,var(--box-c,#ffffff) 24%,rgba(255,255,255,.08));
+  box-shadow:inset 0 0 10px color-mix(in srgb,var(--box-c,#ffffff) 12%,transparent);
+  border-radius:3px;padding:6px 8px;display:flex;flex-direction:column;gap:2px;
+}
+.mp-hud-lbl{font:600 7px/1 var(--mono);letter-spacing:.08em;text-transform:uppercase;color:#858596}
+.mp-hud-hero-val{
+  font:700 16px/1 var(--mono);letter-spacing:-.02em;margin-top:2px;
+  display:flex;align-items:baseline;gap:3px;color:var(--box-c,#f5f5f7);
+}
+.mp-hud-hero-val span{font-size:8px;font-weight:500;opacity:.7}
+.mp-hud-class{font:500 7.5px/1 var(--mono);text-transform:uppercase;letter-spacing:.04em;margin-top:1px;color:var(--box-c,#a0a0ae);opacity:.9}
+.mp-hud-banner{
+  padding:4px 7px;border-radius:2px;font:600 8px/1 var(--mono);
+  letter-spacing:.05em;text-transform:uppercase;display:flex;
+  align-items:center;justify-content:space-between;
+}
+.mp-hud-banner.banner-safe{
+  background:rgba(76,217,100,.1);border:1px solid rgba(76,217,100,.25);color:#4cd964;
+}
+.mp-hud-banner.banner-danger{
+  background:rgba(255,59,48,.18);border:1px solid rgba(255,59,48,.5);color:#ff3b30;
+}
+.mp-hud-banner.banner-info{
+  background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.14);color:#a8a8b6;
+}
+.mp-hud-loc{display:flex;flex-direction:column;gap:2px;padding-top:1px}
+.mp-hud-loc-main{font:600 11px/1.25 var(--sans);color:#f0f0f5;overflow-wrap:anywhere}
+.mp-hud-loc-sub{font:400 8.5px/1.2 var(--mono);color:#888896}
+.mp-hud-foot{
+  padding-top:5px;border-top:1px solid rgba(255,255,255,.08);
+  display:flex;align-items:center;justify-content:space-between;gap:6px;
+  font:400 7.5px/1.2 var(--mono);letter-spacing:.02em;color:#727280;
+}
+.mp-hud-foot b{color:#a2a2b0;font-weight:500}
+/* Telemetry Runway Strip (TomTom Traffic Incidents) */
+.tt-corr-card{display:flex;flex-direction:column;gap:7px;min-width:240px;max-width:320px}
+.tt-head{display:flex;align-items:center;justify-content:space-between;gap:6px}
+.tt-brand{font:600 8.5px/1 var(--mono);letter-spacing:.1em;text-transform:uppercase;display:flex;align-items:center;gap:5px}
+.tt-tag{
+  font:600 7px/1 var(--mono);letter-spacing:.08em;text-transform:uppercase;
+  padding:2px 5px;border-radius:2px;white-space:nowrap;
+}
+.tt-runway{
+  display:flex;background:#111218;border:1px solid rgba(255,255,255,.1);
+  border-radius:3px;overflow:hidden;
+}
+.tt-chamber{
+  flex:1;padding:7px 10px;display:flex;flex-direction:column;gap:2px;
+  position:relative;background:color-mix(in srgb,var(--ch-c,#f1c21b) 8%,transparent);
+}
+.tt-chamber:first-child{border-right:1px dashed rgba(255,255,255,.12)}
+.tt-ch-lbl{font:600 7px/1 var(--mono);letter-spacing:.08em;text-transform:uppercase;color:#858596}
+.tt-ch-val{
+  font:700 17px/1 var(--mono);letter-spacing:-.02em;margin-top:2px;
+  display:flex;align-items:baseline;gap:3px;color:var(--ch-c,#f5f5f7);
+}
+.tt-ch-val span{font-size:8.5px;font-weight:600;opacity:.8}
+.tt-ch-sub{font:500 7px/1 var(--mono);text-transform:uppercase;letter-spacing:.04em;color:var(--ch-c,#a0a0ae);opacity:.85}
+.tt-report-strip{
+  background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);
+  border-radius:3px;padding:4px 8px;display:flex;align-items:center;
+  justify-content:space-between;font:500 8px/1 var(--mono);letter-spacing:.04em;color:#a0a0ae;
+}
+.tt-rep-meta{display:flex;align-items:center;gap:5px}
+.tt-rep-meta b{color:#f0f0f5;font-weight:600}
+.tt-rep-time{color:#727282;font-size:7.5px}
+.tt-corridor{
+  background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);
+  border-radius:3px;padding:6px 8px;display:flex;flex-direction:column;gap:4px;
+}
+.tt-corridor-head{
+  font:600 7px/1 var(--mono);letter-spacing:.08em;text-transform:uppercase;color:#828292;
+  display:flex;align-items:center;justify-content:space-between;
+}
+.tt-vector{display:flex;align-items:center;gap:6px;font:500 10.5px/1.3 var(--sans);color:#f0f0f5}
+.tt-node{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:125px}
+.tt-arrow{color:#f1c21b;font-family:var(--mono);font-size:9px;flex-shrink:0}
+.tt-vector-closed .tt-arrow{color:#da1e28}
+.tt-desc-box{font:400 10.5px/1.4 var(--sans);color:#b8b8c4;padding-top:1px}
+.tt-foot{
+  padding-top:5px;border-top:1px solid rgba(255,255,255,.08);
+  display:flex;align-items:center;justify-content:space-between;gap:6px;
+  font:400 7.5px/1.2 var(--mono);letter-spacing:.02em;color:#727280;
+}
+.tt-foot b{color:#a2a2b0;font-weight:500}
 .mk-tt-ic{background:none;border:none}
 .mk-tt{width:100%;height:100%;border-radius:50%;background:#101010;border:1.5px solid var(--tc);color:var(--tc);display:flex;align-items:center;justify-content:center}
 .mk-tt .ic{width:60%;height:60%;stroke-width:1.4}
@@ -2227,13 +2307,7 @@ button.mp-src{background:none;border-top:0;border-left:0;border-right:0;cursor:p
       <div class="flt-wrap" id="fltwrap">
         <div class="flt-drawer" id="newstools" role="search">
           <div class="flt-in">
-            <label class="flt-field" id="fltfield">
-              <svg class="flt-si" viewBox="0 0 14 14" aria-hidden="true"><circle cx="6" cy="6" r="4.2" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M9.2 9.2 12.5 12.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="square"/></svg>
-              <input class="inp" id="fq" type="search" placeholder="Saring berita" aria-label="Saring berita" autocomplete="off" spellcheck="false" tabindex="-1">
-              <kbd class="flt-kb" aria-hidden="true">/</kbd>
-              <button class="flt-x" id="fltclear" type="button" aria-label="Hapus pencarian" tabindex="-1"><svg viewBox="0 0 10 10" width="9" height="9" aria-hidden="true"><path d="M2 2 8 8M8 2 2 8" stroke="currentColor" stroke-width="1.3" stroke-linecap="square"/></svg></button>
-            </label>
-            <button class="flt-chip" id="ontopic" type="button" aria-pressed="true" tabindex="-1" title="Hanya berita demo, kebakaran, banjir, bencana, atau insiden"><svg viewBox="0 0 10 10" aria-hidden="true"><path d="M1.8 5.3 4 7.5 8.3 2.8" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="square"/></svg>Topik</button>
+            <input class="inp cmd" id="fq" type="search" placeholder="Saring berita…" aria-label="Saring berita" autocomplete="off" spellcheck="false" tabindex="-1">
           </div>
         </div>
         <button class="flt-tab" id="fltpill" type="button" aria-expanded="false" aria-controls="newstools"><svg class="flt-cv" viewBox="0 0 10 10" width="9" height="9" aria-hidden="true"><path d="M2 3.5 5 6.5 8 3.5" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="square"/></svg><span class="flt-lb">filter</span><i class="flt-dot" aria-hidden="true"></i></button>
@@ -5622,23 +5696,17 @@ const descHasWork = () => {
 };
 function fltPaint(){
   const w = $('#fltwrap'), open = w.classList.contains('open');
-  $('#fltfield').classList.toggle('has', !!$('#fq').value);
-  w.classList.toggle('on', !!($('#fq').value.trim() || !onlyTopic));
+  w.classList.toggle('on', !!$('#fq').value.trim());
   $('#fltpill').setAttribute('aria-expanded', open ? 'true' : 'false');
-  for (const el of [$('#fq'), $('#ontopic'), $('#fltclear')]) el.tabIndex = open ? 0 : -1;   // laci tertutup → input tidak bisa difokus lewat Tab
+  $('#fq').tabIndex = open ? 0 : -1;   // laci tertutup → input tidak bisa difokus lewat Tab
 }
 function fltSet(open, focus){
   $('#fltwrap').classList.toggle('open', open);
   fltPaint();
   if (open && focus) $('#fq').focus({ preventScroll: true });
 }
-$('#ontopic').addEventListener('click', e => {
-  onlyTopic = !onlyTopic;
-  e.currentTarget.setAttribute('aria-pressed', onlyTopic ? 'true' : 'false');
-  fltPaint(); renderNews();
-});
 $('#fq').addEventListener('input', debounce(() => { fltPaint(); renderNews(); }, 140));
-$('#fltclear').addEventListener('click', () => { $('#fq').value = ''; fltPaint(); renderNews(); $('#fq').focus({ preventScroll: true }); });
+$('#fq').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); fltPaint(); renderNews(); } });
 $('#fltpill').addEventListener('click', () => fltSet(!$('#fltwrap').classList.contains('open'), true));
 $('#fltwrap').addEventListener('keydown', e => { if (e.key === 'Escape') { fltSet(false); $('#fltpill').focus(); } });
 $('#fltwrap').addEventListener('focusout', e => {   // keluar dari laci tanpa filter aktif → tutup sendiri
@@ -6280,21 +6348,84 @@ function camPopup(c){
 }
 function ttIncPopup(inc){
   const col = ttSevCol(inc);
-  const m = (k, v) => v ? `<div><span>${k}:</span><b>${esc(v)}</b></div>` : '';
-  const ruas = [inc.from, inc.to].filter(Boolean).join(' → ');
-  const lap = [inc.reports ? num(inc.reports) + ' laporan' : '', inc.lastReport ? 'terakhir ' + wibTime(inc.lastReport) + ' WIB' : ''].filter(Boolean).join(' · ');
-  const berlaku = [inc.startTime, inc.endTime].filter(Boolean).map(wibFull).join(' → ');
-  return `<div class="mp-k" style="color:${col};display:flex;align-items:center;gap:5px">${ttGlyph(inc.iconCategory, 10)}${esc(TT_CAT_LABEL[inc.iconCategory] || 'Insiden')}</div>
-    <div class="mp-t">${esc(deEmoji(inc.desc))}</div>
-    <div class="mp-meta">
-      ${m('Severity', inc.magnitude != null ? inc.magnitude + ' / 6' : '')}
-      ${m('Delay', inc.delay != null ? '~' + fmtDur(inc.delay) : '')}
-      ${m('Panjang', inc.length ? (inc.length / 1000).toFixed(1) + ' km' : '')}
-      ${m('Dilaporkan', lap)}
-      ${m('Probabilitas', inc.probability)}
+  const isClosed = [7, 8].includes(inc.iconCategory) || /ditutup|terputus|tertutup|blokade/i.test(String(inc.desc || ''));
+  const catLabel = TT_CAT_LABEL[inc.iconCategory] || 'Insiden';
+  const tagTxt = isClosed ? 'TUTUP TOTAL' : (inc.magnitude >= 4 ? 'PADAT MERAYAP' : (inc.magnitude >= 2 ? 'WASPADAI ARUS' : 'LANCAR'));
+  const tagStyle = isClosed ? 'background:rgba(255,59,48,.15);border:1px solid rgba(255,59,48,.45);color:#ff3b30' : 'background:rgba(241,194,27,.12);border:1px solid rgba(241,194,27,.35);color:#f1c21b';
+
+  // Chamber 1: Delay or Blockade Status
+  const ch1Lbl = isClosed ? 'STATUS AKSES' : 'DELAY ESTIMASI';
+  const ch1Val = isClosed ? 'BLOCKED' : (inc.delay != null ? '+' + Math.round(inc.delay / 60) + ' <span>MNT</span>' : 'LANCAR');
+  const ch1Sub = isClosed ? 'TUTUP DUA ARAH' : (inc.magnitude != null ? 'TINGKAT ' + inc.magnitude + ' / 6' : 'ARUS LAMBAT');
+  const ch1Col = isClosed ? '#ff3b30' : col || '#f1c21b';
+
+  // Chamber 2: Queue Length or Blockade Distance
+  const lenKm = inc.length ? (inc.length / 1000).toFixed(1) + ' <span>KM</span>' : (isClosed ? 'TERPUTUS' : 'LOKAL');
+  const ch2Lbl = isClosed ? 'JARAK BLOKADE' : 'PANJANG ANTREAN';
+  const ch2Sub = isClosed ? 'AKSES DITUTUP' : (inc.length ? 'KORIDOR PADAT' : 'TITIK INSIDEN');
+  const ch2Col = isClosed ? '#ff9f0a' : '#00e5ff';
+
+  // Crowdsourced Report Info
+  const repCount = inc.reports ? num(inc.reports) + ' LAPORAN' : 'LAPORAN SISTEM';
+  const repTime = inc.lastReport ? 'TERAKHIR ' + wibTime(inc.lastReport) + ' WIB' : 'TERVERIFIKASI AKTIF';
+
+  // Corridor Vector (From -> To)
+  const hasRuas = inc.from || inc.to;
+  const fromNode = inc.from || 'Titik Awal';
+  const toNode = inc.to || 'Titik Tujuan';
+  const corridorHtml = hasRuas ? `
+    <div class="tt-corridor">
+      <div class="tt-corridor-head">
+        <span>${isClosed ? 'RUAS DITUTUP' : 'VEKTOR RUAS JALAN'}</span>
+        <span>${isClosed ? 'AKSES TERPUTUS' : (inc.length ? (inc.length / 1000).toFixed(1) + ' KM' : 'JALUR')}</span>
+      </div>
+      <div class="tt-vector${isClosed ? ' tt-vector-closed' : ''}">
+        <span class="tt-node">${esc(fromNode)}</span>
+        <span class="tt-arrow">${isClosed ? '━ [DITUTUP TOTAL] ━▶' : `━━━ (${inc.length ? (inc.length / 1000).toFixed(1) + ' km' : 'arah'}) ━━▶`}</span>
+        <span class="tt-node">${esc(toNode)}</span>
+      </div>
+    </div>` : '';
+
+  const descHtml = inc.desc ? `<div class="tt-desc-box">${esc(deEmoji(inc.desc))}</div>` : '';
+
+  // Footer: Validity & Probability
+  const berlaku = inc.endTime ? 'BERLAKU S.D. ' + wibTime(inc.endTime) + ' WIB' : (inc.startTime ? 'SEJAK ' + wibTime(inc.startTime) + ' WIB' : 'STATUS AKTIF');
+  const probTxt = inc.probability ? esc(inc.probability.toUpperCase()) : 'CERTAIN';
+
+  return `<div class="tt-corr-card">
+    <div class="tt-head">
+      <span class="tt-brand" style="color:${ch1Col}">
+        <span class="mp-pulse-dot" style="color:${ch1Col}"></span>
+        ${ttGlyph(inc.iconCategory, 11)} ${esc(catLabel)} · TOMTOM
+      </span>
+      <span class="tt-tag" style="${tagStyle}">${tagTxt}</span>
     </div>
-    ${ruas ? `<div class="mp-ruas"><span>Ruas</span><b>${esc(ruas)}</b></div>` : ''}
-    ${berlaku ? `<div class="mp-foot">Berlaku <b>${esc(berlaku)} WIB</b></div>` : ''}`;
+    <div class="tt-runway">
+      <div class="tt-chamber" style="--ch-c:${ch1Col}">
+        <span class="tt-ch-lbl">${ch1Lbl}</span>
+        <div class="tt-ch-val">${ch1Val}</div>
+        <span class="tt-ch-sub">${ch1Sub}</span>
+      </div>
+      <div class="tt-chamber" style="--ch-c:${ch2Col}">
+        <span class="tt-ch-lbl">${ch2Lbl}</span>
+        <div class="tt-ch-val">${lenKm}</div>
+        <span class="tt-ch-sub">${ch2Sub}</span>
+      </div>
+    </div>
+    <div class="tt-report-strip">
+      <div class="tt-rep-meta">
+        <span class="mp-pulse-dot" style="color:${isClosed ? '#ff3b30' : '#4cd964'}"></span>
+        <span>DILAPORKAN: <b>${esc(repCount)}</b></span>
+      </div>
+      <span class="tt-rep-time">${esc(repTime)}</span>
+    </div>
+    ${corridorHtml}
+    ${descHtml}
+    <div class="tt-foot">
+      <span>${esc(berlaku)}</span>
+      <span style="color:${isClosed ? '#ff3b30' : '#4cd964'}"><b>${probTxt}</b></span>
+    </div>
+  </div>`;
 }
 function syncLayers(){
   if (!map) return;
@@ -7262,15 +7393,74 @@ async function pullDisaster(){
       const gts = Date.parse(g.time) || 0;
       if (!gts || Date.now() - gts > 24 * 3600e3) continue;   // rolling 24 jam, sama dengan insiden
       const key = g.lat.toFixed(2) + ',' + g.lon.toFixed(2) + '|' + g.mag;
-      const gcol = '#ff3b30';
+      const mag = typeof g.mag === 'number' ? g.mag : parseFloat(g.mag) || 0;
+      let magCol = '#e5a000', magClass = 'MINOR / RINGAN';
+      if (mag >= 6.0) { magCol = '#ff3b30'; magClass = 'KUAT / MAJOR'; }
+      else if (mag >= 5.0) { magCol = '#ff6b5e'; magClass = 'SEDANG / MODERAT'; }
+      else if (mag >= 4.0) { magCol = '#ff9f0a'; magClass = 'RINGAN'; }
+
+      const dNum = parseFloat(String(g.depth || '').replace(/[^\d.]/g, '')) || 10;
+      let depCol = '#00e5ff', depClass = 'KERAK DANGKAL';
+      if (dNum > 300) { depCol = '#94a3b8'; depClass = 'SANGAT DALAM'; }
+      else if (dNum > 60) { depCol = '#a78bfa'; depClass = 'MENENGAH'; }
+      else if (dNum <= 15) { depCol = '#00e5ff'; depClass = 'SANGAT DANGKAL'; }
+
+      const potStr = String(g.potensi || '');
+      const isTsunamiWarn = /berpotensi tsunami/i.test(potStr) && !/tidak berpotensi/i.test(potStr);
+      const isNoTsunami = /tidak berpotensi tsunami/i.test(potStr);
+
+      let bannerHtml = '';
+      if (isTsunamiWarn) {
+        bannerHtml = `<div class="mp-hud-banner banner-danger"><span>⚠ POTENSI TSUNAMI</span><span style="font-size:7px;font-weight:700">WASPADA TINGGI</span></div>`;
+      } else if (isNoTsunami) {
+        bannerHtml = `<div class="mp-hud-banner banner-safe"><span>✓ TIDAK BERPOTENSI TSUNAMI</span><span style="font-size:7px;opacity:.8">TEWS CLEAR</span></div>`;
+      } else {
+        bannerHtml = `<div class="mp-hud-banner banner-info"><span>INFORMASI SEISMIK BMKG</span><span style="font-size:7px;opacity:.8">TEWS INFO</span></div>`;
+      }
+
+      const timeStr = gts ? new Date(gts).toLocaleTimeString('id-ID', { timeZone:'Asia/Jakarta', hour:'2-digit', minute:'2-digit' }) + ' WIB' : '—';
+      const mntDiff = gts ? Math.max(0, Math.round((Date.now() - gts) / 60e3)) : 0;
+      const age = gts ? (mntDiff < 60 ? mntDiff + ' mnt lalu' : Math.round(mntDiff / 60) + ' jam lalu') : '—';
+
+      const locMain = g.wilayah || 'Episenter Gempa';
+      const locSub = `${g.lat.toFixed(2)}°, ${g.lon.toFixed(2)}° · Kedalaman ${esc(g.depth || dNum + ' km')}`;
+      const mmiHtml = g.mmi ? `<span style="color:${magCol}"><b>${esc(g.mmi)}</b></span>` : `<span>MMI: —</span>`;
+      const tagTxt = g.mmi ? 'DIRASAKAN' : (isTsunamiWarn ? 'PERINGATAN' : 'AUTOGEMPA');
+      const tagStyle = g.mmi ? `color:${magCol};border-color:${magCol}55` : (isTsunamiWarn ? `color:#ff3b30;border-color:#ff3b3055` : '');
+
       const gs = 1 + Math.min(1.6, (g.mag || 3) * 0.28);   // ukuran ripple ikut magnitude, seperti di globe
       if (mapOpen) {   // marker Leaflet hanya saat panel kebuka — dp (globe) tetap diisi
         const m = L.marker([g.lat, g.lon], { keyboard: false, icon: L.divIcon({ className: 'mk-gempa-ic',
           iconSize: [64, 64], iconAnchor: [32, 32],
-          html: `<div class="mk-gempa" style="--mc:${gcol};--gs:${gs.toFixed(2)}"><i class="mk-rip"></i><i class="mk-rip r2"></i><i class="mk-rip r3"></i><b class="mk-gempa-dot"></b></div>` }) });
-        m.bindPopup(`<div class="mp-k" style="color:#ff6b5e">GEMPA · BMKG</div>
-          <div class="mp-t">M${g.mag} — ${esc(g.wilayah || '')}</div>
-          <div class="mp-m">${esc(g.depth)} · dirasakan: ${esc(g.mmi || '—')}${g.potensi ? '<br>' + esc(g.potensi) : ''}<br>${esc(g.time || '')}</div>`);
+          html: `<div class="mk-gempa" style="--mc:${magCol};--gs:${gs.toFixed(2)}"><i class="mk-rip"></i><i class="mk-rip r2"></i><i class="mk-rip r3"></i><b class="mk-gempa-dot"></b></div>` }) });
+        m.bindPopup(
+          `<div class="mp-hud-card">
+            <div class="mp-hud-head">
+              <span class="mp-k" style="color:${magCol}"><span class="mp-pulse-dot" style="color:${magCol}"></span>GEMPA BUMI · BMKG</span>
+              <span class="mp-hud-tag"${tagStyle ? ` style="${tagStyle}"` : ''}>${tagTxt}</span>
+            </div>
+            <div class="mp-hud-grid">
+              <div class="mp-hud-box" style="--box-c:${magCol}">
+                <span class="mp-hud-lbl">MAGNITUDE</span>
+                <div class="mp-hud-hero-val">${mag.toFixed(1)} <span>SR</span></div>
+                <span class="mp-hud-class">${magClass}</span>
+              </div>
+              <div class="mp-hud-box" style="--box-c:${depCol}">
+                <span class="mp-hud-lbl">KEDALAMAN</span>
+                <div class="mp-hud-hero-val">${dNum} <span>KM</span></div>
+                <span class="mp-hud-class">${depClass}</span>
+              </div>
+            </div>
+            ${bannerHtml}
+            <div class="mp-hud-loc">
+              <div class="mp-hud-loc-main">${esc(locMain)}</div>
+              <div class="mp-hud-loc-sub">${locSub}</div>
+            </div>
+            <div class="mp-hud-foot">
+              <span>${timeStr} · ${age}</span>
+              ${mmiHtml}
+            </div>
+          </div>`);
         m.bindTooltip(`M${g.mag}`, { direction: 'top', offset: [0, -18], opacity: .9 });
         gempaMarkers.push(m);
       }
@@ -7284,9 +7474,26 @@ async function pullDisaster(){
         const m = L.marker([p.la, p.lo], { keyboard: false, icon: L.divIcon({ className: 'mk-gempa-ic',
           iconSize: [56, 56], iconAnchor: [28, 28],
           html: `<div class="mk-gempa" style="--mc:#ff3b30;--gs:1.4"><i class="mk-rip"></i><i class="mk-rip r2"></i><i class="mk-rip r3"></i><b class="mk-gempa-dot"></b></div>` }) });
-        m.bindPopup(`<div class="mp-k" style="color:#ff6b5e">GEMPA · WIRE</div>
-          <div class="mp-t">${esc(cleanTitle(deEmoji(p.title || p.name || 'Gempa'), p.pub || p.src))}</div>
-          <div class="mp-m">${esc(cleanSrc(p.src, p.pub))} · ${esc(p.ts ? wibTime(p.ts) : '')}</div>`);
+        const wireTime = p.ts ? wibTime(p.ts) : '—';
+        m.bindPopup(
+          `<div class="mp-hud-card">
+            <div class="mp-hud-head">
+              <span class="mp-k" style="color:#ff6b5e"><span class="mp-pulse-dot" style="color:#ff6b5e"></span>GEMPA · WIRE NEWS</span>
+              <span class="mp-hud-tag">UNVERIFIED</span>
+            </div>
+            <div class="mp-hud-banner banner-info">
+              <span>LAPORAN DINI MEDIA MASSA</span>
+              <span style="font-size:7px;opacity:.8">WIRE</span>
+            </div>
+            <div class="mp-hud-loc">
+              <div class="mp-hud-loc-main">${esc(cleanTitle(deEmoji(p.title || p.name || 'Gempa'), p.pub || p.src))}</div>
+              <div class="mp-hud-loc-sub">${p.la.toFixed(2)}°, ${p.lo.toFixed(2)}° · ${esc(cleanSrc(p.src, p.pub))}</div>
+            </div>
+            <div class="mp-hud-foot">
+              <span>${esc(wireTime)}</span>
+              <span>${esc(cleanSrc(p.src, p.pub))}</span>
+            </div>
+          </div>`);
         m.bindTooltip('Gempa (berita)', { direction: 'top', offset: [0, -16], opacity: .9 });
         gempaMarkers.push(m);
       }

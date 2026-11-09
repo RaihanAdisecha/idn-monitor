@@ -251,3 +251,55 @@ test('incident map popups remove redundant close button', () => {
   // Verify fireHitTest sets closeButton: false
   assert.ok(html.includes('L.popup({ closeButton: false, maxWidth: 340 })'), 'fireHitTest popup must set closeButton: false');
 });
+
+test('earthquake incident map popups use dual-metric tactical HUD with container accent background', () => {
+  const fs = require('fs');
+  const path = require('path');
+  const html = fs.readFileSync(path.join(__dirname, '../public/index.html'), 'utf8');
+
+  // 1. Verify CSS definition for dual-metric HUD
+  assert.ok(html.includes('.mp-hud-card{display:flex;flex-direction:column;gap:6px;min-width:220px;max-width:285px}'), 'must define mp-hud-card container');
+  assert.ok(html.includes('.mp-hud-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px}'), 'must define 2-column grid for metrics');
+  assert.ok(html.includes('.mp-hud-box{') && html.includes('background:color-mix(in srgb,var(--box-c,#ffffff) 10%,#101016);'), 'mp-hud-box must use container accent background');
+  
+  // 2. Verify NO colored left border on mp-hud-box
+  assert.ok(!html.includes('.mp-hud-box{border-left') && !html.includes('mp-hud-box" style="border-left'), 'mp-hud-box must not use colored left border');
+
+  // 3. Verify BMKG gempa popup builder uses dual metrics and tsunami ribbon
+  assert.ok(html.includes('GEMPA BUMI · BMKG') && html.includes('class="mp-hud-card"'), 'BMKG gempa must render mp-hud-card');
+  assert.ok(html.includes('mp-hud-box" style="--box-c:${magCol}"') && html.includes('MAGNITUDE'), 'BMKG gempa must render magnitude hero box');
+  assert.ok(html.includes('mp-hud-box" style="--box-c:${depCol}"') && html.includes('KEDALAMAN'), 'BMKG gempa must render depth hero box');
+  assert.ok(html.includes('mp-hud-banner banner-safe') && html.includes('TIDAK BERPOTENSI TSUNAMI'), 'BMKG gempa must render tsunami status banner');
+});
+
+test('traffic incident popups use Opsi 1 Telemetry Runway Strip with crowdsource report bar and route vector', () => {
+  const fs = require('fs');
+  const path = require('path');
+  const html = fs.readFileSync(path.join(__dirname, '../public/index.html'), 'utf8');
+
+  // Verify CSS classes for Telemetry Runway Strip
+  assert.ok(html.includes('.tt-corr-card{display:flex;flex-direction:column;gap:7px;min-width:240px;max-width:320px}'), 'must define tt-corr-card container');
+  assert.ok(html.includes('.tt-runway{') && html.includes('.tt-chamber:first-child{border-right:1px dashed rgba(255,255,255,.12)}'), 'must define docked dual-chamber runway');
+  assert.ok(html.includes('.tt-report-strip{'), 'must define dedicated crowdsource report bar');
+  assert.ok(html.includes('.tt-corridor{'), 'must define linear corridor vector container');
+
+  // Verify ttIncPopup implementation
+  assert.ok(html.includes('class="tt-corr-card"') && html.includes('class="tt-runway"'), 'ttIncPopup must render tt-corr-card and tt-runway');
+  assert.ok(html.includes('DILAPORKAN:') && html.includes('class="tt-report-strip"'), 'ttIncPopup must render explicit DILAPORKAN crowdsource bar');
+  assert.ok(html.includes('class="tt-corridor"') && html.includes('VEKTOR RUAS JALAN'), 'ttIncPopup must render corridor route vector');
+});
+
+test('04 News Wire keeps filter expand/unexpand drawer with command-bar input and no inner buttons', () => {
+  const fs = require('fs');
+  const path = require('path');
+  const html = fs.readFileSync(path.join(__dirname, '../public/index.html'), 'utf8');
+
+  // 1. Expand/unexpand drawer (#fltwrap, #newstools, #fltpill) is preserved
+  assert.ok(html.includes('id="fltwrap"') && html.includes('id="fltpill"') && html.includes('<span class="flt-lb">filter</span>'), 'must preserve #fltwrap drawer and #fltpill filter expand/unexpand tab');
+
+  // 2. #fq uses .inp.cmd inside .flt-in matching Social (#xq, #tq) and CCTV (#cq)
+  assert.ok(html.includes('<input class="inp cmd" id="fq" type="search" placeholder="Saring berita…"'), '#fq must use class="inp cmd"');
+
+  // 3. Inner buttons (#ontopic, #fltclear) are removed
+  assert.ok(!html.includes('id="ontopic"') && !html.includes('id="fltclear"'), 'inner buttons (#ontopic, #fltclear) must be removed from news filter drawer');
+});
