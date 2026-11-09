@@ -805,7 +805,7 @@ a{color:inherit;text-decoration:none;text-underline-offset:2px}
 .tgl[aria-pressed="true"]{background:var(--text);color:#161616;border-color:var(--text)}
 
 /* ============================================================ X FEED */
-.qchips{display:flex;align-items:stretch;gap:2px;padding:0 12px;border-bottom:1px solid var(--border);overflow-x:auto;scrollbar-width:none;
+.qchips{display:flex;align-items:center;gap:2px;padding:3px 12px 3px 0;border-bottom:1px solid var(--border);overflow-x:auto;scrollbar-width:none;
   -webkit-mask-image:linear-gradient(90deg,#000 calc(100% - 20px),transparent);mask-image:linear-gradient(90deg,#000 calc(100% - 20px),transparent)}
 .qchips::-webkit-scrollbar{display:none}
 .qc{
@@ -825,7 +825,7 @@ a{color:inherit;text-decoration:none;text-underline-offset:2px}
 .qc-shingles{display:flex;align-items:center;gap:6px;flex:none;padding:2px 2px}
 .qc-panel{
   position:relative;flex:none;min-width:142px;height:58px;
-  background:rgba(255,255,255,.09);
+  background:rgba(255,255,255,.05);
   clip-path:polygon(8px 0, 100% 0, 100% 100%, 0 100%, 0 8px);
   padding:1px;
   cursor:pointer;white-space:nowrap;opacity:.88;
@@ -855,11 +855,54 @@ a{color:inherit;text-decoration:none;text-underline-offset:2px}
 .qc-panel[aria-pressed="true"]{
   opacity:1;
   z-index:40 !important;
-  background:var(--cat-c) !important;
-  box-shadow:0 0 16px var(--cat-glow), 0 4px 20px rgba(0,0,0,.85) !important;
+  background:var(--cat-bdr) !important;
+  box-shadow:0 0 14px var(--cat-glow), 0 4px 20px rgba(0,0,0,.85) !important;
 }
 .qc-panel[aria-pressed="true"] .qc-panel-inner{
   background:linear-gradient(180deg,#181a20 0%,#111216 100%);
+}
+
+/* Master Command Pillar: Semua (Opsi 02 - Top-Right Chamfer Clip-Path) */
+.qc-all{
+  position:relative;flex:none;min-width:142px;height:58px;
+  background:rgba(255,255,255,.05);
+  clip-path:polygon(0 0, calc(100% - 8px) 0, 100% 8px, 100% 100%, 0 100%);
+  padding:1px;
+  cursor:pointer;white-space:nowrap;opacity:.88;
+  box-shadow:0 2px 8px rgba(0,0,0,.5);
+  transition:box-shadow .16s,opacity .16s,background .16s;
+  --cat-c:#ffffff;
+  --cat-bg:rgba(255,255,255,.08);
+  --cat-bdr:rgba(255,255,255,.22);
+  --cat-glow:rgba(255,255,255,.18);
+}
+.qc-all .qc-panel-inner{
+  clip-path:polygon(0 0, calc(100% - 7.5px) 0, 100% 7.5px, 100% 100%, 0 100%);
+  padding:1px 9px 4px;
+}
+.qc-all .qp-head .qp-meta{margin-right:4px}
+.qc-all .qall-idx{
+  border-radius:2px;
+  letter-spacing:.08em;
+  font-weight:900;
+  background:rgba(255,255,255,.08);
+  border:1px solid rgba(255,255,255,.1);
+  color:#f5f5f7;
+}
+.qc-all:hover{
+  opacity:1;
+  z-index:35 !important;
+  background:rgba(255,255,255,.2);
+  box-shadow:0 4px 16px rgba(0,0,0,.7),0 0 10px rgba(255,255,255,.15);
+}
+.qc-all[aria-pressed="true"]{
+  opacity:1;
+  z-index:40 !important;
+  background:rgba(255,255,255,.38) !important;
+  box-shadow:0 0 14px rgba(255,255,255,.2), 0 4px 20px rgba(0,0,0,.85) !important;
+}
+.qc-all[aria-pressed="true"] .qc-panel-inner{
+  background:linear-gradient(180deg,#1c1e24 0%,#131418 100%);
 }
 
 /* SECTION 1: Top Header - Notched Chamfered Index Left, Wire + SOS Gray Right */
@@ -5140,7 +5183,7 @@ function qchipsHtml(queries, trending, active, me, other){
     const z = Math.max(1, 20 - idx);
     const col = topicColor(q);
     const bgSubdued = hexToRgba(col, 0.16);
-    const bdrSubdued = hexToRgba(col, 0.38);
+    const bdrSubdued = hexToRgba(col, 0.22);
     const glow = hexToRgba(col, 0.45);
 
     return `<button class="qc qc-panel hot${hotCls}" type="button" data-q="${esc(q)}" aria-pressed="${q === active}" style="z-index:${z};--cat-c:${col};--cat-bg:${bgSubdued};--cat-bdr:${bdrSubdued};--cat-glow:${glow};" title="Rank ${rankStr} · ${srcTag}">` +
@@ -5167,7 +5210,24 @@ function qchipsHtml(queries, trending, active, me, other){
     return `<button class="qc${isIdle ? ' z qc-idle' : ''}" type="button" data-q="${esc(q)}" aria-pressed="${q === active}"><span class="qt">${esc(topicLabel(q))}</span><span class="qp">${cell('x', nx)}${cell('th', nt)}</span></button>`;
   };
 
-  const semuaBtn = `<button class="qc" type="button" data-q="" aria-pressed="${active === ''}"><span class="qt">Semua</span><span class="qp"><span class="${me === 'x' ? 'on' : ''}">${ic('x')}${xPosts.length}</span><span class="${me === 'th' ? 'on' : ''}">${ic('threads')}${tPosts.length}</span></span></button>`;
+  const allTot = xPosts.length + tPosts.length;
+  const semuaBtn = `<button class="qc qc-panel qc-all" type="button" data-q="" aria-pressed="${active === ''}" title="Semua Feed · ${allTot} Posts">` +
+    `<div class="qc-panel-inner">` +
+      `<div class="qp-head">` +
+        `<span class="qp-idx qall-idx">ALL</span>` +
+        `<span class="qp-meta"><span class="qp-src">STREAM</span></span>` +
+      `</div>` +
+      `<div class="qp-mid"><span class="qp-title">SEMUA</span></div>` +
+      `<div class="qp-foot">` +
+        `<div class="qp-stats">` +
+          `<span class="qp-stat${me === 'x' ? ' on' : ''}" title="${xPosts.length} post di X">${ic('x')}${xPosts.length}</span>` +
+          `<span class="qp-sep">·</span>` +
+          `<span class="qp-stat${me === 'th' ? ' on' : ''}" title="${tPosts.length} post di Threads">${ic('threads')}${tPosts.length}</span>` +
+        `</div>` +
+        `<span class="qp-tot">${allTot}</span>` +
+      `</div>` +
+    `</div>` +
+  `</button>`;
 
   return semuaBtn +
     (hot.length ? '<i class="qc-sep" aria-hidden="true"></i><div class="qc-shingles">' + hot.map((q, i) => panel(q, i)).join('') + '</div>' : '') +
