@@ -234,8 +234,9 @@ test('breaking ticker uses a fixed column grid, straight hairlines and a fading 
   assert.ok(html.includes('.tk.tk-new::before{') && html.includes('animation:tk-mark 6s linear forwards'), 'new items must use a self-extinguishing gutter mark');
   assert.ok(html.includes('@media (prefers-reduced-motion:reduce){.tk.tk-new::before{animation:none}}'), 'gutter mark must respect reduced motion');
 
-  // hairline lurus, bukan garis miring dekoratif
-  assert.ok(!/\.tk::after\{[^}]*skewX/.test(html), 'ticker separators must be straight hairlines');
+  // tanpa garis pemisah yang digambar
+  assert.ok(!html.includes('.tk::after{'), 'items must be delimited by the icon block, not a drawn rule');
+  assert.ok(!html.includes('.tk-live::after{'), 'LIVE chip must not draw a divider');
 
   // hover tanpa efek menyala: no background/opacity/color lift
   assert.ok(!html.includes('.tk:hover{') && !html.includes('.tk:hover .tk-mk') && !html.includes('.tk:hover .tk-time'), 'ticker must not brighten on hover');
@@ -497,7 +498,7 @@ test('demo detection, geocoding and social orchestration pipeline fixes', () => 
   assert.ok(html.includes('hot-both'), 'frontend CSS/HTML must support hybrid hot-both and hot-wire badges');
 });
 
-test('05 CCTV regional citybar uses Swiss Index Register with structural hairline ledger, zero pill slop, and tabular count', () => {
+test('05 CCTV regional citybar uses Swiss Index Register with canted diagonal shingle blades, zero pill slop, and tabular count', () => {
   const fs = require('fs');
   const path = require('path');
   const html = fs.readFileSync(path.join(__dirname, '../public/index.html'), 'utf8');
@@ -506,8 +507,12 @@ test('05 CCTV regional citybar uses Swiss Index Register with structural hairlin
   assert.ok(html.includes('.citybar{') && html.includes('padding:0;margin:0;'), 'citybar must be flush with zero outer margin and padding');
   assert.ok(html.includes('border-bottom:1px solid rgba(255,255,255,.08);'), 'citybar must have a subtle hairline bottom border');
 
-  // 2. Tab items: zero radius, vertical hairline divider, deliberate font pairing
-  assert.ok(html.includes('border-right:1px solid rgba(255,255,255,.07);border-radius:0;'), 'tabs must be square with hairline vertical divider and radius 0');
+  // 2. Canted diagonal shingle blades: diagonal right on each item, except last child which terminates flat
+  assert.ok(html.includes('--cant:10px;'), 'citybar must declare cant token');
+  assert.ok(html.includes('.cb:first-child{') && html.includes('clip-path:polygon(0 0, 100% 0, calc(100% - var(--cant)) 100%, 0 100%);'), 'first tab must be flat left, canted right');
+  assert.ok(html.includes('.cb:not(:first-child):not(:last-child){') && html.includes('clip-path:polygon(var(--cant) 0, 100% 0, calc(100% - var(--cant)) 100%, 0 100%);'), 'middle tabs must be canted left and canted right');
+  assert.ok(html.includes('.cb:last-child{') && html.includes('clip-path:polygon(var(--cant) 0, 100% 0, 100% 100%, 0 100%);'), 'last tab must be canted left and flat right (except paling terakhir)');
+  assert.ok(html.includes('.cb:not(:last-child)::before{') && html.includes('linear-gradient(to bottom right,'), 'diagonal seam hairline must match cant angle via to bottom right');
   assert.ok(html.includes('.cb .cb-name{font:500 11px/1 var(--disp);letter-spacing:-.01em}'), 'city name must use display typography');
 
   // 3. Technical index prefix: micro mono with // delimiter
@@ -519,8 +524,8 @@ test('05 CCTV regional citybar uses Swiss Index Register with structural hairlin
   assert.ok(!html.includes('background:var(--layer2);border-radius:8px'), 'pill badge slop must be eradicated');
 
   // 5. Active state: bottom shelf lock indicator with crisp hairline and tonal fill
-  assert.ok(html.includes('.cb[aria-selected="true"]::after{') && html.includes('height:2px;background:#f4f4f7'), 'active tab must feature bottom shelf lock indicator');
-  assert.ok(html.includes('.cb[aria-selected="true"]{') && html.includes('background:rgba(255,255,255,.04);'), 'active tab must have subtle tonal fill');
+  assert.ok(html.includes('.cb[aria-selected="true"]{') && html.includes('box-shadow:inset 0 -2px 0 #f4f4f7;'), 'active tab must feature bottom shelf lock indicator');
+  assert.ok(html.includes('.cb[aria-selected="true"]{') && html.includes('background:rgba(255,255,255,.05);'), 'active tab must have subtle tonal fill');
 
   // 6. drawCityBar builder markup: injects cb-idx, cb-name, and cb-n
   assert.ok(html.includes('<span class="cb-idx">${num}</span>'), 'drawCityBar must render cb-idx span');

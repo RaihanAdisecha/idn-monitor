@@ -296,10 +296,6 @@ a{color:inherit;text-decoration:none;text-underline-offset:2px}
   position:relative;display:inline-flex;align-items:center;gap:7px;height:var(--tick);
   padding:0 16px 0 10px;flex:none;font:700 8.5px/1 var(--mono);letter-spacing:.18em;color:#ff6b70;
 }
-.tk-live::after{
-  content:"";position:absolute;right:2px;top:8px;bottom:8px;width:1px;
-  background:rgba(255,107,112,.3);
-}
 .tk-live i{width:6.5px;height:6.5px;border-radius:50%;background:#ff3b41;box-shadow:0 0 4px rgba(255,59,65,.5);animation:livepulse 1.6s ease-in-out infinite}
 .tk-live .tk-fresh{font:600 8px/1 var(--mono);letter-spacing:.04em;color:#9a9aa6;font-variant-numeric:tabular-nums}
 @keyframes livepulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.3;transform:scale(.7)}}
@@ -328,10 +324,7 @@ a{color:inherit;text-decoration:none;text-underline-offset:2px}
   height:var(--tick);padding:0 18px 0 0;
   font:500 12.5px/1 var(--disp);color:#d2d2d8;white-space:nowrap;
 }
-.tk::after{
-  content:"";position:absolute;right:0;top:8px;bottom:8px;width:1px;
-  background:rgba(255,255,255,.06);pointer-events:none;
-}
+/* tanpa garis pemisah: kotak ikon di awal tiap item sudah jadi batas visual */
 /* hover tanpa perubahan terang: cuma garis bawah netral di judul */
 .tk:hover .tk-t{text-decoration:underline;text-decoration-thickness:1px;text-decoration-color:#3a3a44;text-underline-offset:3px}
 .tk:focus-visible{outline:1px solid rgba(255,255,255,.28);outline-offset:-1px}
@@ -1233,8 +1226,9 @@ a{color:inherit;text-decoration:none;text-underline-offset:2px}
   font:600 9px/1 var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--text3);transition:color .12s,border-color .12s}
 .xmore:hover{color:var(--text);border-color:var(--text3)}
 
-/* ============================================================ CCTV (SWISS INDEX REGISTER) */
+/* ============================================================ CCTV (SWISS INDEX REGISTER - CANTED BLADES) */
 .citybar{
+  --cant:10px;
   display:flex;align-items:stretch;padding:0;margin:0;
   border-bottom:1px solid rgba(255,255,255,.08);
   overflow-x:auto;scrollbar-width:none;
@@ -1245,12 +1239,43 @@ a{color:inherit;text-decoration:none;text-underline-offset:2px}
 .citybar::-webkit-scrollbar{display:none}
 .cb{
   flex:none;display:inline-flex;align-items:center;height:28px;margin:0;
-  padding:0 12px;border:none;border-right:1px solid rgba(255,255,255,.07);border-radius:0;
+  padding:0 14px 0 12px;border:none;border-radius:0;
   background:transparent;color:#7e7e8c;cursor:pointer;position:relative;
   white-space:nowrap;user-select:none;
   transition:background .12s,color .12s;
+  z-index:1;
 }
-.cb:hover{color:#d0d0dc;background:rgba(255,255,255,.02)}
+/* Middle and last items overlap previous item's canted cut */
+.cb:not(:first-child){
+  margin-left:calc(-1 * var(--cant));
+  padding-left:calc(12px + var(--cant) * .45);
+}
+/* First item: flat left, diagonal right */
+.cb:first-child{
+  clip-path:polygon(0 0, 100% 0, calc(100% - var(--cant)) 100%, 0 100%);
+}
+/* Middle items: diagonal left, diagonal right */
+.cb:not(:first-child):not(:last-child){
+  clip-path:polygon(var(--cant) 0, 100% 0, calc(100% - var(--cant)) 100%, 0 100%);
+}
+/* Last item: diagonal left, flat right (except paling terakhir engga diagonal di sisi kanan) */
+.cb:last-child{
+  clip-path:polygon(var(--cant) 0, 100% 0, 100% 100%, 0 100%);
+  padding-right:14px;
+}
+/* If single item: completely flat */
+.cb:only-child{
+  clip-path:none;margin-left:0;padding:0 14px;
+}
+
+/* Diagonal hairline seam divider on right of each item except the last */
+.cb:not(:last-child)::before{
+  content:"";position:absolute;top:0;bottom:0;right:0;width:var(--cant);
+  background:linear-gradient(to bottom right,transparent calc(50% - .65px),rgba(255,255,255,.14) 50%,transparent calc(50% + .65px));
+  pointer-events:none;z-index:2;
+}
+
+.cb:hover{color:#d0d0dc;background:rgba(255,255,255,.025)}
 .cb .cb-idx{
   font:600 7.5px/1 var(--mono);color:#52525e;letter-spacing:.08em;margin-right:5px;
   transition:color .12s;
@@ -1262,16 +1287,18 @@ a{color:inherit;text-decoration:none;text-underline-offset:2px}
   margin-left:6px;transition:color .12s;
 }
 .cb[aria-selected="true"]{
-  color:#f4f4f7;background:rgba(255,255,255,.04);
+  color:#f4f4f7;background:rgba(255,255,255,.05);
+  box-shadow:inset 0 -2px 0 #f4f4f7;
+  z-index:3;
+}
+.cb[aria-selected="true"]::before{
+  background:linear-gradient(to bottom right,transparent calc(50% - .65px),rgba(255,255,255,.32) 50%,transparent calc(50% + .65px));
 }
 .cb[aria-selected="true"] .cb-idx{color:#8a8a98}
 .cb[aria-selected="true"] .cb-name{color:#f4f4f7;font-weight:600}
 .cb[aria-selected="true"] .cb-n{color:#a4a4b2}
-.cb[aria-selected="true"]::after{
-  content:"";position:absolute;left:0;right:0;bottom:0;height:2px;background:#f4f4f7;
-}
-.cb[aria-selected="true"]:hover{background:rgba(255,255,255,.05);color:#fff}
-.cb:focus-visible{outline:1px solid rgba(255,255,255,.3);outline-offset:-1px;z-index:2}
+.cb[aria-selected="true"]:hover{background:rgba(255,255,255,.06);color:#fff}
+.cb:focus-visible{outline:1px solid rgba(255,255,255,.3);outline-offset:-1px;z-index:4}
 .camgrid{display:grid;grid-template-columns:repeat(var(--cols,2),minmax(0,1fr));gap:1px;background:var(--border)}
 .cam{position:relative;display:block;width:100%;padding:0;background:#000;text-align:left;cursor:pointer}
 .cam .frame{position:relative;aspect-ratio:16/9;overflow:hidden;background:#000}
