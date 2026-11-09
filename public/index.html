@@ -6,7 +6,7 @@
 <meta name="color-scheme" content="dark">
 <title>SITREP // LIVE · Indonesia OSINT</title>
 <meta name="description" content="Console OSINT: wire berita, X live, CCTV Jakarta, peta insiden, dan pemantauan demo, kebakaran, banjir, bencana, serta insiden di seluruh Indonesia. Auto-sync 2 menit.">
-<link rel="icon" type="image/svg+xml" href="favicon.svg">
+<link rel="icon" type="image/svg+xml" href="favicon.svg?v=2">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..600&family=IBM+Plex+Mono:wght@400;500;600;700&family=Lexend:wght@400;500;600&family=Plus+Jakarta+Sans:wght@400;500;600&display=swap" rel="stylesheet">
@@ -30,7 +30,7 @@
 :root{
   --bg:#161616; --layer:#1f1f1f; --layer2:#262626; --field:#262626;
   --border:#333333; --border2:#525252;
-  --text:#f4f4f4; --text2:#c6c6c6; --text3:#8d8d8d;
+  --text:#EFECE6; --text2:#c6c6c6; --text3:#d6d3cb85;
   --accent:#da1e28; --ok:#42be65; --warn:#f1c21b; --info:#4589ff;
   --sans:"Plus Jakarta Sans",ui-sans-serif,system-ui,"Segoe UI",Roboto,sans-serif;
   --mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
@@ -59,7 +59,7 @@ a{color:inherit;text-decoration:none;text-underline-offset:2px}
 .hdr{
   position:relative;flex:none;height:var(--hdr);display:flex;align-items:center;gap:16px;
   padding:0 14px;
-  background:#00000008;
+  background:#151514;
   border-bottom:1px solid #26262f;
   box-shadow:inset 0 1px 0 rgba(255,255,255,.045),0 2px 12px rgba(0,0,0,.35);
   z-index:10;overflow:hidden;
@@ -74,8 +74,8 @@ a{color:inherit;text-decoration:none;text-underline-offset:2px}
   transform:skewX(-18deg);pointer-events:none;
 }
 .mark-ret{width:16px;height:16px;flex:none;display:block}
-.mark-ret .crn{stroke:#7e7e8a;stroke-width:1.45;fill:none;stroke-linecap:square}
-.mark-ret .crn.hot{stroke:#f4f4f6;animation:retpulse 2s ease-in-out infinite}
+.mark-ret .crn{fill:#7e7e8a}
+.mark-ret .crn.hot{fill:#f4f4f6;animation:retpulse 2s ease-in-out infinite}
 @keyframes retpulse{0%,100%{opacity:1}50%{opacity:.25}}
 .mark-stack{display:flex;flex-direction:column;gap:2px;line-height:1}
 .mark-tx{
@@ -92,13 +92,13 @@ a{color:inherit;text-decoration:none;text-underline-offset:2px}
 /* ganti opsi: <header class="hdr" data-bc="a|b"> */
 .hdr[data-bc="a"] .bc-b,.hdr[data-bc="b"] .bc-a{display:none}
 .brand-case .bc-loc{
-  font:600 19px/1 var(--disp);font-optical-sizing:auto;letter-spacing:-.025em;color:#f3f3f6;
+  font:600 19px/1 var(--disp);font-optical-sizing:auto;letter-spacing:-.025em;color:#A39F95;
 }
 
 /* Opsi A: masthead + komposisi. Judul besar, scope di atas mix bar proporsi kategori */
 .bc-a{display:inline-flex;align-items:center;gap:12px}
 .bc-a .bc-meta{display:flex;flex-direction:column;gap:5px;min-width:0}
-.bc-a .bc-scope{font:600 12px/1 var(--disp);letter-spacing:-.005em;color:#a6a6b2}
+.bc-a .bc-scope{font:600 12px/1 var(--disp);letter-spacing:-.005em;color:#A39F95}
 .bc-a .bc-mixrow{display:flex;align-items:center;gap:8px}
 .bc-a .bc-mix{display:flex;gap:2px;width:72px;height:3px;flex:none}
 .bc-a .bc-mix i{flex:1 1 0;min-width:3px;border-radius:1px;background:var(--c);opacity:.85;transition:flex-grow .6s cubic-bezier(.2,.8,.3,1)}
@@ -119,7 +119,7 @@ a{color:inherit;text-decoration:none;text-underline-offset:2px}
 .hdr-tools{margin-left:auto;display:flex;align-items:center;gap:10px;flex:none}
 .hdr-dock{
   display:inline-flex;align-items:center;height:30px;padding:0 11px;gap:11px;
-  background:linear-gradient(180deg,rgba(22,22,28,.9) 0%,rgba(14,14,18,.9) 100%);
+  background:#1b1b19;
   border:1px solid #282832;border-radius:6px 0 0 6px;
   box-shadow:inset 0 1px 0 rgba(255,255,255,.04);
 }
@@ -154,13 +154,13 @@ a{color:inherit;text-decoration:none;text-underline-offset:2px}
 .hdr-sync{
   --sync-p:100%;
   position:relative;height:30px;min-width:128px;padding:0 11px 2px 11px;gap:7px;
-  background:linear-gradient(135deg,#1b1b22 0%,#121217 100%);
+  background:#1b1b19;
   border:1px solid #2e2e3a;border-radius:2px 7px 7px 2px;
   box-shadow:inset 0 1px 0 rgba(255,255,255,.06);
   color:#d8d8e0;font:600 9px/1 var(--mono);letter-spacing:.1em;overflow:hidden;
 }
 .hdr-sync:hover{
-  background:linear-gradient(135deg,#23232c 0%,#17171e 100%);
+  background:#232320;
   border-color:#454556;color:#fff;
 }
 .hdr-sync .ic{width:11.5px;height:11.5px;color:#b8b8c4;transition:transform .2s,color .15s}
@@ -294,16 +294,8 @@ a{color:inherit;text-decoration:none;text-underline-offset:2px}
 .tk-rail .tk-set{display:flex;align-items:stretch;flex:none}
 .tk-live{
   position:relative;display:inline-flex;align-items:center;gap:7px;height:var(--tick);
-  padding:0 20px 0 10px;margin-right:8px;flex:none;font:700 8.5px/1 var(--mono);letter-spacing:.18em;color:#ff6b70;
-  background:#171112;border:1px solid rgba(255,59,65,.25);border-right:none;
-  clip-path:polygon(0 0,100% 0,calc(100% - 8px) 100%,0 100%);
-}
-.tk-live::after{
-  content:"";position:absolute;top:0;right:4px;bottom:0;width:1.5px;
-  background:linear-gradient(180deg,#ff3b41 0%,rgba(255,59,65,.3) 100%);
-  transform:skewX(-18.5deg);
-  box-shadow:0 0 6px rgba(255,59,65,.45);
-  pointer-events:none;
+  padding:0 16px 0 10px;margin-right:4px;flex:none;font:700 8.5px/1 var(--mono);letter-spacing:.18em;color:#ff6b70;
+  background:#171112;border:1px solid rgba(255,59,65,.25);
 }
 .tk-live i{width:6.5px;height:6.5px;border-radius:50%;background:#ff3b41;box-shadow:0 0 4px rgba(255,59,65,.5);animation:livepulse 1.6s ease-in-out infinite}
 .tk-live .tk-fresh{font:600 8px/1 var(--mono);letter-spacing:.04em;color:#9a9aa6;font-variant-numeric:tabular-nums}
@@ -325,47 +317,36 @@ a{color:inherit;text-decoration:none;text-underline-offset:2px}
 .tk[data-cat="kesehatan"]{--cat:#ff8ab5}
 .tk[data-cat="ekonomi"]{--cat:#6fe7b6}
 .tk[data-cat="politik"]{--cat:#93bcff}
-/* individual marquee item: kartu telemetri diagonal canted (-18.5deg) tanpa gradient bg, zero overlap */
+/* individual marquee item: telemetri polos, item dipisah teks /// */
 .tk{
-  --tk-cant:10px;
   position:relative;display:grid;align-items:center;
   grid-template-columns:var(--tk-box) var(--tk-tm) minmax(0,1fr) var(--tk-src);
   column-gap:var(--tk-gap);
-  height:var(--tick);padding:0 24px 0 0;
-  margin-right:8px;
-  background:#141418;
-  border-top:1px solid rgba(255,255,255,.07);
-  border-bottom:1px solid rgba(255,255,255,.03);
-  border-left:1px solid rgba(255,255,255,.06);
-  border-right:none;
-  clip-path:polygon(0 0,100% 0,calc(100% - var(--tk-cant)) 100%,0 100%);
+  height:var(--tick);padding:0 6px 0 0;
   font:500 12.5px/1 var(--disp);color:#d2d2d8;white-space:nowrap;
 }
-/* bilah diagonal taktis 1.5px di tepi kanan kartu (model #btn-tv::after di geo-acts) */
-.tk::after{
-  content:"";position:absolute;top:0;right:5px;bottom:0;width:1.5px;
-  background:linear-gradient(180deg,var(--cat,#8a8a94) 0%,color-mix(in srgb,var(--cat,#8a8a94) 30%,transparent) 100%);
-  transform:skewX(-18.5deg);
-  box-shadow:0 0 6px color-mix(in srgb,var(--cat,#8a8a94) 45%,transparent);
-  pointer-events:none;
+.tk-sep{
+  flex:none;align-self:center;height:var(--tick);
+  display:flex;align-items:center;padding:0 5px;
+  font:600 10px/1 var(--mono);letter-spacing:.06em;color:#3f3f4a;
+  user-select:none;pointer-events:none;
 }
-.tk.tk-empty::after{display:none}
 /* hover tanpa perubahan terang: cuma garis bawah netral di judul */
 .tk:hover .tk-t{text-decoration:underline;text-decoration-thickness:1px;text-decoration-color:#3a3a44;text-underline-offset:3px}
 .tk:focus-visible{outline:1px solid rgba(255,255,255,.28);outline-offset:-1px}
 .tk-time{
   flex:none;
-  font:500 8.5px/1 var(--mono);letter-spacing:.08em;color:#7c7c88;
+  font:500 8.5px/1 var(--mono);letter-spacing:.08em;color:rgb(163 159 149);
   font-variant-numeric:tabular-nums;white-space:nowrap;
 }
 .tk-src{
   flex:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
-  font:500 8px/1 var(--mono);letter-spacing:.08em;color:#5f5f6a;text-transform:uppercase;
+  font:500 8px/1 var(--mono);letter-spacing:.08em;color:rgb(163 159 149);text-transform:uppercase;
 }
 .tk-t{min-width:0;max-width:560px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;letter-spacing:.005em}
 /* item baru: gutter mark merah 2px yang padam sendiri, tanpa flash latar */
 .tk.tk-new::before{
-  content:"";position:absolute;left:0;top:0;bottom:0;width:2px;background:#e31b27;
+  content:"";position:absolute;left:0;top:0;bottom:0;width:2px;background:#e31b27;z-index:1;
   animation:tk-mark 6s linear forwards;pointer-events:none;
 }
 @keyframes tk-mark{0%,55%{opacity:1}100%{opacity:0}}
@@ -384,7 +365,7 @@ a{color:inherit;text-decoration:none;text-underline-offset:2px}
 .pane.mkt{grid-column:2/-1;grid-row:1}
 .ph{
   flex:none;display:flex;align-items:center;gap:8px;height:38px;padding:0 14px;
-  background:#00000008;border-bottom:1px solid var(--border);
+  background:#151514;border-bottom:1px solid var(--border);
 }
 .ph-k{font:600 9.5px/1 var(--lex);letter-spacing:.05em;color:var(--accent);flex:none}
 .ph-t{margin:0;font:600 10.5px/1 var(--lex);letter-spacing:.13em;text-transform:uppercase;white-space:nowrap}
@@ -393,17 +374,17 @@ a{color:inherit;text-decoration:none;text-underline-offset:2px}
   font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:58%;
 }
 .mkt-pill{display:inline-flex;align-items:center;gap:5px;height:17px;padding:0 9px;margin-right:8px;
-  border:1px solid var(--border);border-radius:9px;font:700 9px/1 var(--mono);letter-spacing:.05em;
+  border-radius:9px;font:700 9px/1 var(--mono);letter-spacing:.05em;
   text-transform:uppercase;vertical-align:1px}
 .mkt-pill-sub{display:inline}
 .mkt-pill i{width:6px;height:6px;border-radius:50%;flex:none}
-.mkt-pill.open{color:var(--ok);border-color:rgba(66,190,101,.2);background:rgba(66,190,101,.07)}
+.mkt-pill.open{color:var(--ok);background:rgba(66,190,101,.07)}
 .mkt-pill.open i{background:var(--ok);animation:pulse 1.8s infinite}
-.mkt-pill.pre,.mkt-pill.post{color:var(--warn);border-color:rgba(241,194,27,.2);background:rgba(241,194,27,.07)}
+.mkt-pill.pre,.mkt-pill.post{color:var(--warn);background:rgba(241,194,27,.07)}
 .mkt-pill.pre i,.mkt-pill.post i{background:var(--warn);animation:pulse 1.8s infinite}
-.mkt-pill.break{color:var(--warn);border-color:rgba(241,194,27,.16);background:rgba(241,194,27,.05)}
+.mkt-pill.break{color:var(--warn);background:rgba(241,194,27,.05)}
 .mkt-pill.break i{background:var(--warn);opacity:.7}
-.mkt-pill.closed{color:#ff6b6b;border-color:rgba(218,30,40,.22);background:rgba(218,30,40,.07)}
+.mkt-pill.closed{color:#ff6b6b;background:rgba(218,30,40,.07)}
 .mkt-pill.closed i{background:var(--accent);opacity:.8}
 .pb{flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;scrollbar-gutter:stable;scrollbar-width:thin;scrollbar-color:#454545 transparent}
 .pb::-webkit-scrollbar{width:8px;height:8px}
@@ -1463,11 +1444,11 @@ a{color:inherit;text-decoration:none;text-underline-offset:2px}
 .geobar{
   flex:none;height:36px;display:flex;align-items:center;gap:11px;padding:0 0 0 16px;
   border-top:1px solid var(--border);background:#101010;
-  font:400 9.5px/1.2 var(--mono);letter-spacing:.06em;text-transform:uppercase;color:var(--text3);
+  font:400 9.5px/1.2 var(--disp);letter-spacing:.06em;text-transform:uppercase;color:var(--text3);
   white-space:nowrap;overflow:hidden;
 }
-.geo-k{font:600 9px/1 var(--mono);letter-spacing:.12em;color:var(--accent)}
-.geo-live{width:5px;height:5px;border-radius:50%;background:var(--ok);flex:none;animation:pulse 2s infinite}
+.geo-k{font:600 9px/1 var(--disp);letter-spacing:.12em;color:var(--ok)}
+.geo-live{width:5px;height:5px;border-radius:50%;background:var(--ok);flex:none;animation:livepulse 1.6s ease-in-out infinite}
 .geo-t{overflow:hidden;text-overflow:ellipsis}
 .geo-c{color:var(--text2);font-variant-numeric:tabular-nums}
 .geo-acts{
@@ -2499,7 +2480,7 @@ button.mp-src{background:none;border-top:0;border-left:0;border-right:0;cursor:p
 <header class="hdr" data-bc="a">
   <div class="brand">
     <span class="mark">
-      <svg class="mark-ret" viewBox="0 0 16 16" aria-hidden="true"><path class="crn" d="M2.5 6V2.5h3.5M13.5 6V2.5H10M2.5 10v3.5h3.5M13.5 10v3.5H10"/><path class="crn hot" d="M13.5 10v3.5H10"/></svg>
+      <svg class="mark-ret" viewBox="0 0 16 16" aria-hidden="true"><circle class="crn" cx="3" cy="3" r="1.3"/><circle class="crn" cx="13" cy="3" r="1.3"/><circle class="crn" cx="3" cy="13" r="1.3"/><circle class="crn" cx="13" cy="13" r="1.3"/><circle class="crn hot" cx="8" cy="8" r="1.6"/></svg>
       <span class="mark-stack">
         <span class="mark-tx">SITREP</span>
         <span class="brand-tag">OSINT // IDN</span>
@@ -6359,6 +6340,7 @@ function buildTicker(force){
     const normX = ((tkX % tkSetW) + tkSetW) % tkSetW;
     const setRect = oldSet.getBoundingClientRect();
     for (const ch of oldSet.children) {
+      if (ch.classList.contains('tk-sep')) continue;
       const r = ch.getBoundingClientRect();
       const left = r.left - setRect.left;
       if (normX >= left && normX < left + r.width) {
@@ -6387,7 +6369,8 @@ function buildTicker(force){
   if (freshN) tkFreshTimer = setTimeout(() => {
     document.querySelectorAll('.tk-fresh').forEach(el => el.remove());
   }, 30000);
-  const one = liveChip + breakItems.map(h => renderTk(h, fresh.has(h.url || h.title))).join('');
+  const tkSep = '<span class="tk-sep" aria-hidden="true">///</span>';
+  const one = [liveChip, ...breakItems.map(h => renderTk(h, fresh.has(h.url || h.title)))].join(tkSep) + tkSep;   // trailing sep: junction antar-repeat tetap terpisah
   const vp = $('.tk-vp').clientWidth || innerWidth;
   const estItemW = 280;
   const initRep = Math.max(1, Math.ceil((vp + 240) / Math.max(estItemW, breakItems.length * estItemW)));
@@ -6407,6 +6390,7 @@ function buildTicker(force){
       const newSet = rail.firstElementChild;
       const newSetRect = newSet.getBoundingClientRect();
       for (const ch of newSet.children) {
+        if (ch.classList.contains('tk-sep')) continue;
         const key = ch.getAttribute('href') || '__LIVE__';
         if (key === anchorKey) {
           const left = ch.getBoundingClientRect().left - newSetRect.left;
