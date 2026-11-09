@@ -16,7 +16,7 @@ const SOC_NOISE_RE = /(kebakaran jenggot|banjir (order|orderan|diskon|promo|puji
 // tidak ikut terbuang. Hanya men-skip topik FEED_ONLY (lihat assessment.js).
 const SOC_LISTING_RE = /(rumah|propert\w*|tanah|kavling|ruko|rukan|kost|apartemen|villa|cluster|dagung|bengkel|gudang|kios|petak|showroom|motogarage|otomotif|motor second|mobil second|sewa mobil|rental mobil|sparepart|bengkel modifikasi)/i;
 const SOC_LISTING_DEAL = /(dijual|disewakan|disewa|menjual|menyewakan|kpr|dp\s?(nol|0)?\b|cash\s?(keras|cepat|bertahap)|nego|furnish|siap (huni|tempati|pakai|lanjut)|strategis|prime location|turun harga|ngotak|pinang|worth+|hemat\s+\d|buruan|mumpung|bonus\s+(car|cash)|cashback|payment plan|cicilan|booking fee|unit (tinggal|tersedia|ready)|hubungi (wa|whatsapp)|pre[- ]?order|ready stock|bebas request|request (warna|striping|konsep|modifikasi|custom)|modifikasi sesuai|custom (livery|striping|wrap)|garansi\b|quality check|diserahterimakan|serah terima)/i;
-const SOC_SPAM_RE = /(vote for|follow\s+[\w.@-]+\s*[+.&]?\s*follow|like\s*(dan|&|\+)\s*(follow|rt)|rt\s*(dan|&|\+)\s*follow|dm\s+(untuk|di|ke)\s*(order|harga|promo|info|respon|detail|ticket|tiket)|dm\s+ke\s+@|link\s+(di|ada di)\s+bio|cek\s+(link\s+)?di\s+bio|order\s+(via|melalui|di)\s+(wa|whatsapp|dm|bio|link)|order\s+(di|via)\s+bio|linktree|lynk\.?id|beacons\.?ai|taplink|bio\.?link|kasih\s+follow|follow\s+balik|jangan\s+lupa\s+follow|\bfyp\b|foryou|new\s+followers?|boost\s+followers?|giveaway|gifted|berhadiah|klaim\s+(hadiah|reward|bonus)|winner\s+dm|pemenang\s+(dm|di\s+(comment|komentar))|tag\s+(teman|orang|friend)|sebutkan\s+\d+\s*teman|tag\s+\d+\s*teman|(like|comment|share|follow)\s*(dan|&|\+)\s*(like|comment|share|follow|rt)|\b\d{1,2}\s*\/\s*(thread|bagian|part|lanjutan)|thread\s*\/|🧵|lanjut\s+di\s+thread|baca\s+sampai\s+habis|qris[^.\n]{0,40}order|order[^.\n]{0,40}qris|binary\s+option|robot\s+trading|signal\s+(trading|emas|crypto|kripto|saham)|rekomendasi\s+(saham|crypto|kripto)|cuan\s+tiap\s+hari|airdrop|seed\s+phrase|private\s+key|withdraw\s+(cepat|instan|kilat)|pinjol|investasi bodong|\bwtb\b|\bwts\b|jasa titip|\bjastip\b|jasa war|war tiket|titip (tiket|beli)|tetap\s+cep[ae]t\s+dan\s+terkoordinasi\s+dengan\s+baik|dikawal\s+penuh\s+pemerintah|#penanganankarhutla)/i;
+const SOC_SPAM_RE = /(vote for|follow\s+[\w.@-]+\s*[+.&]?\s*follow|like\s*(dan|&|\+)\s*(follow|rt)|rt\s*(dan|&|\+)\s*follow|dm\s+(untuk|di|ke)\s*(order|harga|promo|info|respon|detail|ticket|tiket)|dm\s+ke\s+@|link\s+(di|ada di)\s+bio|cek\s+(link\s+)?di\s+bio|order\s+(via|melalui|di)\s+(wa|whatsapp|dm|bio|link)|order\s+(di|via)\s+bio|linktree|lynk\.?id|beacons\.?ai|taplink|bio\.?link|kasih\s+follow|follow\s+balik|jangan\s+lupa\s+follow|\bfyp\b|foryou|new\s+followers?|boost\s+followers?|giveaway|gifted|berhadiah|klaim\s+(hadiah|reward|bonus)|winner\s+dm|pemenang\s+(dm|di\s+(comment|komentar))|tag\s+(teman|orang|friend)|sebutkan\s+\d+\s*teman|tag\s+\d+\s*teman|(like|comment|share|follow)\s*(dan|&|\+)\s*(like|comment|share|follow|rt)|\b\d{1,2}\s*\/\s*(thread|bagian|part|lanjutan)|thread\s*\/|🧵|lanjut\s+di\s+thread|baca\s+sampai\s+habis|qris[^.\n]{0,40}order|order[^.\n]{0,40}qris|binary\s+option|robot\s+trading|signal\s+(trading|emas|crypto|kripto|saham)|rekomendasi\s+(saham|crypto|kripto)|cuan\s+tiap\s+hari|airdrop|seed\s+phrase|private\s+key|withdraw\s+(cepat|instan|kilat)|pinjol|investasi bodong|\bwtb\b|\bwts\b|jasa titip|\bjastip\b|jasa war|war tiket|titip (tiket|beli)|tetap\s+cep[ae]t\s+dan\s+terkoordinasi\s+dengan\s+baik|dikawal\s+penuh\s+pemerintah|#penanganankarhutla|ngenalin\s+(?:temen|teman)\s+aku|kenalan\s+(?:yuk|dong)|cari\s+(?:jodoh|pasangan|pacar|suami|istri|kriteria)|kriteria\s*:\s*\d|cv\s+taaruf|biodata\s+taaruf|\btaaruf\b|siap\s+nikah|biro\s+jodoh|teman\s+kencan|cari\s+(?:cowok|cewek)|kriteria\s+(?:pasangan|calon|suami|istri)|tidak\s+merokok[^.\n]{0,40}tidak\s+judi|adakah\s+rekomendasi|butuh\s+rekomendasi|info\s+rekomendasi|spill\s+rekomendasi|minta\s+rekomendasi|(?:ada\s+|adakah\s+)?rekomendasi\s+(?:jasa|tempat|toko|salon|bengkel|laundry|klinik|dokter|cafe|kost|kosan)|jasa\s+(?:cleaning|kebersihan|bersih[- ]bersih|sedot\s+wc|service\s+ac|servis\s+ac|pindahan|laundry|cuci\s+sepatu|poles|makeup|mua|catering|katering|setrika|massage|pijat|joki)|cleaning\s+(?:rumah|kantor|apartment|apartemen)|bukan\s+perorangan[^.\n]{0,40}dramanya|joki\s+(?:tugas|skripsi|makalah|turnitin|kuis|ujian)|jual\s+(?:akun|follower|saldo)|sewa\s+akun)/i;
 // aksara non-Latin (Hangul, Thai, CJK, Kiril, Arab, Devanagari) dominan = konten luar negeri
 // yang tidak tertangkap nama-negara Latin — misal spam tiket Korea full Hangul
 const SOC_NONLATIN_RE = /[\u0E00-\u0E7F\u0E80-\u0EFF\u3040-\u30FF\u3400-\u4DBF\u4E00-\u9FFF\uAC00-\uD7AF\u0400-\u04FF\u0600-\u06FF\u0900-\u097F\u10A0-\u10FF]/g;
@@ -176,10 +176,10 @@ const SOC_TOPICS = [
     x: ['("listrik padam" OR "mati listrik" OR "mati lampu" OR "pemadaman listrik" OR "padam listrik" OR byarpet OR blackout) -filter:replies'],
     th: ['mati lampu', 'mati listrik', 'listrik padam', 'PLN padam', 'padam listrik', 'byarpet'] },
   { id: 'wabah',
-    pos: /(wabah|kejadian luar biasa|keracunan (massal|makanan|mbg)|kasus (dbd|campak|difteri|kolera|covid|flu burung))/i,
+    pos: /(wabah|kejadian luar biasa|keracunan (massal|makanan|mbg|pangan|nasi|katering|miras)?|intoksikasi massal|kasus (dbd|campak|difteri|kolera|covid|flu burung))/i,
     neg: /(film|sinema|bioskop|trailer|teaser|poster|nonton|netflix|zombie|mayat hidup|hantu|sekuel|layar lebar|sinetron|sinetrik|hollywood)/i,
-    x: ['(wabah OR "keracunan massal" OR "keracunan makanan" OR KLB OR "kejadian luar biasa" OR "kasus DBD") -filter:replies'],
-    th: ['wabah', 'keracunan massal', 'demam berdarah', 'DBD', 'kejadian luar biasa'] },
+    x: ['(wabah OR "keracunan massal" OR "keracunan makanan" OR "keracunan MBG" OR KLB OR "kejadian luar biasa" OR "kasus DBD") -filter:replies'],
+    th: ['wabah', 'keracunan massal', 'keracunan MBG', 'demam berdarah', 'DBD', 'kejadian luar biasa'] },
   { id: 'pemilu', local: true,
     pos: /(pemilu|pilkada|pilpres|\bkpu\b|bawaslu|quick count|real count|coblos|surat suara|pilwalkot)/i,
     // kpu/bawaslu adalah akronim 3-7 huruf yang kebetulan jadi kata di bahasa lain
@@ -211,14 +211,14 @@ const SOC_TOPICS = [
     x: ['(pembunuhan OR pengeroyokan OR begal OR perampokan OR penculikan OR narkoba) -filter:replies'],
     th: ['pembunuhan', 'begal', 'pengeroyokan', 'perampokan'] },
   { id: 'kesehatan', local: true,
-    pos: /(demam berdarah|\bdbd\b|\bdhf\b|covid|korona|influenza|\bflu\b|mpox|cacar monyet|campak|morbili|cacar air|tangan kaki mulut|hfmd|leptospirosis|tifus|thypoid|kolera|rabies|gila anjing|anthrax|difteri|polio|meningitis|meningokokus|ensefalitis|chikungunya|cikungunya|zika|filariasis|kaki gajah|hepatitis|\bhiv\b|\baids\b|kusta|lepra|\bispa\b|pneumonia|bronkopneumonia|bronkitis|hmpv|human metapneumovirus|\brsv\b|\bmers\b|ebola|marburg|lassa|west nile|h5n1|avian influenza|\btbc\b|tuberkulosis|\btb\b|diare|disentri|scabies|kudis|keracunan|rotavirus|flu burung|h1n1|malaria|wabah|kejadian luar biasa|gagal ginjal|stunting|vaksin|imunisasi|puskesmas|kemenkes|rumah sakit|obat palsu|gizi buruk)/i,
+    pos: /(demam berdarah|\bdbd\b|\bdhf\b|covid|korona|influenza|\bflu\b|mpox|cacar monyet|campak|morbili|cacar air|tangan kaki mulut|hfmd|leptospirosis|tifus|thypoid|kolera|rabies|gila anjing|anthrax|difteri|polio|meningitis|meningokokus|ensefalitis|chikungunya|cikungunya|zika|filariasis|kaki gajah|hepatitis|\bhiv\b|\baids\b|kusta|lepra|\bispa\b|pneumonia|bronkopneumonia|bronkitis|hmpv|human metapneumovirus|\brsv\b|\bmers\b|ebola|marburg|lassa|west nile|h5n1|avian influenza|\btbc\b|tuberkulosis|\btb\b|diare|disentri|scabies|kudis|keracunan|intoksikasi|rotavirus|flu burung|h1n1|malaria|wabah|kejadian luar biasa|gagal ginjal|stunting|vaksin|imunisasi|puskesmas|kemenkes|rumah sakit|obat palsu|gizi buruk|miras oplosan|alkohol oplosan|oplosan maut|keracunan mbg|korban mbg|sppg|mual|muntah|makanan basi|bakteri pangan|e\.?\s*coli|salmonella)/i,
     // DBD = Dead by Daylight (game) sangat ramai di X — "main DBD", "DBD match/rank/chapter" bukan demam berdarah.
     // "TBC" = to be confirmed di posting hasil laga: "FINAL | X 1 Y 0 TBC", "we exit the cup" — bukan tuberkulosis.
     neg: /(film|sinema|bioskop|trailer|teaser|poster|nonton|netflix|zombie|mayat hidup|hantu|sekuel|layar lebar|sinetron|sinetrik|hollywood|dead by daylight|main\s+dbd|play\s+dbd|dbd[^.\n]{0,30}(match|rank|chapter|killer|survivor|lag|server|mobile|skin|update|repair|macro|rivals|phasmo|twitch|stream|queue|gaming|lobby|game|main|play|take on|grinding|leveling)|deadbydaylight|dead[- ]by[- ]daylight|\b(?:el|la|del|al)\s+dbd\b|\bwe\s+(?:exit|advance|progress|through|win|drew|lost|booked|qualified)\b[^.\n]{0,50}\b(?:cup|final|match|game|tie|round|knockout|semi|qf|sf|league)\b|\b(?:man|player|goal|motm)\s+of\s+the\s+match\b|\bsafe trip home\b|\b(?:full[- ]?time|ft)\s*(?:result|score|whistle|report)\b|\btbc\b[^.\n]{0,40}(lineup|squad|bench|starting|kick.?off|match|game|vs\b|injur|suspend)|\(tbc\))/i,
     // "TBC" telanjang di X = "to be confirmed" (hasil laga) — dipisah ke query lang:id
-    x: ['("demam berdarah" OR DBD OR COVID OR influenza OR campak OR "tangan kaki mulut" OR leptospirosis OR rabies OR kolera OR mpox OR polio OR "gagal ginjal" OR KLB OR wabah OR imunisasi OR vaksin) -filter:replies',
+    x: ['("demam berdarah" OR DBD OR COVID OR influenza OR campak OR "tangan kaki mulut" OR leptospirosis OR rabies OR kolera OR mpox OR polio OR "gagal ginjal" OR KLB OR wabah OR imunisasi OR vaksin OR keracunan OR "keracunan massal" OR "keracunan makanan" OR "keracunan MBG" OR "miras oplosan") -filter:replies',
         'lang:id (TBC OR tuberkulosis OR "TBC paru") -filter:replies'],
-    th: ['demam berdarah', 'wabah', 'TBC', 'influenza', 'keracunan massal', 'gagal ginjal', 'vaksin', 'imunisasi', 'DBD', 'covid', 'korona', 'tifus', 'stunting', 'malaria', 'diare', 'campak', 'kolera', 'rabies', 'tuberkulosis', 'pneumonia', 'tangan kaki mulut', 'leptospirosis'] },
+    th: ['demam berdarah', 'wabah', 'TBC', 'influenza', 'keracunan massal', 'keracunan makanan', 'keracunan MBG', 'miras oplosan', 'gagal ginjal', 'vaksin', 'imunisasi', 'DBD', 'covid', 'korona', 'tifus', 'stunting', 'malaria', 'diare', 'campak', 'kolera', 'rabies', 'tuberkulosis', 'pneumonia', 'tangan kaki mulut', 'leptospirosis'] },
   { id: 'ransomware', local: true,
     pos: /(ransomware|malware|lockbit|blackcat|alphv|\bclop\b)/i,
     // "malware" dipakai kiasan ("humans were malware infected") dan disebut dalam daftar kejahatan
@@ -285,10 +285,10 @@ const SOC_TOPICS = [
     x: ['(kereta api OR "delay penerbangan" OR "penerbangan dibatalkan" OR "jalan tol" OR mudik OR ojol OR TransJakarta OR MRT OR KRL OR angkot OR LRT OR "kapal feri" OR "batal mudik" OR dermaga OR "tol macet") -filter:replies'],
     th: ['kereta api', 'delay penerbangan', 'jalan tol', 'mudik', 'ojol', 'TransJakarta', 'MRT', 'KRL', 'LRT', 'angkot', 'penerbangan dibatalkan', 'tol macet', 'kapal feri', 'batal mudik', 'dermaga'] },
   { id: 'pendidikan', local: true,
-    pos: /(ukt|biaya kuliah tunggal|beasiswa (dipotong|batal|ditolak|gelombang)|guru (honorer|pppk)|keracunan (kantin|sekolah|siswa|mahasiswa|mbg|massal)|murid (pingsan|tenggelam|meninggal|kecelakaan)|siswa (pingsan|tenggelam|meninggal|keracunan|kecelakaan)|mahasiswa (pingsan|tenggelam|meninggal|keracunan|\bdemo\b|unjuk rasa|demonstrasi)|sekolah (kebakaran|longsor|ambruk|ditutup|runtuh|tenggelam)|kampus (kebakaran|longsor|ambruk)|snbt|sbmptn|kurikulum merdeka|\bpppk\b|\bcpns\b|\bcasn\b|\bspp\b|lpdp|kip kuliah|sekolah gratis)/i,
+    pos: /(ukt|biaya kuliah tunggal|beasiswa (dipotong|batal|ditolak|gelombang)|(?:gaji|nasib|tuntutan|kesejahteraan|seleksi|pengangkatan|demo|mogok|protes|dianiaya|kasus)\s+guru\s+(?:honorer|pppk)|guru\s+(?:honorer|pppk)\s+(?:demo|mogok|protes|dituntut|dipecat|menuntut|tuntut|tertahan|gaji|nunggak|belum cair|nasib|polemik|teraniaya|dianiaya|korban)|keracunan (kantin|sekolah|siswa|mahasiswa|mbg|massal)|murid (pingsan|tenggelam|meninggal|kecelakaan)|siswa (pingsan|tenggelam|meninggal|keracunan|kecelakaan)|mahasiswa (pingsan|tenggelam|meninggal|keracunan|\bdemo\b|unjuk rasa|demonstrasi)|sekolah (kebakaran|longsor|ambruk|ditutup|runtuh|tenggelam)|kampus (kebakaran|longsor|ambruk)|snbt|sbmptn|kurikulum merdeka|\bpppk\b|\bcpns\b|\bcasn\b|\bspp\b|lpdp|kip kuliah|sekolah gratis)/i,
     neg: /(film|sinema|sinetron|nonton|netflix)/i,
-    x: ['(UKT OR "biaya kuliah" OR "guru honorer" OR "siswa pingsan" OR "keracunan sekolah" OR "sekolah kebakaran" OR beasiswa OR SNBT OR "guru PPPK") -filter:replies'],
-    th: ['UKT', 'biaya kuliah', 'guru honorer', 'siswa pingsan', 'keracunan sekolah', 'beasiswa', 'SNBT', 'SBMPTN', 'kurikulum merdeka', 'guru PPPK', 'sekolah ambruk', 'sekolah longsor', 'beasiswa dipotong'] }
+    x: ['(UKT OR "biaya kuliah" OR "siswa pingsan" OR "keracunan sekolah" OR "sekolah kebakaran" OR beasiswa OR SNBT OR "gaji guru honorer" OR "nasib guru honorer" OR "guru honorer demo") -filter:replies'],
+    th: ['UKT', 'biaya kuliah', 'gaji guru honorer', 'nasib guru honorer', 'guru honorer demo', 'siswa pingsan', 'keracunan sekolah', 'beasiswa', 'SNBT', 'SBMPTN', 'kurikulum merdeka', 'pengangkatan guru PPPK', 'sekolah ambruk', 'sekolah longsor', 'beasiswa dipotong'] }
 ];
 for (const t of SOC_TOPICS) t.adhoc = false;
 
@@ -332,12 +332,15 @@ function socTopics(text, extra) { return socAssess(text, extra).topics; }
 
 /* topik ad-hoc dari judul berita (nama kasus yang lagi naik) */
 const escRe = s => String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const SOC_ADHOC_GENERIC = new Set(('rumah warga orang anak pria wanita ibu bapak mobil motor jalan tanah lahan gedung kantor desa kota hari bulan tahun waktu tempat kerja loker jasa harga biaya uang pasar toko produk barang sekolah kampus kuliah teman keluarga makan minum').split(' '));
 function socAdhoc(phrases) {
-  return (phrases || []).map(ph => String(ph || '').replace(/["'\r\n\t]+/g, ' ').replace(/\s+/g, ' ').trim()).filter(Boolean).slice(0, 2).map(ph => ({
-    id: ph.toLowerCase(), adhoc: true, local: true,
-    pos: new RegExp('\\b' + escRe(ph).replace(/\s+/g, '\\s+') + '\\b', 'i'),
-    x: ['"' + ph + '" -filter:replies'], th: [ph]
-  }));
+  return (phrases || []).map(ph => String(ph || '').replace(/["'\r\n\t]+/g, ' ').replace(/\s+/g, ' ').trim())
+    .filter(ph => ph.length >= 3 && (!SOC_ADHOC_GENERIC.has(ph.toLowerCase()) || ph.includes(' ')))
+    .slice(0, 2).map(ph => ({
+      id: ph.toLowerCase(), adhoc: true, local: true,
+      pos: new RegExp('\\b' + escRe(ph).replace(/\s+/g, '\\s+') + '\\b', 'i'),
+      x: ['"' + ph + '" -filter:replies'], th: [ph]
+    }));
 }
 
 /* ---------- post yang layak (buang balasan obrolan) ---------- */

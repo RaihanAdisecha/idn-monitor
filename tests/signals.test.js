@@ -44,6 +44,19 @@ test('expanded physical incident taxonomy preserves collapse, crime and disease 
  for(const [text,category] of cases){const a=socAssess(text);assert.equal(a.signalEligible,true,text);assert.ok(a.events.some(e=>e.category===category),text);}
 });
 
+test('food poisoning, MBG poisoning, and toxic liquor qualify as health incidents',()=>{
+ const cases=[
+   ['Belasan siswa SDN di Cirebon diduga keracunan MBG, dilarikan ke rumah sakit', 'kesehatan'],
+   ['Warga di Kebumen keracunan massal usai santap makanan resepsi', 'kesehatan'],
+   ['Tiga warga tewas usai pesta miras oplosan di Tasikmalaya', 'kesehatan']
+ ];
+ for(const [text, category] of cases){
+   const a=socAssess(text);
+   assert.equal(a.signalEligible, true, text);
+   assert.ok(a.events.some(e => e.category === category), text);
+ }
+});
+
 test('user-provided political tsunami, MEXC commentary and metaphor rant never become signals',()=>{
  const examples=[
   'LMAO, Tweet bookmarked. In the last 2 months, I have been to 4 of the 6 SW states, the only state opposition members have any chance in NA elections is only in Oyo (APM members) & Osun (some Accord members especially in Osun West). The rest will be a Tsunami.',

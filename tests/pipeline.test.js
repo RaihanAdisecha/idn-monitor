@@ -149,3 +149,43 @@ test('geocode: street name "Bali Mester" does not outvote the Jatinegara POI', (
   assert.equal(loc?.name, 'Jatinegara');
   assert.equal(loc?.prov, 'DKI Jakarta');
 });
+
+test('dating, taaruf, and commercial recommendation requests are rejected as noise/spam', () => {
+  const dating = `Hai. 
+Aku mau ngenalin temen aku nih
+Usia 29 tahun
+Asli Surabaya
+Kerja di Sidoarjo 
+Pekerjaan sebagai guru honorer
+Fisik dia agak gemoy tapi dia baik hati bertanggung jawab
+
+Cari kriteria :
+1. Laki laki
+2. Islam
+3. Umur 29-35 tahun
+4. Pekerjaan ada
+5. Tanggung jawab
+6. Pendidikan minimal SMA (Diutamakan S1)
+7. Tidak merokok
+8. Tidak judi / miras dll
+9. Bisa menjadi teman yang aman nyaman ketika bercerita`;
+
+  const r1 = S.socAssess(dating);
+  assert.equal(r1.feedEligible, false, 'dating post must not be feed-eligible');
+  assert.equal(r1.signalEligible, false, 'dating post must not be signal-eligible');
+  assert.ok(r1.reasons.includes('spam'), 'dating post must be flagged as spam');
+  assert.equal(r1.topics.length, 0);
+
+  const cleaning = 'Dear warga Threads, adakah rekomendasi jasa cleaning rumah & apartment yg profesional untuk wilayah Cakung & sekitarnya? Prefer yg bukan perorangan ya, karna sudah capek sama dramanya. Thanks in advance';
+  const r2 = S.socAssess(cleaning);
+  assert.equal(r2.feedEligible, false, 'cleaning service inquiry must not be feed-eligible');
+  assert.equal(r2.signalEligible, false, 'cleaning service inquiry must not be signal-eligible');
+  assert.ok(r2.reasons.includes('spam'), 'service inquiry must be flagged as spam');
+  assert.equal(r2.topics.length, 0);
+
+  // Legitimate labor dispute or protest by teachers must remain intact
+  const protest = 'Ratusan guru honorer demo di depan kantor bupati di Surabaya menuntut gaji 6 bulan belum cair';
+  const r3 = S.socAssess(protest);
+  assert.ok(r3.topics.includes('pendidikan'), 'legitimate teacher protest must match pendidikan');
+  assert.equal(r3.feedEligible, true, 'legitimate protest must be feed-eligible');
+});

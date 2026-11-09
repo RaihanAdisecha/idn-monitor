@@ -69,11 +69,11 @@ function classifyScope(span, target) {
   return { scope: local ? 'Indonesia' : 'unknown', location: location ? { name: location.name, prov: location.prov, prec: location.prec, la: location.la, lo: location.lo, ...(location.provCode ? { provCode: location.provCode } : {}), ...(location.kabCode ? { kabCode: location.kabCode } : {}), ...(location.kecCode ? { kecCode: location.kecCode } : {}), ...(location.code ? { code: location.code } : {}) } : null };
 }
 function concreteTarget(span, category) {
-  if (category !== 'siber' && category !== 'ekonomi' && category !== 'politik') return null;
+  if (category !== 'siber' && category !== 'ekonomi' && category !== 'politik' && category !== 'kesehatan') return null;
   const known = span.match(LOCAL_ORG);
   if (known) return known[0].toUpperCase();
   // Named target after an asset noun. Generic asset words alone aren't identity.
-  const m = span.match(/\b(?:[Ss]erver|[Jj]aringan|[Ss]istem|[Ss]itus|[Ww]ebsite|[Ll]ayanan|[Aa]kun|[Pp]abrik|[Pp]erusahaan|[Rr]umah\s+[Ss]akit)\s+((?:[A-Z][\w.-]*)(?:\s+[A-Z][\w.-]*){0,3})\b/);
+  const m = span.match(/\b(?:[Ss]erver|[Jj]aringan|[Ss]istem|[Ss]itus|[Ww]ebsite|[Ll]ayanan|[Aa]kun|[Pp]abrik|[Pp]erusahaan|[Rr]umah\s+[Ss]akit|[Rr][Ss][Uu]?[Dd]?|[Pp]uskesmas|[Kk]linik|[Ss][Pp][Pp][Gg]|[Bb]adan\s+[Gg]izi\s+[Nn]asional)\s+((?:[A-Z][\w.-]*)(?:\s+[A-Z][\w.-]*){0,3})\b/);
   return m ? m[1] : null;
 }
 function eventType(topic, span) {
@@ -90,7 +90,7 @@ function isReport(topic, span, location, target) {
   const identity = !!(location || target);
   switch (topic) {
     case 'kriminal': return identity && EVENT_ACTION.test(span);
-    case 'kesehatan': return identity && /kasus|pasien|terjangkit|keracunan|wabah|\bklb\b|kejadian luar biasa|meninggal|dirawat|terinfeksi/i.test(span);
+    case 'kesehatan': return identity && /kasus|pasien|terjangkit|keracunan|wabah|\bklb\b|kejadian luar biasa|meninggal|tewas|korban|dirawat|terinfeksi|dilarikan|intoksikasi|mual|muntah/i.test(span);
     case 'insiden': return identity && EVENT_ACTION.test(span);
     case 'ransomware': return CYBER_TARGET.test(span) && CYBER_ACTION.test(span) && identity;
     case 'serangan siber': case 'akun dibajak': return CYBER_ACTION.test(span) && identity;
@@ -98,7 +98,7 @@ function isReport(topic, span, location, target) {
     case 'kebakaran': case 'karhutla': case 'banjir': case 'kecelakaan': case 'penembakan': case 'pencurian': return (EVENT_ACTION.test(span) || /\b(?:kebakaran|banjir|longsor|kecelakaan|penembakan|pencurian|karhutla)(?:\s+(?:rumah|gedung|pabrik|pasar|hutan|lahan))?\s+(?:di|melanda|merendam)/i.test(span));
     case 'penangkapan': return identity && /ditangkap|diamankan|penangkapan|\bott\b/i.test(span);
     case 'demo': return identity && /unjuk rasa|aksi massa|demonstran|\bdemo\b|women'?s\s+march|international\s+women'?s\s+day|hari\s+buruh|buruh\s+sedunia/i.test(span) && /berlangsung|turun ke jalan|berkumpul|menggelar|ricuh|bentrok|tuntut|menuntut|menolak|tolak|\borasi\b|\bmarch\b|\baksi\b/i.test(span);
-    case 'wabah': return identity && /kasus|pasien|terjangkit|keracunan|wabah (?:dbd|campak|kolera|difteri)|kejadian luar biasa/i.test(span);
+    case 'wabah': return identity && /kasus|pasien|terjangkit|keracunan|wabah (?:dbd|campak|kolera|difteri)|kejadian luar biasa|intoksikasi/i.test(span);
     case 'listrik padam': return identity && /listrik padam|mati listrik|pemadaman listrik|padam listrik|pln[^.!?]{0,40}blackout/i.test(span);
     case 'phk': return identity && /melakukan|terkena|mengalami|memutus|dirumahkan|pabrik tutup|phk[^.!?]{0,30}\d+/i.test(span);
     case 'ihsg': return /trading halt|dihentikan|anjlok|merosot|turun\s+\d/i.test(span) && !!target;
