@@ -648,71 +648,107 @@ a{color:inherit;text-decoration:none;text-underline-offset:2px}
 }
 .seg-b:hover{color:var(--text2)}
 .seg-b[aria-selected="true"]{color:var(--text);border-bottom-color:var(--accent)}
-.triage{display:flex;flex-direction:column}
-.tr{display:flex;border-bottom:1px solid var(--border)}
-.tr-ret{position:relative;flex:none;width:32px;align-self:stretch;display:flex;align-items:center;justify-content:center}
-.tr-ret i{position:absolute;width:8px;height:8px;border:0 solid currentColor}
-.tr-ret i:nth-child(1){top:4px;left:4px;border-top-width:1px;border-left-width:1px}
-.tr-ret i:nth-child(2){top:4px;right:4px;border-top-width:1px;border-right-width:1px}
-.tr-ret i:nth-child(3){bottom:4px;left:4px;border-bottom-width:1px;border-left-width:1px}
-.tr-ret i:nth-child(4){bottom:4px;right:4px;border-bottom-width:1px;border-right-width:1px}
-.tr-ret b{font-size:12px;line-height:1;font-weight:400}
-.tr[data-sev="kritis"] .tr-ret{color:var(--accent)}
-.tr[data-sev="waspada"] .tr-ret{color:var(--warn)}
-.tr[data-sev="info"] .tr-ret{color:var(--border2)}
-.tr[data-sev="kritis"] .tr-ret i{animation:trpulse 2.4s ease-in-out infinite}
-@keyframes trpulse{0%,100%{opacity:1}50%{opacity:.35}}
-.tr-m{flex:1;min-width:0;padding:10px 13px 11px 2px}
-.tr-hd{display:flex;align-items:center;gap:8px;min-width:0}
-.tr-sev{flex:none;font:600 8.5px/1 var(--mono);letter-spacing:.09em;text-transform:uppercase}
-.tr[data-sev="kritis"] .tr-sev{color:#ff8f8f}
-.tr[data-sev="waspada"] .tr-sev{color:#f1c21b}
-.tr[data-sev="info"] .tr-sev{color:var(--text3)}
-.tr-cat{flex:none;font:600 8.5px/1 var(--mono);letter-spacing:.07em;text-transform:uppercase;color:var(--text3);display:inline-flex;align-items:center;gap:5px}
-.tr-rel{flex:none;font:600 8px/1 var(--mono);letter-spacing:.06em;text-transform:uppercase;padding:3px 6px;border:1px solid var(--border2);border-radius:2px;cursor:help}
-.tr-rel.ok{color:#7fd18b;border-color:#2c4a34}
-.tr-rel.maybe{color:#e8b64c;border-color:#4a3d22}
-.tr-cat::before{content:"";width:5px;height:5px;flex:none;border-radius:50%;background:var(--border2)}
-.tr-cat.demo{color:#f1c21b}.tr-cat.demo::before{background:#f1c21b}
-.tr-cat.fire{color:#ff6168}.tr-cat.fire::before{background:#ff6168}
-.tr-cat.flood{color:#7aa9ff}.tr-cat.flood::before{background:#7aa9ff}
-.tr-cat.disaster{color:#c9a6ff}.tr-cat.disaster::before{background:#c9a6ff}
-.tr-cat.siber{color:#c8f04b}.tr-cat.siber::before{background:#c8f04b}
-.tr-cat.kriminal{color:#ffb066}.tr-cat.kriminal::before{background:#ffb066}
-.tr-cat.kesehatan{color:#ff8ab5}.tr-cat.kesehatan::before{background:#ff8ab5}
-.tr-cat.ekonomi{color:#6fe7b6}.tr-cat.ekonomi::before{background:#6fe7b6}
-.tr-cat.politik{color:#93bcff}.tr-cat.politik::before{background:#93bcff}
-.tr-cat.insiden{color:#a9a9a9}.tr-cat.insiden::before{background:#8d8d8d}
-.tr-place{font:500 9px/1 var(--mono);letter-spacing:.04em;text-transform:uppercase;color:var(--text3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.tr-n{margin-left:auto;flex:none;font:600 9px/1 var(--mono);color:var(--text3);font-variant-numeric:tabular-nums}
-.tr-t{margin-top:6px;font:500 12px/1.4 var(--sans);color:var(--text2);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
-.tr-f{display:flex;align-items:center;gap:8px;margin-top:6px;font:400 8.5px/1 var(--mono);letter-spacing:.05em;text-transform:uppercase;color:var(--text3)}
-.tr-more{margin-left:auto;color:var(--text3);font:600 8.5px/1 var(--mono);letter-spacing:.08em;text-transform:uppercase}
-.tr-more:hover{color:var(--text)}
-.tr-body{border-top:1px solid var(--border);padding:6px 0 4px}
-.tr-lanes{display:grid;grid-template-columns:1fr 1fr;gap:10px}
-@media (max-width:640px){.tr-lanes{grid-template-columns:1fr}}
-.tr-lanes.solo-soc,.tr-lanes.solo-news{grid-template-columns:1fr}
-.tr-lane{padding:10px 12px}
-.tr-lane.soc{background:rgba(69,137,255,.028);border:1px solid rgba(122,169,255,.18)}
-.tr-lane.news{background:rgba(241,194,27,.026);border:1px solid rgba(241,194,27,.18)}
-.tr-lane-h{display:flex;align-items:center;gap:6px;padding:0 0 6px;font:600 8.5px/1 var(--mono);letter-spacing:.1em;text-transform:uppercase}
-.tr-lane.soc .tr-lane-h{color:#7aa9ff}
-.tr-lane.news .tr-lane-h{color:#f1c21b}
-.tr-lane-h .ic{width:10px;height:10px}
-.tr-lane-h b{margin-left:auto;font-weight:600;color:var(--text2);font-variant-numeric:tabular-nums}
-.tr-lane .cl-line{padding:6px 0}
+.triage{display:flex;flex-direction:column;padding:0}
+.tr{display:block;padding:12px 13px;border-bottom:1px solid var(--border);background:none;transition:background .12s}
+.tr:last-child{border-bottom:0}
+.tr.is-open{background:#151519}
+.tr-ret,.tr-place,.tr-n{display:none}
+.tr-m{padding:0;min-width:0;display:flex;flex-direction:column;gap:7px}
+.tr-hd{display:flex;align-items:center;gap:6px;min-width:0;flex-wrap:wrap}
+.tr-ic{flex:none;width:14px;height:14px;color:var(--text3)}
+.tr-ic.demo{color:#f1c21b}
+.tr-ic.fire{color:#ff6168}
+.tr-ic.flood{color:#7aa9ff}
+.tr-ic.disaster{color:#c9a6ff}
+.tr-ic.siber{color:#c8f04b}
+.tr-ic.kriminal{color:#ffb066}
+.tr-ic.kesehatan{color:#ff8ab5}
+.tr-ic.ekonomi{color:#6fe7b6}
+.tr-ic.politik{color:#93bcff}
+.tr-ic.insiden{color:#a9a9a9}
+.tr-sev-cat{flex:none;font:600 8.5px/1 var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--text2)}
+.tr[data-sev="kritis"] .tr-sev-cat{color:#ff8086}
+.tr[data-sev="waspada"] .tr-sev-cat{color:#f1c21b}
+.tr-sev-cat.demo{color:#f1c21b}
+.tr-sev-cat.fire{color:#ff8086}
+.tr-sev-cat.flood{color:#7aa9ff}
+.tr-sev-cat.disaster{color:#c9a6ff}
+.tr-sev-cat.siber{color:#c8f04b}
+.tr-sev-cat.kriminal{color:#ffb066}
+.tr-sev-cat.kesehatan{color:#ff8ab5}
+.tr-sev-cat.ekonomi{color:#6fe7b6}
+.tr-sev-cat.politik{color:#93bcff}
+.tr-loc-tag{
+  font:600 8px/1 var(--mono);letter-spacing:.05em;text-transform:uppercase;
+  color:var(--text2);border:1px solid rgba(255,255,255,.08);
+  padding:2px 5px;border-radius:2px;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+.tr-rel{flex:none;font:600 7.5px/1 var(--mono);letter-spacing:.06em;text-transform:uppercase;padding:2px 5px;border:1px solid var(--border2);border-radius:2px;cursor:help}
+.tr-rel.ok{color:#6fdc8c;border-color:rgba(66,190,101,.35);background:rgba(66,190,101,.1)}
+.tr-rel.maybe{color:#e8b64c;border-color:rgba(232,182,76,.35);background:rgba(232,182,76,.08)}
+.tr-time{margin-left:auto;flex:none;font:500 9.5px/1 var(--mono);font-variant-numeric:tabular-nums;color:var(--text3)}
+.tr-t{font:500 12.5px/1.42 var(--sans);color:var(--text);display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+.tr[data-sev="info"] .tr-t{color:var(--text2)}
+.tr-f{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:1px}
+.tr-pills{
+  display:inline-flex;align-items:stretch;border:1px solid var(--border2);
+  border-radius:2px;background:transparent;overflow:hidden;
+}
+.tr-pill{
+  position:relative;display:inline-flex;align-items:center;
+  font:500 8px/1 var(--mono);letter-spacing:.04em;text-transform:uppercase;
+  padding:3.5px 7.5px;background:transparent;border:0;color:var(--text3);
+}
+.tr-pill.soc{color:#8cb4ff}
+.tr-pill.news{color:#f1c21b}
+.tr-pill:has(+.tr-pill){padding-right:9px}
+.tr-pill+.tr-pill{padding-left:11px}
+.tr-pill+.tr-pill::before{
+  content:"";position:absolute;left:1px;top:-2px;bottom:-2px;width:1px;
+  background:var(--border2);transform:skewX(-18deg);pointer-events:none;
+}
+.tr-more{
+  margin-left:auto;padding:3px 7px;font:600 8px/1 var(--mono);letter-spacing:.08em;text-transform:uppercase;
+  color:var(--text3);background:transparent;border:1px solid var(--border2);border-radius:2px;cursor:pointer;
+  transition:color .12s,background .12s,border-color .12s;
+}
+.tr-more:hover,.tr.is-open .tr-more{color:var(--text);background:rgba(255,255,255,.06);border-color:var(--text3)}
+.tr-body{margin-top:3px;background:#101014;border:1px solid var(--border2);border-radius:3px;overflow:hidden}
+.tr-tabs{display:grid;grid-template-columns:1fr 1fr;background:#18181f;border-bottom:1px solid var(--border)}
+.tr-tabs.solo{grid-template-columns:1fr}
+.tr-tab{
+  padding:7px 10px;font:600 8px/1 var(--mono);letter-spacing:.08em;text-transform:uppercase;
+  display:flex;align-items:center;justify-content:space-between;gap:6px;
+  color:var(--text3);background:transparent;border:1px solid transparent;border-bottom-width:2px;cursor:pointer;
+  transition:color .12s,background .12s,border-color .12s;
+}
+.tr-tab+.tr-tab{border-left:1px solid var(--border)}
+.tr-tab span{display:inline-flex;align-items:center;gap:5px}
+.tr-tab .ic{width:10px;height:10px}
+.tr-tab b{font-weight:600;padding:1.5px 4.5px;background:rgba(255,255,255,.06);border-radius:2px;color:var(--text2);font-variant-numeric:tabular-nums}
+.tr-tab.soc.active{color:#8cb4ff;border-bottom-color:#7aa9ff}
+.tr-tab.news.active{color:#f1c21b;border-bottom-color:#f1c21b}
+.tr-tab:not(.active):hover{color:var(--text2);background:rgba(255,255,255,.03)}
+.tr-lanes{display:block}
+.tr-lane{padding:4px 10px}
+.tr-lane[hidden]{display:none!important}
+.tr-lane .cl-line{display:grid;grid-template-columns:38px minmax(0,1fr);gap:8px;padding:7px 0;border-bottom:1px solid rgba(255,255,255,.06)}
+.tr-lane .cl-line:last-child{border-bottom:0}
 .tr-lane .cl-line>span{min-width:0}
-.tr-lane .cl-line a{display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere}
-.tr-lane .cl-s{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tr-lane .cl-line a{font:400 11px/1.42 var(--sans);color:var(--text2);display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere}
+.tr-lane .cl-line a:hover{color:var(--text)}
+.tr-lane .cl-s{display:flex;align-items:center;gap:4px;margin-top:3px;font:500 8px/1 var(--mono);letter-spacing:.04em;text-transform:uppercase;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tr-lane.soc .cl-s{color:#7aa9ff}
+.tr-lane.news .cl-s{color:#f1c21b}
 .cl-s .ic{width:9px;height:9px;vertical-align:-1px}
-.tr-sample{padding:4px 0 10px;font:400 11.5px/1.5 var(--sans);color:var(--text2)}
+.tr-sample{padding:8px 10px;font:400 11.5px/1.5 var(--sans);color:var(--text2)}
 .sit-regions{display:flex;flex-direction:column}
-.sr{display:grid;grid-template-columns:20px minmax(0,1fr) 54px 24px;align-items:center;gap:8px;padding:9px 13px;border-bottom:1px solid var(--border)}
-.sr-i{font:400 8.5px/1 var(--mono);color:var(--text3)}
+.sr{display:grid;grid-template-columns:20px minmax(0,1fr) 82px 26px;align-items:center;gap:8px;padding:9px 13px;border-bottom:1px solid var(--border)}
+.sr-i{font:500 8.5px/1 var(--mono);color:var(--text3)}
 .sr-n{font:400 12px/1.2 var(--sans);color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.sr-t{height:3px;background:#242424;overflow:hidden}
-.sr-t i{display:block;height:3px;background:var(--accent)}
+.sr-t{display:grid;grid-template-columns:repeat(10,1fr);gap:2.5px;height:6px;align-items:center}
+.sr-t i{display:block;height:100%;background:#232329;transform:skewX(-18deg)}
+.sr-t i.on{background:var(--accent);box-shadow:0 0 4px rgba(218,30,40,.35)}
 .sr b{font:600 10px/1 var(--mono);color:var(--text2);text-align:right;font-variant-numeric:tabular-nums}
 .src-health{display:flex;flex-direction:column}
 .sh{display:grid;grid-template-columns:8px minmax(0,1fr) auto;gap:8px;align-items:center;padding:8px 13px;border-bottom:1px solid var(--border)}
@@ -1790,7 +1826,7 @@ button.mp-src{background:none;border-top:0;border-left:0;border-right:0;cursor:p
 .rd-pn{display:flex;align-items:center;gap:5px;min-width:0;font:600 13.5px/1.2 var(--sans);color:var(--text)}
 .rd-pn span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .rd-ph{font:400 11px/1.3 var(--sans);color:var(--text3);margin-top:2px}
-.rd-pt{margin-top:12px;font:400 13px/1.55 var(--sans);color:var(--text);white-space:pre-wrap;overflow-wrap:anywhere}
+.rd-pt{margin-top:6px;font:400 12px/1.55 var(--sans);color:var(--text);white-space:pre-wrap;overflow-wrap:anywhere}
 .rd-pt a{color:#8ab4d8}
 .rd-pt a:hover{color:var(--accent)}
 .rd-stats{display:flex;flex-wrap:wrap;gap:14px;margin-top:14px;padding-top:12px;border-top:1px solid var(--border);font:400 10px/1 var(--mono);color:var(--text3)}
@@ -1855,27 +1891,7 @@ button.mp-src{background:none;border-top:0;border-left:0;border-right:0;cursor:p
 }
 .gx:hover{border-color:var(--text2);color:var(--text)}
 
-/* ---- Sinyal v3: ledger (kolom waktu + baris berpemisah hairline, tanpa kotak/rail) ---- */
-.triage{padding:0 14px 6px;gap:0}
-.tr{display:block;padding:15px 0;border:0;border-top:1px solid var(--border);background:none}
-.tr:first-child{border-top:0}
-.tr-ret,.tr-place,.tr-n{display:none}
-.tr-time{margin-left:auto;flex:none;font:500 10px/1 var(--mono);font-variant-numeric:tabular-nums;color:var(--text3)}
-.tr-ic{flex:none;width:16px;height:16px;color:var(--text3)}
-.tr-ic.demo{color:#f1c21b}.tr-ic.fire{color:#ff6168}.tr-ic.flood{color:#7aa9ff}.tr-ic.disaster{color:#c9a6ff}
-.tr-ic.siber{color:#c8f04b}.tr-ic.kriminal{color:#ffb066}.tr-ic.kesehatan{color:#ff8ab5}.tr-ic.ekonomi{color:#6fe7b6}
-.tr-ic.politik{color:#93bcff}.tr-ic.insiden{color:#a9a9a9}
-.tr-m{padding:0;min-width:0}
-.tr-hd{gap:10px}
-.tr-sev{font-size:9.5px;letter-spacing:.08em}
-.tr-cat{font-size:9.5px}
-.tr-cat::before{display:none}
-.tr-t{margin-top:7px;font:400 13px/1.5 var(--sans);color:var(--text);-webkit-line-clamp:3}
-.tr[data-sev="info"] .tr-t{color:var(--text2)}
-.tr-f{margin-top:9px;gap:6px;font:400 11px/1.4 var(--sans);letter-spacing:0;text-transform:none;color:var(--text3);flex-wrap:wrap}
-.tr-f .tr-loc::after{content:" · "}
-.tr-more{margin-left:8px;padding:2px 0;font:600 11px/1.4 var(--sans);letter-spacing:0;text-transform:none;color:var(--text);text-decoration:underline;text-underline-offset:3px;text-decoration-color:var(--border2)}
-.tr-more:hover{text-decoration-color:var(--text)}
+/* ---- Sinyal v4: Telemetry Deck + Opsi 02 Category Header + Segmented Source Switcher ---- */
 
 /* ============================================================ RESPONSIVE */
 @media (max-width:1180px){
@@ -4262,9 +4278,12 @@ function renderSituation(){
   updateDistress();
   renderAlerts();
   const rmax = Math.max(1, ...(SIT.regions || []).map(r => r.n));
-  $('#sit-regions').innerHTML = (SIT.regions || []).map((r, i) =>
-    `<div class="sr"><span class="sr-i">${String(i + 1).padStart(2, '0')}</span><span class="sr-n">${esc(r.name)}</span>
-      <span class="sr-t"><i style="width:${Math.max(3, Math.round(r.n / rmax * 100))}%"></i></span><b>${r.n}</b></div>`).join('') ||
+  $('#sit-regions').innerHTML = (SIT.regions || []).map((r, i) => {
+    const lit = Math.max(1, Math.min(10, Math.round((r.n / rmax) * 10)));
+    const bars = Array.from({ length: 10 }, (_, k) => `<i${k < lit ? ' class="on"' : ''}></i>`).join('');
+    return `<div class="sr"><span class="sr-i">${String(i + 1).padStart(2, '0')}</span><span class="sr-n">${esc(r.name)}</span>
+      <span class="sr-t" aria-hidden="true">${bars}</span><b>${r.n}</b></div>`;
+  }).join('') ||
     '<div class="empty">Belum ada wilayah terdeteksi.</div>';
   $('#src-health').innerHTML = (SIT.sources || []).map(s =>
     `<div class="sh ${s.ok ? 'ok' : 'bad'}"><i></i><span class="sh-id">${esc(s.id)}</span>
@@ -4553,14 +4572,34 @@ function relatedSocial(group, n){
   const all = SitrepSignals.related(group, socialPool(), Date.now(), 300);
   return { items:all.slice(0, n), total:all.length };
 }
-function lanesHtml(socRes, newsItems, newsTotal){
-  const soc = socRes && socRes.items.length
-    ? `<div class="tr-lane soc"><div class="tr-lane-h">${ic('radar')} Sosial <b>${socRes.total} post</b></div>${socRes.items.map(socLine).join('')}</div>` : '';
-  const news = newsItems && newsItems.length
-    ? `<div class="tr-lane news"><div class="tr-lane-h">${ic('news')} Berita <b>${newsTotal || newsItems.length} kabar</b></div>${newsItems.map(newsLine).join('')}</div>` : '';
-  if (!soc && !news) return '';
-  const solo = soc && !news ? ' solo-soc' : !soc && news ? ' solo-news' : '';
-  return `<div class="tr-body"><div class="tr-lanes${solo}">${soc}${news}</div></div>`;
+const alertTabState = new Map();
+function lanesHtml(socRes, newsItems, newsTotal, cardId){
+  const hasSoc = !!(socRes && socRes.items && socRes.items.length);
+  const hasNews = !!(newsItems && newsItems.length);
+  if (!hasSoc && !hasNews) return '';
+  const both = hasSoc && hasNews;
+  const savedTab = cardId && alertTabState.get(cardId);
+  const activeTab = both ? (savedTab === 'news' ? 'news' : 'soc') : (hasSoc ? 'soc' : 'news');
+  const nTotal = newsTotal || (newsItems ? newsItems.length : 0);
+  const tabsHtml = both
+    ? `<div class="tr-tabs" role="tablist">
+        <button type="button" class="tr-tab soc${activeTab === 'soc' ? ' active' : ''}" data-lane="soc" data-card="${esc(cardId || '')}" role="tab" aria-selected="${activeTab === 'soc'}">
+          <span>${ic('radar')} Sosial · X / Threads</span><b>${socRes.total}</b>
+        </button>
+        <button type="button" class="tr-tab news${activeTab === 'news' ? ' active' : ''}" data-lane="news" data-card="${esc(cardId || '')}" role="tab" aria-selected="${activeTab === 'news'}">
+          <span>${ic('news')} Berita · Media</span><b>${nTotal}</b>
+        </button>
+      </div>`
+    : `<div class="tr-tabs solo">
+        <div class="tr-tab ${hasSoc ? 'soc' : 'news'} active">
+          <span>${ic(hasSoc ? 'radar' : 'news')} ${hasSoc ? 'Sosial · X / Threads' : 'Berita · Media'}</span><b>${hasSoc ? socRes.total : nTotal}</b>
+        </div>
+      </div>`;
+  const socPanel = hasSoc
+    ? `<div class="tr-lane soc" data-lane-panel="soc"${activeTab === 'soc' ? '' : ' hidden'}>${socRes.items.map(socLine).join('')}</div>` : '';
+  const newsPanel = hasNews
+    ? `<div class="tr-lane news" data-lane-panel="news"${activeTab === 'news' ? '' : ' hidden'}>${newsItems.map(newsLine).join('')}</div>` : '';
+  return `<div class="tr-body">${tabsHtml}<div class="tr-lanes">${socPanel}${newsPanel}</div></div>`;
 }
 function relatedNews(group, n){
   return SitrepSignals.related(group, (SIT?.items || []), Date.now(), n);
@@ -4610,24 +4649,32 @@ function alertCards(){
     const sev = (g.severity === 'critical' || c.events.some(e => e.severity === 'critical')) ? 'kritis'
       : (g.severity === 'warning' || c.events.some(e => e.severity === 'warning')) ? 'waspada' : 'info';
     const socRes = { items: g.posts.slice(0, 6), total: g.posts.length };
-    cards.push({ id: 'x' + c.id, sev, cat: c.cat, place: c.place || g.place || 'Wilayah belum pasti', n: g.n + k,
+    const id = 'x' + c.id;
+    cards.push({ id, sev, cat: c.cat, place: c.place || g.place || 'Wilayah belum pasti', n: g.n + k,
       score: g.accounts * 2 + s * 2 + k, latest: Math.max(g.latest || 0, c.latest || 0),
       title: deEmoji(c.items[0].title),
       meta: g.n + ' post · ' + g.accounts + ' akun · ' + s + ' media · ' + g.from,
+      socMeta: g.n + ' post · ' + g.accounts + ' akun',
+      newsMeta: k + ' kabar · ' + s + ' media',
+      socRes, newsItems: c.items.slice(0, 6), newsTotal: k,
       rel: p.rel === 'strong' ? 'dikonfirmasi' : 'kemungkinan terkait',
       note: p.rel === 'strong' ? 'Event yang sama dikonfirmasi media dan sosial' : 'Kecocokan parsial — evidence belum cukup untuk konfirmasi',
-      body: lanesHtml(socRes, c.items.slice(0, 6), k) });
+      body: lanesHtml(socRes, c.items.slice(0, 6), k, id) });
   }
   for (const g of socLeft) {
     const sev = g.severity === 'critical' ? 'kritis' : g.severity === 'warning' ? 'waspada' : 'info';
     const sample = String(g.sample || '').replace(/^@\w+\s*/, '');
     const socRes = { items: g.posts.slice(0, 6), total: g.posts.length };
     const rel = relatedNews(g, 6);
-    cards.push({ id: 'd:' + g.cat + ':' + g.id, sev, cat: g.cat, place: g.place || 'Scope belum pasti', n: g.n,
+    const id = 'd:' + g.cat + ':' + g.id;
+    cards.push({ id, sev, cat: g.cat, place: g.place || 'Scope belum pasti', n: g.n,
       score: g.accounts, latest: g.latest, title: sample,
       meta: g.n + ' post · ' + g.accounts + ' akun · ' + g.from,
+      socMeta: g.n + ' post · ' + g.accounts + ' akun',
+      newsMeta: rel.length ? rel.length + ' kabar' : '',
+      socRes, newsItems: rel, newsTotal: rel.length,
       note: 'Laporan belum terverifikasi · dampak belum diketahui',
-      body: lanesHtml(socRes, rel) });
+      body: lanesHtml(socRes, rel, rel.length, id) });
   }
   if (SIT) {
     for (const g of newsLeft) {
@@ -4637,9 +4684,13 @@ function alertCards(){
         : g.events.some(e => e.severity === 'warning') ? 'waspada' : 'info';
       const lead = g.items[0];
       const socRes = relatedSocial(g, 6);
-      cards.push({ id: 'c' + g.id, sev, cat: g.cat, place: g.place || 'Wilayah belum pasti', n: k,
+      const id = 'c' + g.id;
+      cards.push({ id, sev, cat: g.cat, place: g.place || 'Wilayah belum pasti', n: k,
         score, latest: g.latest || 0, title: lead.title, meta: k + ' kabar · ' + s + ' feed',
-        body: lanesHtml(socRes, g.items.slice(0, 6), g.items.length) });
+        socMeta: socRes.total ? socRes.total + ' post' : '',
+        newsMeta: k + ' kabar · ' + s + ' feed',
+        socRes, newsItems: g.items.slice(0, 6), newsTotal: g.items.length,
+        body: lanesHtml(socRes, g.items.slice(0, 6), g.items.length, id) });
     }
     const failedSrc = (SIT.sources || []).filter(s => !s.ok);
     if (failedSrc.length) {
@@ -4649,7 +4700,7 @@ function alertCards(){
       cards.push({ id: 'srcfail', sev: 'waspada', cat: 'insiden', place: 'Sumber', n: 0,
         score: 1, latest: latestFail || (SIT.at || 0), title: failedSrc.length + ' sumber gagal diambil', meta: 'feed error · retry otomatis',
         body: `<div class="tr-body"><div class="tr-sample">${esc(names)}${errs ? '<br>' + esc(errs) : ''}</div>
-          <button class="tr-more" type="button" data-retry="sit" style="margin-top:6px">Coba lagi</button></div>` });
+          <button class="tr-more" type="button" data-retry="sit" style="margin:0 10px 8px">Coba lagi</button></div>` });
     }
   }
   cards.sort((a, b) => (SEV_RANK[a.sev] - SEV_RANK[b.sev]) || (b.score - a.score) || (b.latest - a.latest));
@@ -4660,19 +4711,27 @@ function alertCards(){
 function alertHtml(c){
   const open = openAlert === c.id;
   const time = c.latest ? wibTime(c.latest) : '';
-  const expandable = !!c.body;
+  const bodyHtml = (c.socRes || c.newsItems) ? lanesHtml(c.socRes, c.newsItems, c.newsTotal, c.id) : (c.body || '');
+  const expandable = !!bodyHtml;
   const title = deEmoji(unent(c.title)).replace(/https?:\/\/\S+/g, '').replace(/\s{2,}/g, ' ').replace(/(?:\s*>+)+\s*$/, '…').trim();
-  return `<div class="tr" data-sev="${c.sev}">
+  const pillsHtml = (c.socMeta || c.newsMeta)
+    ? `<div class="tr-pills">${c.socMeta ? `<span class="tr-pill soc"${c.note ? ` title="${esc(c.note)}"` : ''}>SOSIAL: ${esc(c.socMeta)}</span>` : ''}${c.newsMeta ? `<span class="tr-pill news"${c.note ? ` title="${esc(c.note)}"` : ''}>BERITA: ${esc(c.newsMeta)}</span>` : ''}</div>`
+    : `<div class="tr-pills"><span class="tr-pill">${esc(c.meta)}</span></div>`;
+  return `<div class="tr${open ? ' is-open' : ''}" data-sev="${c.sev}">
     <div class="tr-m">
-      <div class="tr-hd"><svg class="ic tr-ic ${c.cat}" aria-hidden="true"><use href="${TK_SIG[c.cat] || '#i-pin'}"></use></svg>
-        <span class="tr-sev">${SEV_LABEL[c.sev]}</span>
-        <span class="tr-cat ${c.cat}">${esc(CAT_LABEL[c.cat] || c.cat)}</span>
+      <div class="tr-hd">
+        <svg class="ic tr-ic ${c.cat}" aria-hidden="true"><use href="${TK_SIG[c.cat] || '#i-pin'}"></use></svg>
+        <span class="tr-sev-cat ${c.cat}">${SEV_LABEL[c.sev]} · ${esc(CAT_LABEL[c.cat] || c.cat)}</span>
+        <span class="tr-loc-tag">${esc(c.place)}</span>
         ${c.rel ? `<span class="tr-rel ${c.rel === 'dikonfirmasi' ? 'ok' : 'maybe'}" title="${esc(c.note || '')}">${esc(c.rel)}</span>` : ''}
-        ${time ? `<time class="tr-time">${esc(time)}</time>` : ''}</div>
+        ${time ? `<time class="tr-time">${esc(time)}</time>` : ''}
+      </div>
       <div class="tr-t">${esc(title)}</div>
-      <div class="tr-f"><span class="tr-loc">${esc(c.place)}</span><span${c.note ? ` title="${esc(c.note)}"` : ''}>${esc(c.meta)}</span>
-        ${expandable ? `<button class="tr-more" type="button" data-toggle="${esc(c.id)}" aria-expanded="${open ? 'true' : 'false'}">${open ? 'Tutup' : 'Detail'}</button>` : ''}</div>
-      ${open && expandable ? c.body : ''}
+      <div class="tr-f">
+        ${pillsHtml}
+        ${expandable ? `<button class="tr-more" type="button" data-toggle="${esc(c.id)}" aria-expanded="${open ? 'true' : 'false'}">${open ? 'Tutup' : 'Detail'}</button>` : ''}
+      </div>
+      ${open && expandable ? bodyHtml : ''}
     </div>
   </div>`;
 }
@@ -4680,13 +4739,23 @@ function renderAlerts(){
   const el = $('#triage'); if (!el) return;
   const cards = alertCards();
   el.innerHTML = cards.length ? cards.map(alertHtml).join('') :
-    `<div class="tr" data-sev="info"><span class="tr-ret" aria-hidden="true"><i></i><i></i><i></i><i></i><b>○</b></span><div class="tr-m">
-      <div class="tr-hd"><span class="tr-sev">Normal</span><span class="tr-place">Semua sinyal dalam batas normal</span></div>
-      <div class="tr-f"><span>tidak ada alert aktif</span></div></div></div>`;
+    `<div class="tr" data-sev="info"><div class="tr-m">
+      <div class="tr-hd"><svg class="ic tr-ic insiden" aria-hidden="true"><use href="#i-pin"></use></svg><span class="tr-sev-cat">Normal · Situasi</span><span class="tr-loc-tag">Nasional</span></div>
+      <div class="tr-f"><span class="tr-pill">Tidak ada alert aktif</span></div></div></div>`;
 }
 $('#triage').addEventListener('click', e => {
   const r = e.target.closest('[data-retry]');
   if (r) { if (r.dataset.retry === 'sit') pullSituation(); return; }
+  const tab = e.target.closest('[data-lane]');
+  if (tab) {
+    const cardId = tab.dataset.card;
+    const lane = tab.dataset.lane;
+    if (cardId && lane) {
+      alertTabState.set(cardId, lane);
+      renderAlerts();
+    }
+    return;
+  }
   const b = e.target.closest('[data-toggle]'); if (!b) return;
   const id = b.dataset.toggle;
   openAlert = openAlert === id ? '' : id;

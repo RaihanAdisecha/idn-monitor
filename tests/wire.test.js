@@ -303,3 +303,24 @@ test('04 News Wire keeps filter expand/unexpand drawer with command-bar input an
   // 3. Inner buttons (#ontopic, #fltclear) are removed
   assert.ok(!html.includes('id="ontopic"') && !html.includes('id="fltclear"'), 'inner buttons (#ontopic, #fltclear) must be removed from news filter drawer');
 });
+
+test('Detail situasi uses Opsi 01 telemetry deck with Opsi 02 category label, full-width source tab switcher, and 10-cell canted individual bars in Wilayah tab', () => {
+  const fs = require('fs');
+  const path = require('path');
+  const html = fs.readFileSync(path.join(__dirname, '../public/index.html'), 'utf8');
+
+  // 1. Category icon (.tr-ic) + Opsi 02 category header label (.tr-sev-cat + .tr-loc-tag) inside alertHtml
+  assert.ok(html.includes('<svg class="ic tr-ic ${c.cat}" aria-hidden="true"><use href="${TK_SIG[c.cat] || \'#i-pin\'}"></use></svg>') && html.includes('class="tr-sev-cat ${c.cat}"'), 'alertHtml must use category SVG icon and unified sev-cat label');
+  assert.ok(!html.includes('class="tr-dot'), 'alertHtml must not use pulse dot instead of category icon');
+  assert.ok(html.includes('<span class="tr-loc-tag">${esc(c.place)}</span>'), 'alertHtml must render location tag in header');
+
+  // 2. Opsi 01 dual-channel pills joined inside .tr-pills with transparent bg & diagonal separator, plus full-width segmented source tab switcher
+  assert.ok(html.includes('<div class="tr-pills">') && html.includes('class="tr-pill soc"') && html.includes('class="tr-pill news"'), 'alertHtml must render SOSIAL and BERITA inside unified .tr-pills container');
+  assert.ok(html.includes('.tr-pill+.tr-pill::before{') && html.includes('background:transparent;border:0;color:var(--text3)'), '.tr-pill must have transparent background and diagonal separator');
+  assert.ok(html.includes('class="tr-tabs" role="tablist"') && html.includes('data-lane="soc"') && html.includes('data-lane="news"'), 'lanesHtml must render full-width segmented tab switcher for dual-source signals');
+
+  // 3. Wilayah stays in its own separate tab (#view-krono) and uses 10-cell canted individual bars
+  assert.ok(html.includes('<div id="view-krono" hidden><div class="sit-regions" id="sit-regions"></div></div>'), 'Wilayah must remain in its own separate #view-krono tab');
+  assert.ok(html.includes('.sr-t{display:grid;grid-template-columns:repeat(10,1fr);gap:2.5px;height:6px;align-items:center}') && html.includes('transform:skewX(-18deg)'), 'Wilayah meter must use 10-cell canted individual bars');
+  assert.ok(html.includes("Array.from({ length: 10 }, (_, k) => `<i${k < lit ? ' class=\"on\"' : ''}></i>`).join('')"), 'renderSituation must generate 10 discrete bar elements per region');
+});
