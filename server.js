@@ -3,6 +3,7 @@ const SOC = require('./social');
 const HISTORY = require('./social-history');
 const ASSESS = require('./assessment');
 const FEEDTEXT = require('./feedtext');
+const XPOOL = require('./xpool');
 const http = require('http'), fs = require('fs'), path = require('path'), dns = require('dns').promises, crypto = require('crypto'), zlib = require('zlib');
 // muat .env sederhana (satu baris KEY=VALUE) agar TOMTOM_API_KEY bisa dari env
 try {
@@ -634,11 +635,13 @@ X.auth_token = process.env.X_AUTH_TOKEN || X.auth_token || '';
 X.ct0 = process.env.X_CT0 || X.ct0 || '';
 X.bearer = process.env.X_BEARER || X.bearer || '';
 X.query_id = process.env.X_QUERY_ID || X.query_id || '';
-const xHas = () => !!(X.auth_token && X.ct0);
+const xPool = XPOOL.createXPool(XPOOL.buildXAccounts(process.env, X));
+const xHas = () => xPool.has();
 async function xQueryId() {
   if (X.query_id) return X.query_id;
   return memo('xqid', 6 * 3600e3, async () => {
-    const hdr = xHas() ? { cookie: `auth_token=${X.auth_token}; ct0=${X.ct0}`, 'x-csrf-token': X.ct0 } : {};
+    const acc = xPool.pick() || xPool.all()[0];
+    const hdr = acc ? { cookie: `auth_token=${acc.auth_token}; ct0=${acc.ct0}`, 'x-csrf-token': acc.ct0 } : {};
     const html = await (await get('https://x.com/home', { headers: hdr }, 20000)).text();
     let urls = [...new Set([...html.matchAll(/https:\/\/abs\.twimg\.com\/[^"'\s]*?\.js/g)].map(m => m[0]))];
     urls.sort((a, b) => (/\/main\.[\w]+\.js$/.test(b) ? 1 : 0) - (/\/main\.[\w]+\.js$/.test(a) ? 1 : 0));
@@ -717,47 +720,62 @@ function bottomCursor(j) {
   return c;
 }
 const xSem = makeSem(4);   // maks 4 SearchTimeline paralel — lazy & sweep berbagi slot yang sama
-let xCooldownUntil = 0;    // x-rate-limit-reset terakhir (epoch ms) — semua jalur X hormati ini
-const xCooling = () => Date.now() < xCooldownUntil;
+const xCooling = () => xPool.allCooling();
 async function xSearchGo(q, cursor, winH) {
-  if (xCooling()) { const e = new Error('X rate-limit cooldown'); e.cooldown = true; e.retryAt = xCooldownUntil; throw e; }
+  if (!xHas()) throw new Error('auth_token / ct0 belum diisi');
+  if (xCooling()) { const until = xPool.earliestReset(); const e = new Error('X rate-limit cooldown'); e.cooldown = true; e.retryAt = until; throw e; }
   const id = await xQueryId();
   // winH: jendela since_time dalam jam; <=0 = tanpa filter waktu (dipakai conversation_id)
   const win = winH == null ? 46 : winH;
   const vars = { rawQuery: q + (win > 0 ? ' since_time:' + Math.floor((Date.now() - win * 3600e3) / 1000) : ''), count: 20, querySource: 'typed_query', product: 'Latest' };
   if (cursor) vars.cursor = cursor;   // halaman berikut: rawQuery wajib tetap ada, kalau tidak 422
   const url = `https://api.x.com/graphql/${id}/SearchTimeline`;
-  const r = await get(url, { method: 'POST', headers: { 'content-type': 'application/json',
-    authorization: 'Bearer ' + (X.bearer || BEARER), cookie: `auth_token=${X.auth_token}; ct0=${X.ct0}`,
-    'x-csrf-token': X.ct0, 'x-twitter-auth-type': 'OAuth2Session', 'x-twitter-active-user': 'yes',
-    'x-twitter-client-language': 'id', referer: 'https://x.com/search?q=' + encodeURIComponent(q) + '&f=live' },
-    body: JSON.stringify({ variables: vars, features: X.features || FEATURES }) }, 20000);
-  if (!r.ok) {
-    const textSnippet = (await r.text()).slice(0, 160);
-    const err = new Error('X HTTP ' + r.status + (r.status === 401 || r.status === 403 ? ' (cookie kadaluarsa?)' : '') + ' ' + textSnippet);
-    err.status = r.status;
-    const resetHdr = r.headers.get('x-rate-limit-reset');
-    err.resetTime = resetHdr ? parseInt(resetHdr, 10) * 1000 : 0;
-    // hormati window reset: semua request berikutnya langsung skip sampai
-    // bucket pulih — menembak terus ke dinding 429 justru memperpanjang blokir
-    if (r.status === 429) {
-      const until = err.resetTime || Date.now() + 5 * 60e3;
-      if (until > xCooldownUntil) xCooldownUntil = until;
+  const tried = new Set();
+  let lastErr = null;
+  for (let attempt = 0; attempt < Math.max(1, xPool.size()); attempt++) {
+    const acc = xPool.pick(Date.now(), tried);
+    if (!acc) break;
+    tried.add(acc);
+    const r = await get(url, { method: 'POST', headers: { 'content-type': 'application/json',
+      authorization: 'Bearer ' + (X.bearer || BEARER), cookie: `auth_token=${acc.auth_token}; ct0=${acc.ct0}`,
+      'x-csrf-token': acc.ct0, 'x-twitter-auth-type': 'OAuth2Session', 'x-twitter-active-user': 'yes',
+      'x-twitter-client-language': 'id', referer: 'https://x.com/search?q=' + encodeURIComponent(q) + '&f=live' },
+      body: JSON.stringify({ variables: vars, features: X.features || FEATURES }) }, 20000);
+    if (!r.ok) {
+      const textSnippet = (await r.text()).slice(0, 160);
+      const err = new Error('X HTTP ' + r.status + (r.status === 401 || r.status === 403 ? ' (cookie kadaluarsa?)' : '') + ' ' + textSnippet);
+      err.status = r.status;
+      const resetHdr = r.headers.get('x-rate-limit-reset');
+      err.resetTime = resetHdr ? parseInt(resetHdr, 10) * 1000 : 0;
+      if (r.status === 429) {
+        // cooldown per-akun agar langsung failover ke akun sehat lain di pool
+        xPool.markRateLimit(acc, err.resetTime);
+        lastErr = err;
+        continue;
+      }
+      if (r.status === 401 || r.status === 403) {
+        xPool.markAuthError(acc);
+        lastErr = err;
+        continue;
+      }
+      throw err;
     }
-    throw err;
+    const j = await r.json(), out = new Map(); collect(j, out);
+    if (!out.size && !cursor) {   // 200 tapi nol tweet: jangan diam, tampilkan bentuk respons biar kelihatan (IP datacenter / sesi diflag / query kosong)
+      if (q.startsWith('conversation_id:')) return { posts: [], cursor: '' };
+      if (j.errors) throw new Error(JSON.stringify(j.errors).slice(0, 200));
+      const raw = JSON.stringify(j);
+      throw new Error('X HTTP 200 tapi 0 tweet (' + raw.length + 'B): ' + raw.slice(0, 180));
+    }
+    if (j.errors && j.errors.length && !out.size) {
+      if (q.startsWith('conversation_id:')) return { posts: [], cursor: '' };
+      throw new Error(JSON.stringify(j.errors).slice(0, 200));
+    }
+    return { posts: [...out.values()].map(p => ({ ...p, q })), cursor: bottomCursor(j) };
   }
-  const j = await r.json(), out = new Map(); collect(j, out);
-  if (!out.size && !cursor) {   // 200 tapi nol tweet: jangan diam, tampilkan bentuk respons biar kelihatan (IP datacenter / sesi diflag / query kosong)
-    if (q.startsWith('conversation_id:')) return { posts: [], cursor: '' };
-    if (j.errors) throw new Error(JSON.stringify(j.errors).slice(0, 200));
-    const raw = JSON.stringify(j);
-    throw new Error('X HTTP 200 tapi 0 tweet (' + raw.length + 'B): ' + raw.slice(0, 180));
-  }
-  if (j.errors && j.errors.length && !out.size) {
-    if (q.startsWith('conversation_id:')) return { posts: [], cursor: '' };
-    throw new Error(JSON.stringify(j.errors).slice(0, 200));
-  }
-  return { posts: [...out.values()].map(p => ({ ...p, q })), cursor: bottomCursor(j) };
+  if (lastErr) throw lastErr;
+  const until = xPool.earliestReset();
+  const e = new Error('X rate-limit cooldown'); e.cooldown = true; e.retryAt = until; throw e;
 }
 const xSearch = (q, cursor, winH) => xSem(() => xSearchGo(q, cursor, winH));
 // GetTrends v1.1 (tren Indonesia, WOEID 234): app-only bearer cukup untuk
@@ -1106,9 +1124,9 @@ const xposts = () => memo('x', 300000, async () => {
   await adhocRefresh();
   const meta0 = socMeta();
   if (!xHas()) return { ok: false, err: 'auth_token / ct0 belum diisi di config.json', posts: [], ...meta0 };
-  if (xCooling()) {   // bucket habis — sajikan history basi, jangan bakar request sia-sia
+  if (xCooling()) {   // semua akun cooldown — sajikan history basi, jangan bakar request sia-sia
     const posts = [...xHist.values()].sort((a, b) => histTs(b) - histTs(a));
-    return { ok: false, err: 'X rate-limit — reset ~' + new Date(xCooldownUntil).toTimeString().slice(0, 5) + ' WIB', posts, ...socMeta(), at: Date.now(), cooldown: true };
+    return { ok: false, err: 'X rate-limit — reset ~' + XPOOL.formatWibTime(xPool.earliestReset()) + ' WIB', posts, ...socMeta(), at: Date.now(), cooldown: true };
   }
   // rotasi sadar-panas: topik yang lama nggak disapu & lagi ramai didahulukan; ad-hoc + 2 terpanas selalu masuk
   const all = SOC.socQueries('x', ADHOC), first = xTick === 0, now = Date.now();
@@ -5097,7 +5115,7 @@ http.createServer(async (req, res) => {
           out.push({ q, n: r.posts.length, newest: n ? new Date(n).toISOString() : '-', ageH: n ? +((Date.now() - n) / 3600e3).toFixed(1) : null }); }
         catch (e) { out.push({ q, err: String(e.message).slice(0, 120) }); }
       }
-      return json({ host: process.env.RAILWAY_ENVIRONMENT ? 'railway' : 'local', qid: X.query_id || 'auto', out });
+      return json({ host: process.env.RAILWAY_ENVIRONMENT ? 'railway' : 'local', qid: X.query_id || 'auto', xAccounts: xPool.status(), out });
     }
     if (u.pathname === '/api/xq') {
       const q = (u.searchParams.get('q') || '').trim().slice(0, 60);
@@ -5240,7 +5258,7 @@ http.createServer(async (req, res) => {
     res.writeHead(404); res.end();
   } catch (e) { if (!res.headersSent) json({ ok: false, err: String(e.message || e) }, 502); else res.end(); }
 }).listen(PORT, () => {
-  console.log('SITREP jalan di http://localhost:' + PORT + (xHas() ? '' : '  (X: cookie belum diisi)'));
+  console.log('SITREP jalan di http://localhost:' + PORT + (xHas() ? ' (X pool: ' + xPool.size() + ' akun)' : '  (X: cookie belum diisi)'));
   threads().then(r => console.log('Threads warm: ' + r.posts.length + ' post')).catch(e => console.log('Threads warm gagal: ' + e.message));
   incidents().then(r => console.log('Peta warm: ' + r.items.length + ' titik')).catch(() => {});
   situation().then(r => console.log('Situasi warm: ' + r.total + ' insiden')).catch(() => {});
