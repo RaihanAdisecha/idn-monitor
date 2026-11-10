@@ -357,14 +357,19 @@ function descFrom(fields, title) {
 // `foreign` (berita Indonesia tentang luar negeri, tetap tampil bertanda
 // Global). Stopword dua arah, skor harus menang telak supaya judul Indonesia
 // berembedding istilah Inggris (loanword) tidak ikut terbuang.
-const EN_NEWS_STOP = new Set(('the and for are was were will would can could has have had not but they them their this that with from about after before between during into over under again then once here there when where why how all any both each more most other some such only own same than too very just also now says said new its our your his her we you he she it is in on at by or an be as to of').split(' '));
-const ID_NEWS_STOP = new Set(('yang dan di ke dari untuk dengan tidak ini itu pada akan sudah juga atau dalam adalah telah bisa ada seperti bagi kepada oleh mereka kami kita hingga serta tapi namun jadi hanya masih bahkan yaitu yakni saat setelah sebelum ketika antara atas bawah luar').split(' '));
+const EN_NEWS_STOP = new Set(('the and for are was were will would can could has have had not no nor but they them their this that with from about after before between during into over under again then once here there when where why how all any both each more most other some such only own same than too very just also now says said new its our your his her we you he she it is in on at by or an be as to of').split(' '));
+const EN_NEWS_ACT = new Set(('kill kills killed killing strike strikes dead leaves injured toll death deaths crash crashes official officials confirms warns warn warning warnings alert blast explosion shooting gunman court judge president hospital troops military militant militants fighter fighters soldier soldiers army attack attacks crisis storm hurricane cyclone flood floods earthquake quake jolt jolts emergency rescue body bodies missing victim victims found investigation protests protesters summit talks sanctions warfare ceasefire truce hostage murder arrested suspect charged trial prison border town province tsunami').split(' '));
+const ID_NEWS_STOP = new Set(('yang dan di ke dari untuk dengan tidak ini itu pada akan sudah juga atau dalam adalah telah bisa ada seperti bagi kepada oleh mereka kami kita hingga serta tapi namun jadi hanya masih bahkan yaitu yakni saat setelah sebelum ketika antara atas bawah luar warga polisi korban pelaku tersangka petugas bencana pemda pemerintah').split(' '));
 function newsEnglish(title, desc) {
   const txt = String(title || '') + ' ' + String(desc || '').slice(0, 240);
   const toks = txt.toLowerCase().match(/[a-z]{2,}/g) || [];
-  let en = 0, id = 0;
-  for (const w of toks) { if (EN_NEWS_STOP.has(w)) en++; else if (ID_NEWS_STOP.has(w)) id++; }
-  return en >= 3 && en >= id + 3;
+  let en = 0, id = 0, enAct = 0;
+  for (const w of toks) {
+    if (EN_NEWS_STOP.has(w)) en++;
+    else if (EN_NEWS_ACT.has(w)) enAct++;
+    if (ID_NEWS_STOP.has(w)) id++;
+  }
+  return (en >= 3 && en >= id + 3) || (en + enAct >= 2 && id === 0 && (en >= 1 || enAct >= 2));
 }
 
 // ---- Clean Title -----------------------------------------------------------

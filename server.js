@@ -70,7 +70,7 @@ const cache = new Map();
 const HIST_DIR = path.join(__dirname, 'data');
 const xHist = new Map(), tHist = new Map();
 const histKey = HISTORY.keyOf, histTs = HISTORY.tsOf;
-const HIST_MAX = { x: 1500, th: 1200 }, HIST_AGE = 24 * 3600e3;
+const HIST_MAX = { x: 1500, th: 1200 }, HIST_AGE = 48 * 3600e3;
 let ADHOC = [];   // topik dinamis dari berita yang lagi naik (nama kasus), in-memory
 const histUser = p => String(p.handle || p.username || '').toLowerCase();
 // anti-astroturf: teks identik dari >=3 akun berbeda = koordinasi bot, bukan liputan.
@@ -83,8 +83,15 @@ const astroturfFull = t => String(t || '').toLowerCase()
   .replace(/#[\p{L}\p{N}_]+/gu, ' ')
   .replace(/[^\p{L}\p{N} ]/gu, ' ')
   .replace(/\s+/g, ' ').trim();   // replika persis astroturfSig tanpa .slice(0,160)
+const AUTH_ACCOUNTS = new Set(['infobmkg', 'bnpb_indonesia', 'basarnas', 'damkardki', 'tmcpoldametro', 'halo_polisi', 'divhumas_polri', 'puspentni', 'kemkesri']);
 function histAstroturf(map) {
-  const eligible = p => { const t = String(p.text || ''); return t.length >= 50 && !/^\s*(rt\s+)?@/i.test(t); };
+  const eligible = p => {
+    const t = String(p.text || '');
+    if (t.length < 50 || /^\s*(rt\s+)?@/i.test(t)) return false;
+    const u = String(histUser(p) || '').toLowerCase().replace(/^@/, '');
+    if (AUTH_ACCOUNTS.has(u)) return false;
+    return true;
+  };
   const cand = new Map();   // sig -> Map(fullText -> Set(user))
   for (const [k, p] of map) {
     if (!eligible(p)) continue;
@@ -96,6 +103,8 @@ function histAstroturf(map) {
     byFull.get(full).add(histUser(p));
   }
   for (const [k, p] of map) {
+    const u = String(histUser(p) || '').toLowerCase().replace(/^@/, '');
+    if (AUTH_ACCOUNTS.has(u) || p.assessment?.signalEligible) continue;
     if (!eligible(p)) continue;
     const byFull = cand.get(SOC.astroturfSig(p.text));
     const users = byFull && byFull.get(astroturfFull(p.text));
@@ -384,49 +393,8 @@ function parseFeed(xml) {
   }
   return out;
 }
-/* ---------- bersihkan suffix "- Sumber" dari headline, biar judul cuma judul ---------- */
-const SRC_TAIL = /(kompas|antara|detik|cnn|tempo|liputan6|republika|tribun|cnbc|jpnn|okezone|jawapos|viva|kumparan|suara|radar|inilah|merdeka|indosport|youtube|news|kabar|berita|radio|bmkg|bnpb|bpbd|kemendagri|kapolri|tni|voice|akurat|acehinfo|polda|polres|polsek|polresta|tribrata|tribatanews|tribratanews|times|update|harian|pos|post|media|koran|portal|suarakalbar|suarasurabaya|conversation|\btv\b)/i;
-const DOMAIN_TAIL = /\.(?:com|id|net|org|co|asia|info|tv|xyz|online|site|biz|tech|me|app|pro|co\.[a-z]{2}|go\.[a-z]{2}|or\.[a-z]{2}|ac\.[a-z]{2}|sch\.[a-z]{2}|my\.id|web\.id|biz\.id)(?:\:[0-9]+)?$/i;
-
-function cleanTitle(t, pub) {
-  let s0 = String(t || '').trim();
-  const pp = s0.indexOf(' | ');
-  if (pp > 15) s0 = s0.slice(0, pp).trim();   // "Judul | NamaSitus" — pipe selalu suffix publisher
-  const pcm = s0.match(/\s*::\s*\S/);
-  if (pcm && pcm.index > 15) s0 = s0.slice(0, pcm.index).trim();   // "Judul :: NamaSitus" — pola feed lokal
-
-  // Strip prefix redaksional: "Berita Video - ", "Breaking News - ", "Video - "
-  s0 = s0.replace(/^(?:(?:breaking\s+news|berita\s+video|video|foto|live|eksklusif|update|terkini)\s*[-–—:]\s*)+/i, '').trim();
-
-  // Strip explicit publisher dari Google News <source> kalau cocok persis di ekor
-  if (pub) {
-    const pk = String(pub).trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    if (pk.length >= 3) {
-      s0 = s0.replace(new RegExp('(?:\\s+[-–—]\\s*|\\s*[-–—|•·]\\s*)' + pk + '\\s*$', 'i'), '').trim();
-    }
-  }
-
-  let s = s0.replace(/\s+[-–—]\s*(?:https?:\/\/|www\.)\S+$/i, '').trim();
-  for (let i = 0; i < 4; i++) {
-    // Delimiter wajib ada spasi sebelumnya untuk tanda hubung/strip agar tidak memotong kata ulang (luka-luka, dll.)
-    const m = s.match(/^(.{8,}?)(?:\s+[-–—]\s*|\s*[|•·]\s*)([A-Za-z0-9][A-Za-z0-9.&'®™()_\-\s]{1,70})$/);
-    if (!m) break;
-    const tail = m[2].trim();
-    const words = tail.split(/\s+/).map(w => w.replace(/[®™]/g, '')).filter(Boolean);
-    if (words.length > 6) break;                    // kelanjutan kalimat panjang, bukan label sumber
-
-    const isDomain = DOMAIN_TAIL.test(tail) || /\.[a-z]{2,8}$/i.test(tail);
-    const isKnown = SRC_TAIL.test(tail);
-    const isTitleCase = words.length <= 5 && words.every(w => /^[A-Z0-9]/.test(w));
-    const isGovPub = /^(?:pemerintah|pemkab|pemkot|polresta|polres|polsek|polda|diskominfo|humas)\b/i.test(tail);
-    const isShortSlug = words.length <= 3 && tail.length <= 30 && !/[,;?!]/.test(tail);
-
-    const isPub = isDomain || isKnown || isTitleCase || isGovPub || (isShortSlug && words.every(w => /^[a-z0-9]/.test(w)));
-    if (!isPub) break;
-    s = m[1].trim();
-  }
-  return s;
-}
+/* ---------- bersihkan suffix "- Sumber" dari headline, bersumber dari feedtext.js ---------- */
+const { cleanTitle } = FEEDTEXT;
 const news = () => Promise.all(NEWS.map(([id, url]) => memo('n:' + id, 55000, async () => {
   const customProxy = process.env.CUSTOM_PROXY_URL || process.env.PROXY_URL || CFG.custom_proxy;
   const attempts = [
@@ -489,7 +457,7 @@ const CATS = [
 // Nama negara/kota SENGAJA tidak ikut: filter letak geografis crude dan membunuh
 // berita relevan ("WNI dievakuasi dari Tokyo"). Berita luar boleh tampil di wire;
 // pencegahan pin tetap structural via gazetteer Indonesia-only + scope foreign.
-const SKIP_JUNK = /(pascabencana|pascagempa|pascabanjir|mitigasi|kesiapsiagaan(?!\s*(?:pengamanan|aparat|pasukan|personel|polri|tni|demo|unjuk rasa|aksi))|potensi bencana|rawan bencana|risiko bencana|kajian risiko|simulasi|edukasi|sosialisasi|pelatihan|antisipasi(?!\s*(?:demo|unjuk rasa|aksi|massa|kerusuhan|bentrok|keamanan|pengamanan))|siaga bencana|hadapi bencana|menghadapi bencana|asuransi|operasi patuh|ranperda|perda|godok|korupsi|dana bencana|tas bencana|go[- ]?bag|pusdalops|kebutuhan darurat|peralatan bencana|salurkan bantuan|menyalurkan|penyaluran|modus|ruu|boikot dirinya|perang harga|perang dagang|joget|liga|top skor|voli|sepak bola|piala|kualifikasi|gaun|mahalini|fashion|film|sinema|bioskop|trailer|teaser|poster|nonton|netflix|zombie|mayat hidup|hantu|sekuel|layar lebar|sinetron|sinetrik|penghargaan|jasa raharja|warisan|turun-temurun|sepanjang 20\d\d|berdampak ke ekonomi)/i;
+const SKIP_JUNK = /(pascabencana|pascagempa|pascabanjir|mitigasi|kesiapsiagaan(?!\s*(?:pengamanan|aparat|pasukan|personel|polri|tni|demo|unjuk rasa|aksi))|potensi bencana|rawan bencana|risiko bencana|kajian risiko|simulasi|edukasi|sosialisasi|pelatihan|antisipasi(?!\s*(?:demo|unjuk rasa|aksi|massa|kerusuhan|bentrok|keamanan|pengamanan))|siaga bencana|hadapi bencana|menghadapi bencana|asuransi|operasi patuh|ranperda|perda|godok|dana bencana|tas bencana|go[- ]?bag|pusdalops|kebutuhan darurat|peralatan bencana|salurkan bantuan|menyalurkan|penyaluran|modus|ruu|boikot dirinya|perang harga|perang dagang|joget|liga|top skor|voli|sepak bola|piala|kualifikasi|gaun|mahalini|fashion|film|sinema|bioskop|trailer|teaser|poster|nonton|netflix|zombie|mayat hidup|hantu|sekuel|layar lebar|sinetron|sinetrik|penghargaan|jasa raharja|warisan|turun-temurun|sepanjang 20\d\d|berdampak ke ekonomi)/i;
 // SKIP_RE = junk + geo — hanya untuk jalur sosial/tren yang memang mau fokus Indonesia.
 const SKIP_FOREIGN = /(brasil|brazil|amerika serikat|filipina|thailand|malaysia|korea|jepang|tiongkok|china|inggris|prancis|perancis|paris|jerman|australia|india|pakistan|iran|israel|palestina|ukraina|rusia|gaza|poland|polandia|polonia|krakow|warsaw|warszawa|lublin|czechia|ceko|prague|austria|wina|vienna|finland|finlandia|singapura|singapore|suriah|syria|irak|iraq|mesir|egypt|libya|libia|maroko|morocco|aljazair|algeria|tunisia|sudan|ethiopia|kenya|ghana|myanmar|kamboja|cambodia|laos|srilanka|sri lanka|bangladesh|lebanon|yordania|jordan|yaman|yemen|oman|qatar|uea|hungaria|hungary|rumania|romania|bulgaria|serbia|kroasia|croatia|slowakia|slovakia|slovenia|belgia|belgium|irlandia|ireland|estonia|latvia|lithuania|belarus|mongolia|maladewa|maldives|timor leste|selandia baru|new zealand|kuba|cuba|jamaika|jamaica|haiti|nikaragua|kosta rika|costa rica|kolombia|colombia|venezuela|bolivia|ekuador|ecuador|peru|paraguay|uruguay|congo|rwanda|uganda|tanzania|zambia|zimbabwe|mozambique|angola|namibia|botswana|lesotho|madagascar|mauritius|somalia|eritrea|djibouti|afghanistan|bhutan|brunei|albania|armenia|azerbaijan|cyprus|iceland|kosovo|luxembourg|malta|moldova|montenegro|san marino|vatikan|vatican|monako|monaco|georgia|jordan|panama|senegal|cameroon|gambia|guinea|sierra leone|liberia|mauritania|burkina faso|tokyo|seoul|beijing|shanghai|hong kong|taipei|bangkok|hanoi|manila|kualalumpur|kathmandu|moskwa|moscow|berlin|rome|roma|madrid|amsterdam|brussels|zurich|stockholm|oslo|copenhagen|helsinki|dublin|budapest|bucharest|sofia|belgrade|zagreb|vilnius|riga|tallinn|minsk|kiev|kyiv|istanbul|ankara|tehran|baghdad|beirut|riyadh|cairo|tunis|algiers|rabat|tripoli|khartoum|nairobi|kampala|kigali|lusaka|harare|pretoria|mogadishu|bamako|dakar|abuja|lagos|accra|kinshasa|bangui|yaounde|conakry|lome|cotonou|abidjan|nouakchott|maseru|mbabane|gaborone|windhoek|maputo|antananarivo|moroni|port louis|sao paulo|rio de janeiro|brasilia|buenos aires|bogota|caracas|la paz|asuncion|montevideo|kingston|havana|santo domingo|port-au-prince|nassau|bridgetown|castries|paramaribo|managua|tegucigalpa|san salvador|san jose|guatemala city|mexico city|sucre|guayaquil)/i;
 const SKIP_RE = new RegExp('(?:' + SKIP_JUNK.source.slice(1, -1) + ')|(?:' + SKIP_FOREIGN.source.slice(1, -1) + ')', 'i');
@@ -583,9 +551,11 @@ const catOf = (t, a) => {
   // Scope foreign TIDAK membuang kategori: berita luar boleh berlabel (badge +
   // flag 'foreign' → UI tandai Global). Pencegahan geo tetap structural di
   // incidents()/situation()/breaking() via foreignOf — bukan di sini.
-  // FEED_ONLY (olahraga/transport/pendidikan/hukum/dst) = topik kurasi feed
-  // sosial, bukan kategori insiden — jangan sampai "Timnas menang" berlabel Insiden.
-  const ids = new Set(a.topics.filter(tp => !ASSESS.FEED_ONLY.has(tp)).map(tp => ASSESS.CATEGORY[tp]).filter(Boolean));
+  // NON_NEWS_TOPICS: olahraga/transport/pendidikan tidak punya kategori berita insiden
+  // (mencegah "Timnas menang" berlabel Insiden). Topik ekonomi seperti bbm/pangan/bansos
+  // dan mbg (kesehatan) tetap diberi kategori agar wire ekonomi & kesehatan tidak steril.
+  const NON_NEWS_TOPICS = new Set(['olahraga', 'pendidikan', 'transport']);
+  const ids = new Set(a.topics.filter(tp => !NON_NEWS_TOPICS.has(tp)).map(tp => ASSESS.CATEGORY[tp]).filter(Boolean));
   if (!ids.size) return '';
   return resolveCategory(ids, t);
 };
@@ -3067,12 +3037,37 @@ const isTvHost = u => { try { const h = new URL(u).hostname; return (CFG.tv_host
 const px = u => '/hls?u=' + encodeURIComponent(u) + '&token=' + encodeURIComponent(API_TOKEN);
 async function hls(u, res) {
   if (!hostOK(u)) { res.writeHead(403); return res.end('host tidak diizinkan'); }
-  // TV: tanpa referer. Detik/CNN menolak referer localhost (403) tapi menerima permintaan kosong.
-  const hdrs = isTvHost(u) ? {} : { referer: 'https://smartcity.jakarta.go.id/', origin: 'https://smartcity.jakarta.go.id' };
+  // Molecool: token preview ~1 jam — resolve ulang per slug supaya playlist &
+  // segmen turunan selalu pakai token segar (moleFresh memo per slug).
+  try {
+    const hu = new URL(u);
+    if (/^cctv\.molecool\.id$/i.test(hu.hostname)) {
+      const slug = hu.pathname.split('/').filter(Boolean)[0];
+      const tok = slug && await moleFresh(slug);
+      if (tok) { hu.searchParams.set('token', tok); u = hu.href; }
+    }
+  } catch (e) {}
+  // Obfuscasi Header: TV tanpa referer; provider spesifik disesuaikan origin-nya agar lolos anti-hotlink & bot filter
+  const mh = (() => { try { return new URL(u).hostname; } catch (e) { return ''; } })();
+  let hdrs = { 'user-agent': UA };
+  if (isTvHost(u)) {
+    hdrs = { 'user-agent': UA };
+  } else if (/(^|\.)molecool\.id$/i.test(mh)) {
+    hdrs = { 'user-agent': UA, referer: 'https://molecool.id/', origin: 'https://molecool.id' };
+  } else if (/(^|\.)pantaucctv\.com$/i.test(mh)) {
+    hdrs = { 'user-agent': UA, referer: 'https://pantaucctv.com/', origin: 'https://pantaucctv.com' };
+  } else if (/(^|\.)jogjakota\.go\.id$/i.test(mh)) {
+    hdrs = { 'user-agent': UA, referer: 'https://cctv.jogjakota.go.id/' };
+  } else if (/(^|\.)bpjt\.pu\.go\.id$/i.test(mh)) {
+    hdrs = { 'user-agent': UA, referer: 'https://bpjt.pu.go.id/' };
+  } else {
+    hdrs = { 'user-agent': UA, referer: 'https://smartcity.jakarta.go.id/', origin: 'https://smartcity.jakarta.go.id' };
+  }
   const base = { 'access-control-allow-origin': '*', 'cache-control': 'no-store' };
   // mediaGet: IP publik + hostOK dicek ulang di tiap hop redirect (anti-SSRF).
+  // Timeout 35s untuk cold-start RTSP gateway (Flussonic/JakCCTV butuh waktu wake-up kamera seluler)
   let g;
-  try { g = await mediaGet(u, 12000, hdrs, hostOK); }
+  try { g = await mediaGet(u, 35000, hdrs, hostOK); }
   catch (e) { res.writeHead(502, base); return res.end(); }
   const r = g.r, furl = g.url;
   const ct = r.headers.get('content-type') || '';
@@ -3282,6 +3277,65 @@ async function cctvJogja(){
     c: 'Kota Yogyakarta', src: 'jogja'
   }));
 }
+/* Molecool — web tidak expose stream; tiap cam punya preview.jpg?token=... yang
+   ditukar jadi index.m3u8. Sumber: kartu trending di /live-cctv + stub /cctv/<code>
+   (link share di artikel /updates). Token ~1 jam (epoch ada di token) → proxy
+   me-resolve ulang per slug di hls() supaya playback tidak putus. */
+const MOLE_UA = { 'user-agent': UA, referer: 'https://molecool.id/' };
+const MOLE_SEEDS = ['3DIoRg7','4bsalqw','6Ty5BM3','6oxwbjQ','8JD739Y','AIpWgQ6','CDOd8lH','Ds39keN','FscOWio','GOQqdkB','Gj9Db3K','Jc0KvBZ','Og41dpx','PwQ1zRN','amhRiVY','fKJ9W4y','g7iu58b','lIXKVas','lKOitqX','lqAw39p','mtPwzYo','ucKlag3','wLeQ437'];
+const moleReg = new Map();   // slug -> path halaman sumber ('/cctv/X' | '/live-cctv/ID')
+const moleTok = new Map();   // slug -> { token, exp }
+const moleExp = t => { const m = /-(\d{10})-(\d{10})$/.exec(t || ''); return m ? Math.max(+m[1], +m[2]) * 1000 : 0; };
+const molePage = async path => { try { return await cctvFetch('https://molecool.id' + path, 15000, MOLE_UA); } catch (e) { return ''; } };
+const moleScan = html => {
+  const out = [];
+  for (const m of String(html).matchAll(/cctv\.molecool\.id\/([A-Za-z0-9._-]+)\/preview\.jpg\?token=([A-Za-z0-9._-]+)/g))
+    out.push({ slug: m[1], token: m[2] });
+  return out;
+};
+async function moleFresh(slug){
+  const ent = moleReg.get(slug); if (!ent) return null;
+  const tk = moleTok.get(slug);
+  if (tk && tk.exp - Date.now() > 5 * 60000) return tk.token;
+  const html = await molePage(ent.path);
+  let found = null;
+  for (const s of moleScan(html)) {
+    moleTok.set(s.slug, { token: s.token, exp: moleExp(s.token) });
+    if (s.slug === slug) found = s.token;
+  }
+  return found || (moleTok.get(slug) || {}).token || null;
+}
+const cctvMolecool = () => memo('molecool', 2400000, async () => {
+  const out = [], seen = new Set();
+  const cityCase = s => String(s || '').trim().replace(/\b[a-z]/g, c => c.toUpperCase()) || 'Jakarta';
+  const push = (name, city, slug, token, path) => {
+    if (!slug || !token || seen.has(slug)) return;
+    seen.add(slug);
+    moleReg.set(slug, { path });
+    moleTok.set(slug, { token, exp: moleExp(token) });
+    out.push({ n: name || slug, s: `https://cctv.molecool.id/${slug}/index.m3u8?token=${token}`,
+      e: 'https://molecool.id' + path, la: null, lo: null, c: cityCase(city), src: 'molecool' });
+  };
+  // kartu trending — index memuat 5 cam dengan nama/kota/aslinya
+  const idx = await molePage('/live-cctv');
+  for (const blk of String(idx).split('wire:key="cctv-').slice(1)) {
+    const id = blk.slice(0, blk.indexOf('"'));
+    const pv = /cctv\.molecool\.id\/([A-Za-z0-9._-]+)\/preview\.jpg\?token=([A-Za-z0-9._-]+)/.exec(blk);
+    const nm = /cctv__name">\s*([^<]+?)\s*<\/a>/.exec(blk);
+    const ct = /text-card-city-name[\s\S]*?<\/i>\s*([^<]+?)\s*<\/p>/.exec(blk);
+    if (pv && /^\d+$/.test(id)) push(nm && nm[1], ct && ct[1], pv[1], pv[2], '/live-cctv/' + id);
+  }
+  // stub share — og:title nama cam, og:description alamat + kota
+  await Promise.all(MOLE_SEEDS.map(async code => {
+    const h = await molePage('/cctv/' + code); if (!h) return;
+    const im = /cctv\.molecool\.id\/([A-Za-z0-9._-]+)\/preview\.jpg\?token=([A-Za-z0-9._-]+)/.exec(h);
+    const nm = /og:title" content="([^"]*)/.exec(h);
+    const ds = /og:description" content="([^"]*)/.exec(h);
+    const city = ds ? (/((?:jakarta|kota bekasi)[a-z ]*)$/i.exec(ds[1]) || [null, ''])[1] : '';
+    if (im) push(nm && nm[1], city, im[1], im[2], '/cctv/' + code);
+  }));
+  return out;
+});
 /* probe 3 level: master playlist → variant/media playlist → segmen .ts pertama.
    cam hanya "hidup" kalau segmen beneran ke-load — playlist 200 doang tidak cukup. */
 const cctvProbe = { alive: new Set(), done: new Set(), running: false, last: 0 };
@@ -3347,7 +3401,7 @@ function camReport(u, ok){
 const cctvReportedDead = s => { const r = cctvReports.get(s);
   return r && r.fails >= 2 && Date.now() - r.last < 1200000; };   // 2x gagal dlm 20 mnt → exclude
 const cctvCatalog = () => memo('cctvcat', 300000, async () => {
-  const rs = await Promise.allSettled([cctvBpjt(), cctvBekasi(), cctvJogja()]);
+  const rs = await Promise.allSettled([cctvBpjt(), cctvBekasi(), cctvJogja(), cctvMolecool()]);
   const bpjt = [], jogja = [], other = [];
   for (const r of rs) if (r.status === 'fulfilled') for (const c of r.value)
     (c.src === 'bpjt' ? bpjt : c.src === 'jogja' ? jogja : other).push(c);
