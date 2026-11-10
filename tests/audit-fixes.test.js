@@ -130,3 +130,31 @@ test('cleanTitle is consistent and removes unwanted outlet suffixes', () => {
   assert.equal(cleanTitle('Banjir Rendam Puluhan Rumah di Bekasi - Detikcom'), 'Banjir Rendam Puluhan Rumah di Bekasi');
   assert.equal(cleanTitle('Gunung Marapi Erupsi Lagi | Kompas.com'), 'Gunung Marapi Erupsi Lagi');
 });
+
+test('Target Jakarta CCTV cameras are defined with active live streams and geo coordinates', () => {
+  const fs = require('fs');
+  const html = fs.readFileSync('public/index.html', 'utf8');
+  const m = html.match(/<script type="application\/json" id="cam-data">([\s\S]*?)<\/script>/);
+  assert.ok(m, 'cam-data script tag must exist');
+  const cams = JSON.parse(m[1]);
+
+  const targets = [
+    'Bendungan Hilir 011',
+    'Bendungan Hilir 001',
+    'Gelora 026',
+    'Gelora 015',
+    'Gelora 038',
+    'Karet Semanggi 006',
+    'Gelora 008',
+    'Bendungan Hilir 006',
+    'Bendungan Hilir 008',
+    'Tugu Tani'
+  ];
+
+  for (const name of targets) {
+    const found = cams.find(c => c.n === name);
+    assert.ok(found, `Camera "${name}" must exist in cam-data`);
+    assert.ok(found.s && found.s.startsWith('https://'), `Camera "${name}" must have valid HTTPS stream`);
+    assert.ok(Number.isFinite(found.la) && Number.isFinite(found.lo), `Camera "${name}" must have finite coordinates`);
+  }
+});

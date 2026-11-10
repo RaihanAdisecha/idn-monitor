@@ -3030,7 +3030,7 @@ async function img(u, res) {
 }
 
 /* ---------- CCTV: proxy HLS (CORS/hotlink/mixed-content aman) + cek hidup ---------- */
-const hostOK = u => { try { const h = new URL(u).hostname; return (CFG.cctv_hosts || ['balitower.co.id', 'jakarta.go.id']).concat(CFG.tv_hosts || []).some(d => h === d || h.endsWith('.' + d)); } catch (e) { return false; } };
+const hostOK = u => { try { const h = new URL(u).hostname; return (CFG.cctv_hosts || ['balitower.co.id', 'jakarta.go.id', 'molecool.id', 'pantaucctv.com']).concat(CFG.tv_hosts || []).some(d => h === d || h.endsWith('.' + d)); } catch (e) { return false; } };
 const isTvHost = u => { try { const h = new URL(u).hostname; return (CFG.tv_hosts || []).some(d => h === d || h.endsWith('.' + d)); } catch (e) { return false; } };
 // token disisipkan ke URL rewrite supaya segmen/URI turunan tetap lolos gate
 // (/hls /vhs digate — request sudah terauth saat playlist dibuat, aman disebar).
@@ -3084,7 +3084,7 @@ async function hls(u, res) {
     res.writeHead(200, { ...base, 'content-type': 'application/vnd.apple.mpegurl' }); return res.end(txt);
   }
   let buf;
-  try { buf = await mediaBody(r, 10 << 20); }   // segmen .ts — cap 10MB
+  try { buf = await mediaBody(r, 25 << 20); }   // segmen .ts — cap 25MB (dukung 3.2K/4K CCTV high-bitrate)
   catch (e) { res.writeHead(/terlalu besar/.test(e.message) ? 413 : 502, base); return res.end(); }
   res.writeHead(200, { ...base, 'content-type': ct || 'video/mp2t' }); res.end(buf);
 }
@@ -3123,7 +3123,7 @@ const camList = () => { try { return JSON.parse(fs.readFileSync(HTML, 'utf8').ma
 const alive = () => memo('alive', 150000, async () => {
   const cams = camList(), res = new Array(cams.length).fill(false); let i = 0;
   await Promise.all(Array.from({ length: 12 }, async () => { while (i < cams.length) { const k = i++;
-    if (/jakcctv\.jakarta\.go\.id/i.test(cams[k].s)) { res[k] = true; continue; }   // geo-block DC IP — client playback direct
+    if (/(jakcctv\.jakarta\.go\.id|pantaucctv\.com|molecool\.id)/i.test(cams[k].s)) { res[k] = true; continue; }   // geo-block DC IP — client playback direct
     try { const r = await get(cams[k].s, { headers: { referer: 'https://smartcity.jakarta.go.id/' } }, 6000);
       res[k] = r.ok && (await r.text()).includes('#EXTM3U'); } catch (e) {} } }));
   return { alive: res, at: Date.now() };
