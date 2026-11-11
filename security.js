@@ -564,8 +564,14 @@ function createHttpClient(clientOpts = {}) {
     };
   }
 
-  // Probe TLS ServerHello+Certificate handshake with zero application-layer HTTP
-  // bytes sent so we can inspect the leaf certificate and its AIA URI safely.
+  // SECURITY NOTE (not an application HTTP bypass):
+  // probePeerChain() opens a short-lived TLS handshake purely to read peer certificate
+  // metadata (leaf + incomplete chain + AIA CA Issuers URI) when an upstream server omits
+  // an intermediate certificate. Zero HTTP/application bytes are sent on this socket.
+  // All fetched AIA intermediates and the leaf certificate are then strictly validated
+  // against DEFAULT_TRUSTED_ROOTS (hostname, validity window, signature, CA constraints)
+  // in repairCertChain(), and the actual HTTP request in singlePinnedRequest() always
+  // enforces `rejectUnauthorized = true`.
   function probePeerChain(resolved, port, servername, ms = 6000) {
     return new Promise((resolve, reject) => {
       let settled = false;
@@ -574,7 +580,7 @@ function createHttpClient(clientOpts = {}) {
         port: port || 443,
         servername: net.isIP(resolved.host) ? undefined : (servername || resolved.host),
         lookup: makePinnedLookup(resolved.host, resolved.addrs),
-        rejectUnauthorized: false,
+        rejectUnauthorized: false, // metadata-only TLS handshake; verified in repairCertChain() before any HTTP request
         checkServerIdentity: () => undefined,
         ALPNProtocols: ['http/1.1']
       });

@@ -9,7 +9,10 @@ const fs = require('fs');
 const path = require('path');
 const G = require(path.join(__dirname, 'geo', 'gazetteer.json'));
 const BIG_PATH = path.join(__dirname, 'geo', 'desa-kelurahan-big.json');
-let BIG = JSON.parse(fs.readFileSync(BIG_PATH, 'utf8'));
+let BIG = { places: [], kecamatan: [], kabupatenKota: [], provinces: [] };
+try {
+  if (fs.existsSync(BIG_PATH)) BIG = JSON.parse(fs.readFileSync(BIG_PATH, 'utf8'));
+} catch (e) {}
 // koreksi koordinat hasil scripts/geo-audit.js (titik pesisir yang jatuh di laut → daratan; centroid provinsi kepulauan → ibukota)
 let FIX = { kab: {}, prov: {} };
 try { FIX = require(path.join(__dirname, 'geo', 'coord-fixes.json')); } catch (e) {}

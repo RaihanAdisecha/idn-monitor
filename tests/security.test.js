@@ -526,3 +526,66 @@ test('04b fatal uncaughtException flushes, closes server, and exits 1 (does not 
   assert.ok(exitResult.stdout.includes('FLUSHED'));
   assert.ok(exitResult.stderr.includes('[FATAL:uncaughtException]'));
 });
+
+test('05 startup guard fails closed (exit 78) on non-loopback local-token bind and defaults local bind to 127.0.0.1', async () => {
+  // Clean env without Railway/SITREP_PUBLIC/SITREP_USERS
+  const cleanEnv = { ...process.env };
+  for (const k of ['RAILWAY_ENVIRONMENT', 'RENDER', 'FLY_APP_NAME', 'VERCEL', 'HEROKU_APP_NAME', 'K_SERVICE', 'SITREP_PUBLIC', 'SITREP_USERS', 'SITREP_ALLOW_LAN_TOKEN', 'BIND_HOST']) {
+    delete cleanEnv[k];
+  }
+
+  const denied = await new Promise((resolve, reject) => {
+    const port = 29000 + Math.floor(Math.random() * 10000);
+    const child = spawn(process.execPath, [path.join(ROOT_DIR, 'server.js')], {
+      cwd: ROOT_DIR,
+      env: { ...cleanEnv, PORT: String(port), SITREP_HOST: '0.0.0.0' },
+      stdio: ['ignore', 'pipe', 'pipe']
+    });
+    let stderr = '';
+    child.stderr.on('data', d => { stderr += d.toString(); });
+    const t = setTimeout(() => { child.kill('SIGKILL'); reject(new Error('expected immediate exit 78')); }, 6000);
+    child.on('exit', code => { clearTimeout(t); resolve({ code, stderr }); });
+  });
+  assert.equal(denied.code, 78);
+  assert.match(denied.stderr, /non-loopback/i);
+
+  // Default local bind must be 127.0.0.1 without requiring SITREP_HOST
+  const cleanBootEnv = { ...cleanEnv };
+  delete cleanBootEnv.SITREP_HOST;
+  const localSrv = await new Promise((resolve, reject) => {
+    const port = 29000 + Math.floor(Math.random() * 10000);
+    const proc = spawn(process.execPath, [path.join(ROOT_DIR, 'server.js')], {
+      cwd: ROOT_DIR,
+      env: { ...cleanBootEnv, PORT: String(port) },
+      stdio: ['ignore', 'pipe', 'pipe']
+    });
+    let out = '', err = '';
+    const t = setTimeout(() => { proc.kill('SIGKILL'); reject(new Error('local boot timeout: ' + out + err)); }, 10000);
+    proc.stdout.on('data', d => {
+      out += d.toString();
+      if (out.includes('SITREP jalan')) { clearTimeout(t); resolve({ proc, out }); }
+    });
+    proc.stderr.on('data', d => { err += d.toString(); });
+    proc.on('exit', c => { clearTimeout(t); reject(new Error(`local boot exited ${c}: ${out}${err}`)); });
+  });
+  try {
+    assert.ok(localSrv.out.includes('http://127.0.0.1:'), 'local-token mode must bind 127.0.0.1 by default');
+    assert.ok(localSrv.out.includes('[local-token]'));
+  } finally {
+    localSrv.proc.kill('SIGKILL');
+  }
+
+  // Release hygiene checks
+  const gitignore = fs.readFileSync(path.join(ROOT_DIR, '.gitignore'), 'utf8');
+  const dockerignore = fs.readFileSync(path.join(ROOT_DIR, '.dockerignore'), 'utf8');
+  const dockerfile = fs.readFileSync(path.join(ROOT_DIR, 'Dockerfile'), 'utf8');
+  const pkg = JSON.parse(fs.readFileSync(path.join(ROOT_DIR, 'package.json'), 'utf8'));
+  assert.ok(gitignore.includes('.env.*') && gitignore.includes('!.env.example'));
+  assert.ok(dockerignore.includes('.env.*') && dockerignore.includes('!.env.example'));
+  assert.ok(!/muse/i.test(gitignore) && !/muse/i.test(dockerignore));
+  assert.match(dockerfile, /^FROM node:24/m);
+  assert.equal(pkg.engines.node, '>=24');
+  for (const rel of ['LICENSE', 'SECURITY.md', 'THIRD_PARTY_NOTICES.md', 'requirements.txt', '.github/workflows/ci.yml']) {
+    assert.ok(fs.existsSync(path.join(ROOT_DIR, rel)), `Missing required release file: ${rel}`);
+  }
+});

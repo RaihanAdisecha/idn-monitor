@@ -1,11 +1,15 @@
 # secrets — jangan pernah commit
 .env
+.env.*
+!.env.example
 credentials.txt
 config.local.json
 
-# runtime state
+# runtime state & logs
 data/
 fxhist.json
+*.log
+sitrep.out
 
 # generated artifacts
 scripts/audit-output.json
@@ -16,12 +20,10 @@ scripts/audit-output.json
 __pycache__/
 *.pyc
 
-# os junk
+# os & workspace junk
 .DS_Store
-About this file. This is Muse's persona.
+About*
+.workbuddy-ai/
 
 # deps
 node_modules/
-
-# local agent/workspace metadata (not application source)
-.workbuddy-ai/

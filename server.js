@@ -9,6 +9,7 @@ const EXTRACT = require('./article-extract');
 const MEDIA = require('./article-media');
 const PIPELINE_VERSION = MEDIA.PIPELINE_VERSION;
 const assetReuse = new MEDIA.AssetReuseTracker();
+const COPERNICUS = require('./copernicus');
 const XPOOL = require('./xpool');
 const { monitorEventLoopDelay } = require('perf_hooks');
 const http = require('http'), fs = require('fs'), path = require('path'), dns = require('dns').promises, crypto = require('crypto'), zlib = require('zlib');
@@ -35,9 +36,7 @@ const explicitApiToken = Boolean(process.env.SITREP_TOKEN);
 const API_TOKEN = process.env.SITREP_TOKEN || crypto.randomBytes(16).toString('hex');
 const TRUST_PROXY = process.env.SITREP_TRUST_PROXY === '1' || process.env.TRUST_PROXY === '1' || Boolean(process.env.RAILWAY_ENVIRONMENT);
 const TRUST_CF = process.env.SITREP_TRUST_CF === '1';
-// Cloudflare Tunnel: cloudflared connect ke origin dari 127.0.0.1. Bind ke loopback
-// supaya port 8787 tidak bisa ditembak langsung (yang akan mem-bypass CF + rate limit).
-const BIND_HOST = process.env.SITREP_HOST || process.env.BIND_HOST || '0.0.0.0';
+const isLoopbackHost = h => /^(127(?:\.\d{1,3}){3}|::1|localhost)$/i.test(String(h || '').trim());
 const isPublicDeploy = process.env.SITREP_PUBLIC === '0' ? false : Boolean(
   process.env.RAILWAY_ENVIRONMENT || process.env.RENDER || process.env.FLY_APP_NAME ||
   process.env.VERCEL || process.env.HEROKU_APP_NAME || process.env.K_SERVICE ||
@@ -52,6 +51,9 @@ const AUTH = SEC.createAuthManager({
   trustProxy: TRUST_PROXY,
   publicDeploy: isPublicDeploy
 });
+// Default bind ke loopback (127.0.0.1) pada mode token lokal agar admin token yang
+// di-inject ke GET / tidak terekspos ke LAN/WAN. Mode publik/session tetap bind 0.0.0.0.
+const BIND_HOST = process.env.SITREP_HOST || process.env.BIND_HOST || ((AUTH.publicMode || AUTH.userMode) ? '0.0.0.0' : '127.0.0.1');
 const LIMITER = SEC.createRateLimiter();
 // Diagnostik boot: salah setelan proxy = seluruh dunia dihitung satu IP, dan
 // gejalanya cuma "429 misterius" belakangan. Lebih baik teriak di startup.
@@ -5691,6 +5693,18 @@ async function ttTile(kind, zRaw, xRaw, yRaw, res, req) {
   }
 }
 
+const copernicus = COPERNICUS.createCopernicusProxy({
+  dataDir: HIST_DIR,
+  clientId: process.env.CDSE_CLIENT_ID || process.env.COPERNICUS_CLIENT_ID || (CFG.copernicus && CFG.copernicus.client_id) || '',
+  clientSecret: process.env.CDSE_CLIENT_SECRET || process.env.COPERNICUS_CLIENT_SECRET || (CFG.copernicus && CFG.copernicus.client_secret) || '',
+  dailyCap: process.env.CDSE_DAILY_CAP,
+  monthCap: process.env.CDSE_MONTH_CAP,
+  cacheTtlMs: process.env.CDSE_CACHE_TTL_MS,
+  maxCacheBytes: process.env.CDSE_CACHE_MAX_BYTES,
+  lookbackDays: process.env.CDSE_LOOKBACK_DAYS,
+  fetchFn: get,
+});
+
 /* ---------- /api/desc: meta description untuk kartu feed yang desc RSS-nya kosong (mayoritas link redirect Google News) ----------
    Client memanggil lazy hanya untuk kartu yang terlihat — endpoint ini TIDAK dipanggil dari
    news(), jadi tidak ada burst fetch ratusan halaman per siklus. */
@@ -6782,6 +6796,38 @@ const SITREP_SERVER = http.createServer(async (req, res) => {
       if (!m) { res.writeHead(404); return res.end(); }
       return await ttTile(m[1].toLowerCase(), m[2], m[3], m[4], res, req);
     }
+    if (u.pathname === '/api/copernicus/status') {
+      return json(copernicus.getStatus(), 200, '', 0, pubCC(30, 60, 15));
+    }
+    if (u.pathname.startsWith('/api/copernicus/tile/')) {
+      const m = u.pathname.match(/^\/api\/copernicus\/tile\/(\d+)\/(\d+)\/(\d+)\.png$/i);
+      if (!m) { res.writeHead(404, secHdr); return res.end(); }
+      const r = await copernicus.getTile(m[1], m[2], m[3]);
+      if (r.cacheState === 'HIT-MEM' || r.cacheState === 'HIT-DISK') {
+        METRICS.cacheHits++;
+        routeWasCacheHit = true;
+      }
+      const cc = AUTH.userMode
+        ? 'private, no-store'
+        : (r.status === 200
+            ? (r.stale ? 'public, max-age=3600, stale-while-revalidate=3600' : 'public, max-age=86400, stale-while-revalidate=86400')
+            : 'no-store');
+      const hdrs = {
+        ...cors,
+        ...secHdr,
+        'content-type': r.ct || 'image/png',
+        'cache-control': cc,
+        'x-s2-cache': r.cacheState || 'UNKNOWN',
+      };
+      if (r.etag) hdrs.etag = r.etag;
+      if (r.status === 200 && r.etag && req.headers['if-none-match'] === r.etag) {
+        res.writeHead(304, hdrs);
+        return res.end();
+      }
+      if (r.buf && r.buf.length > 0) hdrs['content-length'] = r.buf.length;
+      res.writeHead(r.status, hdrs);
+      return res.end(r.buf && r.buf.length ? r.buf : undefined);
+    }
     if (u.pathname === '/hls') return await hls(u.searchParams.get('u') || '', req, res);
     if (u.pathname === '/vhs') {
       const vUrl = u.searchParams.get('u') || '';
@@ -6961,6 +7007,10 @@ function runNewsCollectOnce() {
   return newsCollectInflight;
 }
 if (require.main === module) {
+  if (!AUTH.publicMode && !AUTH.userMode && !isLoopbackHost(BIND_HOST) && process.env.SITREP_ALLOW_LAN_TOKEN !== '1') {
+    console.error('[FATAL] Menolak bind ke host non-loopback (' + BIND_HOST + ') dalam mode token lokal karena GET / menyisipkan token admin ke HTML. Gunakan 127.0.0.1 untuk lokal, atau set SITREP_PUBLIC=1 (publik read-only) / SITREP_USERS + SITREP_AUTH_SECRET (sesi RBAC).');
+    process.exit(78);
+  }
   SITREP_SERVER.listen({ host: BIND_HOST, port: Number(PORT) || 8787, backlog: 1024 }, () => {
     const modeLbl = AUTH.userMode ? ' [session-auth]' : (AUTH.publicMode ? ' [public-osint]' : ' [local-token]');
     const hostLbl = BIND_HOST === '0.0.0.0' ? 'localhost' : BIND_HOST;

@@ -4,9 +4,15 @@ node_modules
 data
 fxhist.json
 .playwright-mcp
+.workbuddy-ai
 credentials.txt
+config.local.json
 .env
+.env.*
+!.env.example
+*.log
+sitrep.out
 .DS_Store
+About*
 tests/
 scripts/audit-output.json
-About this file. This is Muse's persona.

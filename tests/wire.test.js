@@ -1010,6 +1010,9 @@ test('Leaflet Peta Insiden & Globe render zoom-responsive, collision-culled, non
   assert.ok(html.includes("const regPane = map.createPane('regLabels')") && html.includes("regPane.style.pointerEvents = 'none'"), 'Leaflet regLabels pane must be non-interactive');
   assert.ok(html.includes("map.on('moveend resize', paintMapRegLabels)"), 'Leaflet must update regional labels on zoom/pan/resize');
   assert.ok(html.includes('box.x + box.w > w - 2') && html.includes('label di luar viewport jangan makan kuota maxLab'), 'Globe must cull off-screen regional labels before checking maxLab');
+  const mapFooterHtml = html.slice(html.indexOf('<div class="map-f">'), html.indexOf('<aside class="tvwrap"'));
+  assert.equal(/>Lalin</i.test(mapFooterHtml), false, 'Peta Insiden legend must remove stale Lalin item');
+  assert.ok(mapFooterHtml.includes('id="map-leg-items"') && ['Demo', 'Kebakaran', 'Banjir', 'Bencana', 'Insiden', 'Siber', 'Kriminal', 'Kesehatan', 'Ekonomi', 'Politik', 'Gempa', 'Gunung Api'].every(l => mapFooterHtml.includes(l)), 'Peta Insiden legend must mirror all 12 Globe categories');
 
   // Extract paintMapRegLabels body and execute against mock Leaflet map + data
   const fnStart = html.indexOf('function paintMapRegLabels(){');

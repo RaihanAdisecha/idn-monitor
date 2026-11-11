@@ -277,6 +277,7 @@ function stripLinkBlocks(s) {
 
 const RD_CONT_RE = /<(article|div|section|main)\b[^>]*(?:(?:class|id)\s*=\s*["'][^"']*(?:detail-desc|article-content|article-body|content-detail|detail-content|post-content|entry-content|berita-content|field-name-body|txt-berita|detail_body|news-content|content-body|post-body|article__body|detail__body-text|itp_bodycontent|detail__body|txt-article|side-article|detail-text|article-content-body|read__content|read__article|story-body|artikel-isi|isi-berita)[^"']*["']|itemprop\s*=\s*["']articleBody["'])[^>]*>/gi;
 const RD_LEAD_MEDIA_RE = /<(div|figure|section)\b[^>]*(?:class|id)\s*=\s*["'][^"']*(?:detail__media|detail-image|photo__wrap|photo-cover|featured-image|post-thumbnail|article-photo|cover-photo|img-article|media-cover|max-card__image|artimg)[^"']*["'][^>]*>/gi;
+const RD_LEAD_IMG_TAG_RE = /<img\b[^>]*(?:class|id)\s*=\s*["'][^"']*(?:featured[-_]?img|featured[-_]?image|article[-_]?featured|post[-_]?thumbnail|hero[-_]?img|detail[-_]?img|cover[-_]?img|wp-post-image)[^"']*["'][^>]*>/gi;
 
 function extractMatchedElements(html, openRe) {
   const out = [];
@@ -309,6 +310,10 @@ function extractContainers(html) {
   }
   for (const el of extractMatchedElements(s, RD_LEAD_MEDIA_RE)) {
     leadMediaContainers.push(el.full);
+  }
+  const leadImgScanHtml = stripElementsByTag(s, ['script', 'style', 'svg', 'form', 'nav', 'aside', 'footer']);
+  for (const m of leadImgScanHtml.matchAll(RD_LEAD_IMG_TAG_RE)) {
+    leadMediaContainers.push(m[0]);
   }
   // Fallback: full stripped HTML if no specific container yielded content
   const cleanedFull = stripElementsByTag(s, ['script', 'style', 'svg', 'form', 'nav', 'aside', 'footer', 'header', 'button', 'select', 'textarea', 'template', 'dialog', 'menu'], { unwrapNoscriptImages: true });

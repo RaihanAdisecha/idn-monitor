@@ -5,7 +5,7 @@
 const crypto = require('crypto');
 const EXTRACT = require('./article-extract');
 
-const PIPELINE_VERSION = 2;
+const PIPELINE_VERSION = 3;
 
 const TRACKING_PARAM_RE = /^(?:utm_[a-z0-9_]+|fbclid|gclid|dclid|msclkid|yclid|twclid|igshid|mc_cid|mc_eid|_ga|_gl|ga_[a-z_]+|guce_referrer(?:_sig)?|ns_[a-z_]+|oc|ved|usg|sa|spm|fb_action_ids|fb_action_types|fb_source|ref_src|ref_url)$/i;
 
@@ -81,6 +81,7 @@ function imageKey(u) {
     .replace(/\/(?:thumb|fill|fit|resize|crop|cache)\/?\d{2,4}(?:x|\/)\d{2,4}\//g, '/')
     .replace(/\/[^/]*\b(?:w_\d+|c_fill|c_scale|f_auto|q_auto[^/]*)[^/]*\//g, '/');
   const base = (p.split('/').pop() || '')
+    .replace(/^(?:thumb|tn|sm|md|lg)[-_]/, '')
     .replace(/[-_]\d{2,4}x\d{2,4}$/, '')
     .replace(/[-_](?:169|43|11|16_9|4_3)$/, '')
     .replace(/[-_](?:small|medium|large|thumb|thumbnail|original|full)$/, '');
@@ -110,7 +111,7 @@ function rdSmallHint(u) {
 
 // URL & attribute junk heuristics (never sole validator — always combined with MIME/dim/AR probe)
 const RD_IMG_JUNK = /logo|logotype|wordmark|brandmark|favicon|apple-touch-icon|android-chrome|mstile|sprite|avatar|badge|placeholder|blank|pixel|spacer|advert|\/ads?\/|[-_/.]ads?[-_/.]|banner|emoji|emoticon|button|share|loading|lazy\.|default[-_]|no[-_]?image|not[-_]?found|gravatar|pravatar|thumb(?:nail)?s?\/small|image[-_]?404|404[-_]?image/i;
-const RD_JUNK_URL = /appstore|playstore|googleplay|gettheapp|framebarasset|asset-template|(?:^|\/)slide[-_]|assets_frontend\/images|\/assets\/(?:medsos|img|images|icons?)\/(?:ui|icons?|buttons?|social|medsos)?|share[-_ ]?preview|social[-_ ]?(?:share|card|icon)|og[-_]?(?:default|image)\b|partials\/|widgets-nocache|analytics_page_request|inpicture_widget|wartawan|scorecard|criteo|doubleclick|googlesyndication|googleadservices|adservice|hotjar|facebook\.net|img\.youtube\.com|(^|\/)ic_[a-z0-9]|en-flag|id-flag|thumb_|\/mini\/|\/small\/|\/img\/site\/|foot[-_ ]?network|foto[-_/]bank(?!\/originals)|fotobank|\/(?:tautan|lampiran)\/|image[-_]?404|404[-_]?image|ai[-_ ]?image[-_ ]?generator|\/avatars?\/|\/authors?\/|\/penulis\/|\/icons?\/|\/logos?\//i;
+const RD_JUNK_URL = /appstore|playstore|googleplay|gettheapp|framebarasset|asset-template|(?:^|\/)slide[-_]|assets_frontend\/images|\/assets\/(?:medsos|img|images|icons?)\/(?:ui|icons?|buttons?|social|medsos)?|share[-_ ]?preview|social[-_ ]?(?:share|card|icon)|og[-_]?(?:default|image)\b|partials\/|widgets-nocache|analytics_page_request|inpicture_widget|wartawan|scorecard|criteo|doubleclick|googlesyndication|googleadservices|adservice|hotjar|facebook\.net|img\.youtube\.com|(^|\/)ic_[a-z0-9]|en-flag|id-flag|(?:^|\/)thumb_(?:small|mini|tiny|xs|sm|default|placeholder|icon|avatar|\d{1,4}\.)|\/mini\/|\/small\/|\/img\/site\/|foot[-_ ]?network|foto[-_/]bank(?!\/originals)|fotobank|\/(?:tautan|lampiran)\/|image[-_]?404|404[-_]?image|ai[-_ ]?image[-_ ]?generator|\/avatars?\/|\/authors?\/|\/penulis\/|\/icons?\/|\/logos?\//i;
 const RD_JUNK_BASE = /^(?:google|gnews|googlenews|telegram|threads|bluesky|pinterest|line|ig|fb|twitter|x|tiktok|instagram|youtube|wa|whatsapp|linkedin|googleplay|appstore|playstore|en-flag|id-flag|favicon|logo|icon|avatar|placeholder|blank|spacer|pixel|spinner|loading|default)([-_. ]|$)/i;
 
 function rdJunkUrl(u) {

@@ -5,7 +5,11 @@ cd "$(dirname "$0")"
 if command -v python3 >/dev/null 2>&1 && [ ! -x .venv/bin/python ]; then
   python3 -m venv .venv 2>/dev/null && {
     .venv/bin/pip install --quiet --upgrade pip 2>/dev/null
-    .venv/bin/pip install --quiet curl_cffi 2>/dev/null
+    if [ -f requirements.txt ]; then
+      .venv/bin/pip install --quiet -r requirements.txt 2>/dev/null
+    else
+      .venv/bin/pip install --quiet curl_cffi==0.17.0 2>/dev/null
+    fi
   } || echo "[start] venv python gagal — Threads nonaktif, server tetap jalan"
 fi
 

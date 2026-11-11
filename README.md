@@ -1,27 +1,28 @@
 # SITREP — OSINT Console
 
-Dashboard situasi real-time: news wire, monitor sosial (X + Threads), globe insiden (gempa BMKG, gunung api, cuaca, radar), data pasar, dan live TV/CCTV.
+Dashboard situasi real-time: news wire, monitor sosial (X + Threads), globe & peta insiden (gempa BMKG, gunung api, cuaca, radar, Copernicus Sentinel-2), data pasar, dan live TV/CCTV.
 
 ## Stack
 
-- **Backend:** `server.js` — Node.js ≥18, `http` native + satu dependensi npm: `franc` (deteksi bahasa)
-- **Worker:** `vendor/threads_*.py` — Python + `curl_cffi` (Threads scraper)
-- **Frontend:** `public/index.html` — single-file vanilla JS/CSS, no build step
+- **Backend:** `server.js` — Node.js ≥24, `http` native + `franc` (`6.2.0`)
+- **Worker:** `vendor/threads_*.py` — Python 3 + `curl_cffi` (pinned di `requirements.txt`)
+- **Frontend:** `public/index.html` — single-file vanilla JS/CSS, tanpa build step
 
 ## Menjalankan lokal
 
 ```bash
-# butuh: node ≥18, python3
+# butuh: node >=24, python3
+npm ci
 python3 -m venv .venv
-.venv/bin/pip install curl_cffi
+.venv/bin/pip install -r requirements.txt
 
-cp .env.example .env   # isi credentials
+cp .env.example .env   # isi credentials yang diperlukan
 node server.js         # atau: bash start.sh
 ```
 
 Buka `http://localhost:8787` — frontend auto-detect API (same-origin, `?api=`, atau `localhost:8787`).
 
-`.env.example` hanya berisi placeholder (`your-key-here` / kosong); jangan commit `.env` yang sudah diisi secret asli. Lihat juga bagian **Token API** di bawah kalau endpoint mulai membalas `403`.
+Secara default di mode lokal, server bind ke **`127.0.0.1` (loopback)** sehingga dashboard lokal langsung berfungsi lewat `<meta name="sitrep-token">` tanpa mengekspos token ke jaringan LAN/WAN. Jangan pernah commit file `.env` atau `.env.*` (kecuali `.env.example`).
 
 ## Environment variables
 
@@ -33,87 +34,76 @@ Semua secret dibaca dari env / `.env` (file `.env` dimuat otomatis oleh `server.
 | `AISSTREAM_API_KEY` | Stream AIS kapal (WebSocket) |
 | `NASA_FIRMS_API_KEY` | Hotspot karhutla |
 | `FIRECRAWL_API_KEY` | Fallback reader untuk situs anti-bot (Cloudflare) |
-| `X_AUTH_TOKEN` + `X_CT0` | Cookie sesi X untuk search (wajib untuk `/api/x`) |
+| `CDSE_CLIENT_ID`, `CDSE_CLIENT_SECRET` | Copernicus Data Space Ecosystem (Sentinel-2 L2A, Indonesia ROI, cache 24 jam) |
+| `X_AUTH_TOKEN`, `X_CT0` | Cookie sesi X untuk search (mendukung rotasi multi-akun `X_AUTH_TOKEN_2..10`) |
 | `X_BEARER`, `X_QUERY_ID` | Opsional — override bearer/query-id X |
-| `PORT` / `SERVER_PORT` | Port listen (default 8787) |
-| `SITREP_TOKEN` | Token gate API (dipakai di mode lokal atau klien headless bila diset eksplisit) |
+| `PORT` / `SERVER_PORT` | Port listen (default `8787`) |
+| `SITREP_HOST` | Host bind (default `127.0.0.1` di mode lokal, `0.0.0.0` di mode publik/session) |
+| `SITREP_PUBLIC` | `1` = mode dashboard OSINT publik read-only (`viewer`, tanpa login, tanpa token di HTML) |
 | `SITREP_USERS` | Daftar akun sesi + RBAC (`user:role:password` atau `scrypt$...`, role `viewer`/`operator`/`admin`) |
-| `SITREP_AUTH_SECRET` | Secret HMAC-SHA256 untuk cookie `HttpOnly` `sitrep_sess` |
+| `SITREP_AUTH_SECRET` | Secret HMAC-SHA256 minimal 32 karakter untuk cookie `HttpOnly` `sitrep_sess` |
+| `SITREP_TOKEN` | Token gate API (dipakai di mode lokal atau klien headless/operator) |
+| `SITREP_TOKEN_ROLE` | Role untuk `SITREP_TOKEN` (`operator` di public deploy, `admin` di mode lokal) |
 | `SITREP_TRUST_PROXY` | `1` = percaya `X-Forwarded-For` / `X-Forwarded-Proto` di belakang reverse proxy |
+| `SITREP_TRUST_CF` | `1` = prioritaskan `CF-Connecting-IP` di belakang Cloudflare |
 | `SITREP_EXTRA_CA` | Path file PEM CA tambahan untuk verifikasi TLS upstream (opsional) |
 
-> **Catatan:** file `.env` yang ada saat ini **belum memuat `FIRECRAWL_API_KEY`**, padahal kode dan README merujuknya. Tambahkan dari `.env.example` agar fallback reader anti-bot berfungsi.
+`config.json` hanya berisi konfigurasi non-secret (port, host CCTV/TV). Topik sosial (X + Threads) ada di `social.js` (`SOC_TOPICS`).
 
-`config.json` hanya berisi non-secret: port, host CCTV/TV. Topik sosial (X + Threads) ada di `social.js` (`SOC_TOPICS`): satu registry untuk query, klasifikasi, dan chip.
+## Mode Keamanan & Deployment
 
-## Token API (`SITREP_TOKEN`)
+SITREP memiliki tiga mode autentikasi fail-closed (detail di [`SECURITY.md`](SECURITY.md)):
 
-Semua endpoint sensitif kini dilindungi token. **Token efektif** = `process.env.SITREP_TOKEN` bila diset; kalau kosong, server membuat token acak (hex) **per-boot**.
+1. **Mode Token Lokal (default lokal):**
+   - Aktif bila `SITREP_PUBLIC` dan `SITREP_USERS` kosong.
+   - Server otomatis bind ke `127.0.0.1` dan menyisipkan `<meta name="sitrep-token">` ke `GET /`.
+   - **Startup Guard:** server menolak jalan (`exit 78`) bila dipaksa bind ke alamat non-loopback (mis. `SITREP_HOST=0.0.0.0`) tanpa `SITREP_PUBLIC=1`, tanpa `SITREP_USERS`, atau tanpa opt-in eksplisit `SITREP_ALLOW_LAN_TOKEN=1`.
+2. **Mode Dashboard Publik OSINT (`SITREP_PUBLIC=1`):**
+   - Cocok untuk deployment publik read-only (Railway/Render/VPS di belakang reverse proxy).
+   - Pengunjung anonim mendapat role `viewer` dan **tidak ada token API yang disisipkan ke HTML**.
+   - Akses operator/otomasi (`?fresh=1`, `/api/metrics`) memakai header `x-sitrep-token` dengan `SITREP_TOKEN`.
+3. **Mode Sesi Multi-User (`SITREP_USERS` + `SITREP_AUTH_SECRET`):**
+   - Cocok untuk deployment privat/tim yang mewajibkan login.
+   - Menggunakan password `scrypt`, cookie `HttpOnly` `sitrep_sess`, RBAC, dan verifikasi CSRF same-origin.
 
-- `GET /` menyisipkan `<meta name="sitrep-token" content="TOKEN">` tepat setelah `<head>`. Frontend membaca meta ini lalu mengirim header `x-sitrep-token` pada tiap request API, dan menambahkan `&token=` pada URL proxy media.
-- Gate menerima token lewat **header `x-sitrep-token`** **atau** **query param `?token=`**.
-- Yang kena gate: **semua `/api/*` kecuali `/api/ping`**, ditambah **`/img`, `/hls`, `/vhs`**. `/api/ping` sengaja dikecualikan untuk cek hidup frontend dan **tidak** mengembalikan token.
-
-**Mode lintas-origin (`?api=`):** kalau halaman frontend tidak dimuat dari server SITREP (mis. dibuka di host lain atau lewat `?api=https://server-sitrep`), meta tag tidak tersedia, jadi token harus dikirim lewat URL halaman:
-
-```
-http://<host-frontend>/?api=https://server-sitrep&token=<TOKEN>
-```
-
-`<TOKEN>` = nilai `SITREP_TOKEN` di server, atau token yang tampil di meta tag `GET /` server tersebut. Untuk panggilan langsung (curl, `scripts/audit-reader.js`), kirim header `x-sitrep-token` atau set env `SITREP_TOKEN` — tool audit akan menolak jalan dengan pesan jelas kalau token tidak bisa diperoleh.
+Untuk panggilan lintas-origin atau CLI (`curl`, `scripts/audit-reader.js`), kirim header `x-sitrep-token: <TOKEN>` atau parameter `?token=<TOKEN>` (hanya aktif di mode lokal kecuali `SITREP_DISABLE_QUERY_TOKEN=1`).
 
 ## Struktur
 
-```
-server.js          API + scraping + proxy + WS
-security.js        DNS-pinned HTTP/TLS client, AIA repair, sesi/RBAC, rate-limit, fatal guard
-public/index.html  seluruh UI (CSS+JS inline)
-vendor/            threads scraper python
-start.sh           bootstrap venv + supervisor restart loop server
-data/              history sosial persisten (runtime, di-gitignore)
-fxhist.json        histori forex (runtime, di-gitignore)
+```text
+server.js              API + scraping + proxy + WS + startup auth guard
+security.js            SSRF guard, DNS-pinned HTTP/TLS client, AIA repair, RBAC, rate-limit
+copernicus.js          Proxy tile Sentinel-2 L2A (CDSE) + kuota atomik & disk cache
+cctv-gateway.js        Gateway /hls, cache segmen, coalescing & RUM
+public/index.html      UI utama (CSS + JS vanilla)
+vendor/                Worker scraper Python (lihat vendor/THREADS-SCRAPER-LICENSE)
+geo/                   Gazetteer & indeks wilayah Indonesia
+start.sh               Bootstrap venv + supervisor restart loop
 ```
 
 ## Deploy
 
-Butuh host dengan proses persistent + filesystem writable + outbound WebSocket — **bukan** serverless (Vercel/Workers tidak support `child_process`, WS persisten, dan penulisan file).
-
-Cocok: VPS (pm2/systemd), Railway/Render disk persisten, atau panel game-bot (Botkeep dkk) via `bash start.sh`.
+Butuh host dengan proses persisten + filesystem writable + outbound WebSocket (VPS `systemd`/`pm2`, Railway/Render disk persisten, atau Docker).
 
 ```bash
-bash start.sh   # start command di panel
+# Contoh Docker publik read-only di balik reverse proxy:
+docker build -t sitrep .
+docker run -d --name sitrep -p 8787:8787 \
+  -e SITREP_PUBLIC=1 \
+  -e SITREP_TRUST_PROXY=1 \
+  --env-file .env \
+  sitrep
 ```
 
-## Pengujian & audit
+Untuk deployment di balik reverse proxy/Cloudflare Tunnel, set `SITREP_TRUST_PROXY=1` (dan `SITREP_TRUST_CF=1` jika di balik Cloudflare).
+
+## Pengujian & Audit
 
 ```bash
-npm test                      # jalankan test suite Node
-node scripts/audit-reader.js  # audit noise reader: [maxPerSource] [baseUrl]
+npm test                      # jalankan seluruh test suite (tests/*.js)
+node scripts/audit-reader.js  # audit reader: [maxPerSource] [baseUrl]
 ```
 
-`npm test` menjalankan seluruh `tests/*.js` (sinyal, geo, event-merge, token gate API, worker Python, pipeline klasifikasi). `npm run test:signals` tersedia untuk regresi sinyal & signal-engine saja. `audit-reader.js` default `maxPerSource=2` / `baseUrl=http://localhost:8787`, hasil ditulis ke `scripts/audit-output.json`; skrip ini butuh token (lihat **Token API**).
+## Lisensi & Atribusi
 
-## Catatan
-
-- X scraping memakai cookie akun sendiri — rotasi `auth_token`/`ct0` berkala.
-- Endpoint `/img`, `/hls`, `/vhs`, `/api/read` mempin IP hasil validasi DNS ke socket koneksi (tahan DNS rebinding) dan memblokir host privat.
-- Verifikasi sertifikat TLS selalu aktif (tidak ada fallback `rejectUnauthorized: false`). Upstream yang rantai intermediate-nya tidak lengkap ditambal lewat AIA chain repair yang terjangkar ke CA tepercaya (`tls.rootCertificates` + `SITREP_EXTRA_CA`).
-- Untuk deployment publik, set **`SITREP_USERS`** dan **`SITREP_AUTH_SECRET`** agar login memakai cookie `HttpOnly` dan RBAC (`viewer` / `operator` / `admin`) tanpa menanam token API ke HTML.
-
-## CCTV: arsitektur & operasi
-
-Prinsip: **control plane di server, data plane langsung dari browser ke origin kamera**. Proxy `/hls` hanya cadangan (host tanpa CORS, geo-block), jadi dibuat murah.
-
-| Bagian | File | Fungsi |
-|---|---|---|
-| Logika murni klien | `public/cctv-core.js` | dedupe stream, sanitasi `fb`, urutan langkah playback, scheduler per-host (round-robin) |
-| Gateway server | `cctv-gateway.js` | lane `/hls` sendiri (maks 48, 8 per host), cache playlist + segmen, coalescing, tee-stream, rate limit per IP (request + byte), snapshot ffmpeg, laporan kesehatan (kuorum 2 pelapor), RUM |
-| Katalog + probe | `server.js` | sumber BPJT/Jogja/Bekasi/Molecool, probe 12 paralel via lane terpisah, deteksi CORS per host (`d:0` = langsung proxy) |
-
-Endpoint: `/hls`, `/api/cctv`, `/api/cctv/snap?u=` (butuh `ffmpeg`, 501 bila tidak ada), `/api/cctv/report`, `/api/cctv/rum` (POST), `/api/cctv/stats` (ttff p50/p95, gagal, stall per host + metrik gateway).
-
-Env: `TRUST_PROXY=1` (otomatis di Railway) agar IP klien dibaca dari `x-forwarded-for`; `SITREP_DATA_DIR` memindahkan folder history (mis. ke volume Railway); `FFMPEG_PATH` bila ffmpeg tidak ada di PATH.
-
-Batas klien (`index.html`): 6 load paralel, 2 per host, 6 live bersamaan (`LIVE_CAP`), sisanya snapshot; slot yang macet >12 dtk dilepas bila host lain antre; sel di luar layar >20 dtk dibongkar (decoder + elemen video).
-
-Skala lanjut (belum diimplementasi, butuh keputusan infrastruktur): pisah proses web/gateway vs worker sosial, katalog + status kesehatan di Redis untuk multi-replica, CDN di depan `/hls`.
+Kode SITREP dilisensikan di bawah [`LICENSE`](LICENSE) (MIT). Komponen vendor, library, dan dataset pihak ketiga tunduk pada ketentuannya masing-masing yang tercantum di [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).

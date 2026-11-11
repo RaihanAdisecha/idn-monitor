@@ -35,9 +35,17 @@ function loadExtScript(src) {
   _extJsP.set(src, p);
   return p;
 }
+let _hlsFailed = false;
 function ensureHls() {
   if (window.Hls) return Promise.resolve(window.Hls);
-  return loadExtScript('https://cdn.jsdelivr.net/npm/hls.js@1.5.13/dist/hls.min.js').then(() => window.Hls);
+  return loadExtScript('https://cdn.jsdelivr.net/npm/hls.js@1.5.13/dist/hls.min.js')
+    .then(() => { _hlsFailed = false; return window.Hls; })
+    .catch(err => { _hlsFailed = true; throw err; });
+}
+function needHlsLib(v) {
+  if (window.Hls || _hlsFailed) return false;
+  if (typeof MediaSource !== 'undefined' || typeof ManagedMediaSource !== 'undefined') return true;
+  return !(v && v.canPlayType && v.canPlayType('application/vnd.apple.mpegurl'));
 }
 let _leafletP = null;
 function ensureLeaflet() {
@@ -45,8 +53,39 @@ function ensureLeaflet() {
   if (_leafletP) return _leafletP;
   loadExtCss('https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css');
   _leafletP = loadExtScript('https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js')
-    .then(() => loadExtScript('https://cdn.jsdelivr.net/npm/leaflet.heat@0.2.0/dist/leaflet-heat.js'))
-    .then(() => { initLeafletVelocity(); if (typeof initLeafletWms === 'function') initLeafletWms(); return window.L; })
+    .then(() => {
+      // Hilangkan peringatan WHATWG: Multiple readback operations using getImageData are faster with willReadFrequently
+      if (typeof HTMLCanvasElement !== 'undefined' && !HTMLCanvasElement.prototype._sitrepPatched) {
+        HTMLCanvasElement.prototype._sitrepPatched = true;
+        const origGetContext = HTMLCanvasElement.prototype.getContext;
+        HTMLCanvasElement.prototype.getContext = function(type, attribs) {
+          if (type === '2d') {
+            const isHeat = (this.classList && this.classList.contains('leaflet-heatmap-layer')) ||
+                           (this.className && typeof this.className === 'string' && this.className.includes('leaflet-heatmap-layer')) ||
+                           (!this.parentNode && !this.id && !this.className);
+            if (isHeat) {
+              attribs = Object.assign({}, attribs, { willReadFrequently: true });
+            }
+          }
+          return origGetContext.call(this, type, attribs);
+        };
+      }
+      return loadExtScript('https://cdn.jsdelivr.net/npm/leaflet.heat@0.2.0/dist/leaflet-heat.js');
+    })
+    .then(() => {
+      if (window.L && L.HeatLayer) {
+        const origInitCanvas = L.HeatLayer.prototype._initCanvas;
+        L.HeatLayer.prototype._initCanvas = function() {
+          origInitCanvas.call(this);
+          if (this._canvas && typeof this._canvas.getContext === 'function') {
+            this._canvas.getContext('2d', { willReadFrequently: true });
+          }
+        };
+      }
+      initLeafletVelocity();
+      if (typeof initLeafletWms === 'function') initLeafletWms();
+      return window.L;
+    })
     .catch(err => { _leafletP = null; throw err; });
   return _leafletP;
 }
@@ -1630,17 +1669,11 @@ a{color:inherit;text-decoration:none;text-underline-offset:2px}
 .map-x:hover{color:var(--text);border-color:var(--text3)}
 .map-x .ic{width:11px;height:11px;color:inherit}
 .map-layers{
-  flex:none;display:flex;flex-direction:column;gap:0;padding:8px 10px;border-bottom:1px solid var(--border);background:#141414;
+  flex:none;display:flex;flex-direction:column;gap:5px;padding:7px 10px;border-bottom:1px solid var(--border);background:#141414;
   overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch;
 }
 .map-layers::-webkit-scrollbar{display:none}
-.mly-tabs{display:flex;align-items:stretch;gap:6px;margin-bottom:-1px;position:relative;z-index:1;min-width:max-content}
-.mly-tabs > .mly-unit{flex:0 0 auto;min-width:max-content;justify-content:flex-start;border-radius:5px 5px 0 0;padding:4px 8px}
-.mly-sub{display:flex;align-items:center;gap:5px;min-width:max-content;padding:4px 6px;border:1px solid var(--border);border-radius:5px;background:#101010}
-.mly-sub::-webkit-scrollbar{display:none}
-.mly-sub .mly-unit{border-color:transparent;background:transparent;padding:2px 3px}
-.mly-sub .mly-unit + .mly-unit{margin-left:0}
-.mly-sub .mly-grp{border-right-color:var(--border)}
+.mly-tabs,.mly-sub{display:flex;align-items:center;gap:8px;min-width:max-content;position:relative;z-index:1}
 .radar-ctrl{display:flex;align-items:center;gap:7px;padding:6px 10px;border-bottom:1px solid var(--border);background:#111;font:500 8.5px/1 var(--mono);letter-spacing:.05em;color:var(--text2)}
 .radar-ctrl[hidden]{display:none}
 .radar-ctrl button{height:24px;padding:0 7px;border:1px solid var(--border);color:var(--text2);font:500 8px/1 var(--mono);letter-spacing:.05em}
@@ -1652,10 +1685,47 @@ a{color:inherit;text-decoration:none;text-underline-offset:2px}
   font:500 8.5px/1 var(--mono);letter-spacing:.07em;text-transform:uppercase;color:var(--text3);
   flex:0 0 auto;white-space:nowrap;
 }
-.mly span{font-size:7px;letter-spacing:.06em;white-space:nowrap}
-.mly-unit{display:inline-flex;align-items:center;gap:4px;flex-wrap:nowrap;border:1px solid var(--border);border-radius:5px;padding:3px 6px 3px 5px;background:#101010}
-.mly-unit + .mly-unit{margin-left:4px}
-.mly-grp{font:600 6.5px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--text3);opacity:.8;padding:0 10px 0 4px;white-space:nowrap;border-right:1px solid var(--border2);align-self:stretch;display:flex;align-items:center}
+.mly span{font-size:7.5px;letter-spacing:.06em;white-space:nowrap}
+.mly-unit{--cant:7px;display:inline-flex;align-items:stretch;flex:0 0 auto;flex-wrap:nowrap;border:0;border-radius:0;padding:0;background:transparent}
+.mly-unit + .mly-unit{margin-left:0}
+.mly-grp{
+  position:relative;display:inline-flex;align-items:center;height:28px;padding:0 13px 0 8px;
+  font:700 7px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;
+  color:#9b9ba6;background:#1a1a20;white-space:nowrap;
+  clip-path:polygon(0 0,100% 0,calc(100% - var(--cant)) 100%,0 100%);
+}
+.mly-grp::after{
+  content:"";position:absolute;top:0;bottom:0;right:0;width:var(--cant);
+  background:linear-gradient(to bottom right,transparent calc(50% - .35px),rgba(255,255,255,.14) 50%,transparent calc(50% + .35px));
+  pointer-events:none;
+}
+.mly-unit .mly{
+  position:relative;gap:4.5px;height:28px;min-width:auto;padding:0 11px 0 13px;
+  margin-left:calc(-1 * var(--cant));border:0;background:#0e0e12;color:#7a7a86;
+  font:600 8px/1 var(--mono);letter-spacing:.06em;
+  clip-path:polygon(var(--cant) 0,100% 0,calc(100% - var(--cant)) 100%,0 100%);
+  transition:background .12s,color .12s;
+}
+.mly-unit .mly[hidden]{display:none}
+.mly-unit .mly:last-child{clip-path:polygon(var(--cant) 0,100% 0,100% 100%,0 100%);padding-right:10px}
+.mly-unit .mly:not(:last-child)::after{
+  content:"";position:absolute;top:0;bottom:0;right:0;width:var(--cant);
+  background:linear-gradient(to bottom right,transparent calc(50% - .35px),rgba(255,255,255,.07) 50%,transparent calc(50% + .35px));
+  pointer-events:none;
+}
+.mly-unit .mly:hover{background:#18181f;color:#d8d8e0}
+.mly-unit .mly[aria-pressed="true"]{background:#26262f;color:#f4f4f6}
+.mly-unit .mly[aria-pressed="true"]::before{
+  content:"";position:absolute;left:2.5px;top:3px;bottom:3px;width:1.5px;
+  background:rgba(244,244,246,.88);transform:skewX(-14deg);pointer-events:none;
+}
+#map-refresh{
+  --cant:7px;height:28px;min-width:30px;padding:0 10px 0 11px;border:0;
+  background:#15151a;color:#9b9ba6;
+  clip-path:polygon(var(--cant) 0,100% 0,calc(100% - var(--cant)) 100%,0 100%);
+  transition:background .12s,color .12s;
+}
+#map-refresh:hover{background:#222229;color:#f4f4f6}
 .mly-sep{width:1px;height:18px;background:var(--border2);flex:none;margin:0 3px}
 .mk-ic{background:none;border:none}
 .mk-rot{display:flex;align-items:center;justify-content:center;width:100%;height:100%;transform-origin:50% 50%;filter:drop-shadow(0 0 3px rgba(0,0,0,.7))}
@@ -1687,6 +1757,7 @@ a{color:inherit;text-decoration:none;text-underline-offset:2px}
 #map .leaflet-tooltip-right:before{border-right-color:rgba(16,18,24,.82)!important}
 /* tile TomTom flow: opacity rendah + desaturasi — warna tidak solid di atas basemap gelap */
 .tt-flow-pane{filter:saturate(.55) brightness(1.08)}
+.sat-base-pane{filter:brightness(.76) saturate(.9) contrast(1.06)}
 .mly .ic{width:14px;height:14px}
 .mly i{width:5px;height:5px;background:var(--text3);flex:none}
 .mly[aria-pressed="true"]{color:var(--text);border-color:var(--border2);background:var(--layer2)}
@@ -1715,15 +1786,14 @@ a{color:inherit;text-decoration:none;text-underline-offset:2px}
 .map-hint{margin-left:auto;font:400 8.5px/1 var(--mono);letter-spacing:.05em;text-transform:uppercase;color:var(--text3)}
 #map{flex:1;min-height:0;background:#0b0b0b;z-index:0}
 .map-f{
-  flex:none;display:flex;align-items:center;gap:10px;height:32px;padding:0 12px;
+  flex:none;display:flex;align-items:center;flex-wrap:wrap;column-gap:9px;row-gap:4px;min-height:30px;padding:5px 12px;
   border-top:1px solid var(--border);background:#101010;
   font:400 9px/1.2 var(--mono);letter-spacing:.04em;text-transform:uppercase;color:var(--text3);
-  white-space:nowrap;overflow-x:auto;overflow-y:hidden;scrollbar-width:none;-webkit-overflow-scrolling:touch;
 }
-.map-f::-webkit-scrollbar{display:none}
+.map-f .map-leg-items{display:inline-flex;align-items:center;flex-wrap:wrap;column-gap:9px;row-gap:3px}
 .map-f .lg{display:inline-flex;align-items:center;gap:4px;flex:none}
 .map-f .lg i{width:5px;height:5px;border-radius:50%;flex:none}
-.map-f .sp{margin-left:auto;color:var(--text3);overflow:hidden;text-overflow:ellipsis}
+.map-f .sp{margin-left:auto;color:var(--text3);flex:none}
 .map-f .cred{flex:none;color:#6f6f6f;font-size:8px;letter-spacing:.06em}
 .flow-hint{
   position:absolute;left:12px;bottom:44px;z-index:900;pointer-events:none;
@@ -1978,7 +2048,7 @@ button.mp-src{background:none;border-top:0;border-left:0;border-right:0;cursor:p
 /* ============================================================ LIVE TV */
 .tvwrap{
   --tvw:344px;
-  position:fixed;right:18px;bottom:calc(var(--foot) + 14px);z-index:170;
+  position:fixed;left:18px;bottom:calc(var(--foot) + 14px);z-index:170;
   width:var(--tvw);max-width:calc(100vw - 20px);display:none;flex-direction:column;
   background:#000;border:1px solid var(--border2);
   box-shadow:0 26px 70px rgba(0,0,0,.62),0 0 0 1px rgba(0,0,0,.35);
@@ -2341,10 +2411,12 @@ button.mp-src{background:none;border-top:0;border-left:0;border-right:0;cursor:p
   .mapwrap{top:0;bottom:0;width:100%;border-left:0;box-shadow:none}
   .mapwrap .map-layers{overflow-x:auto;scrollbar-width:none}
   .mapwrap .map-layers::-webkit-scrollbar{display:none}
-  .mapwrap .mly-tabs{min-width:max-content}
-  .mapwrap .mly-tabs > .mly-unit{flex:0 0 auto;min-width:auto;padding:3px 4px}
-  .mapwrap .mly-sub{min-width:max-content}
-  .mapwrap .mly{height:32px;min-width:32px;flex:0 0 auto;padding:0 9px}
+  .mapwrap .mly-tabs,.mapwrap .mly-sub{min-width:max-content;gap:6px}
+  .mapwrap .mly-unit{--cant:6px}
+  .mapwrap .mly-grp{height:30px;padding:0 11px 0 7px}
+  .mapwrap .mly-unit .mly{height:30px;flex:0 0 auto;padding:0 10px 0 12px}
+  .mapwrap .mly-unit .mly:last-child{padding-right:9px}
+  .mapwrap #map-refresh{height:30px}
   .mapwrap .mly span{font-size:8px}
   .mapwrap .mly .ic{width:15px;height:15px}
   .map-h{padding:0 8px 0 12px}
@@ -2569,6 +2641,13 @@ button.mp-src{background:none;border-top:0;border-left:0;border-right:0;cursor:p
   <symbol id="i-tt-flood" viewBox="0 0 16 16"><path d="M1.8 9.2c1.4-1.9 2.7-1.9 4.1 0s2.7 1.9 4.1 0 2.7-1.9 4.1 0"/><path d="M1.8 12.7c1.4-1.9 2.7-1.9 4.1 0s2.7 1.9 4.1 0 2.7-1.9 4.1 0"/></symbol>
   <symbol id="i-tt-broken" viewBox="0 0 16 16"><path d="M1.8 10.8l1.4-3.4h3l1.3 3.4"/><circle cx="4.6" cy="12.4" r="1.2"/><circle cx="9" cy="12.4" r="1.2"/><path d="M12.6 2.8l.8 1.6 1.7.2-1.3 1.2.3 1.7-1.5-.9-1.5.9.3-1.7-1.3-1.2 1.7-.2z"/></symbol>
   <symbol id="i-air" viewBox="0 0 16 16"><path d="M2.2 13.6V9.9l2-1.4v5.1M4.2 13.6V7.7l2-1.4v7.3M6.2 13.6V5.5l2-1.4v9.5M8.2 13.6V8.9l2-1.4v6.1M10.2 13.6V7l2.4-1.7V13.6"/><circle cx="12.7" cy="4.2" r=".9" fill="currentColor" stroke="none"/><circle cx="14" cy="2.7" r=".7" fill="currentColor" stroke="none"/></symbol>
+  <symbol id="i-m-heat" viewBox="0 0 16 16"><circle cx="8" cy="8" r="1.7" fill="currentColor" stroke="none"/><circle cx="8" cy="8" r="4.1" stroke-dasharray="2.4 2"/><circle cx="8" cy="8" r="6.5" stroke-dasharray="2 2.4"/></symbol>
+  <symbol id="i-m-volcano" viewBox="0 0 16 16"><path d="M1.6 13.6 5.6 6.8h4.8l4 6.8H1.6Z"/><path d="M6.4 4.2c.6-1 1.4-1.6 1.6-2.4.4.8 1.2 1.2 1.6 2.4"/><path d="M7.2 6.8l.8 1.4.8-1.4"/></symbol>
+  <symbol id="i-m-ir" viewBox="0 0 16 16"><path d="M2 4.6h12"/><path d="M2 8c1.5-1.6 3-1.6 4.5 0s3 1.6 4.5 0 1.5-1.6 3 0"/><path d="M2 11.4h12"/><circle cx="8" cy="8" r="1" fill="currentColor" stroke="none"/></symbol>
+  <symbol id="i-m-nat" viewBox="0 0 16 16"><circle cx="8" cy="8" r="5.6"/><path d="M2.4 8h11.2"/><path d="M8 2.4c1.8 1.8 1.8 9.4 0 11.2"/><path d="M8 2.4c-1.8 1.8-1.8 9.4 0 11.2"/></symbol>
+  <symbol id="i-m-aqms" viewBox="0 0 16 16"><circle cx="4.4" cy="6.2" r="1.4"/><circle cx="11.2" cy="4.8" r="1.7"/><circle cx="9.6" cy="11.2" r="1.5"/><circle cx="4.8" cy="11.8" r=".9" fill="currentColor" stroke="none"/><path d="M5.7 6.8 9.6 5.4"/></symbol>
+  <symbol id="i-m-ortho" viewBox="0 0 16 16"><path d="M2.2 5.2V2.6h2.6M11.2 2.6h2.6v2.6M2.2 10.8v2.6h2.6M11.2 13.4h2.6v-2.6"/><path d="M4.5 11.2 7 8l2 2 2.5-3.2"/></symbol>
+  <symbol id="i-m-s2" viewBox="0 0 16 16"><rect x="6.5" y="6.5" width="3" height="3" transform="rotate(45 8 8)"/><path d="M2.2 4.6 5 7.4 6.6 5.8 3.8 3Z"/><path d="M10.2 11l2.8 2.8 1.6-1.6-2.8-2.8Z"/><path d="M6.2 11.4a3.5 3.5 0 0 1-1.6-1.6"/><path d="M4.4 13.2a6 6 0 0 1-2.6-2.6"/></symbol>
 
 </svg>
 
@@ -2829,7 +2908,7 @@ button.mp-src{background:none;border-top:0;border-left:0;border-right:0;cursor:p
   <div class="map-layers" role="group" aria-label="Layer peta">
     <div class="mly-tabs">
     <span class="mly-unit"><span class="mly-grp">Insiden</span>
-    <button class="mly" type="button" data-layer="heat" aria-pressed="true" title="Heat" aria-label="Heat"><svg class="ic" aria-hidden="true"><use href="#i-heat"></use></svg><span>Heat</span></button>
+    <button class="mly" type="button" data-layer="heat" aria-pressed="true" title="Heat" aria-label="Heat"><svg class="ic" aria-hidden="true"><use href="#i-m-heat"></use></svg><span>Heat</span></button>
     <button class="mly" type="button" data-layer="pins" aria-pressed="true" title="Titik insiden" aria-label="Titik insiden"><svg class="ic" aria-hidden="true"><use href="#i-pin"></use></svg><span>Titik</span></button>
     <button class="mly" type="button" data-layer="cams" aria-pressed="true" title="CCTV" aria-label="CCTV"><svg class="ic" aria-hidden="true"><use href="#i-cam"></use></svg><span>CCTV</span></button></span>
     <span class="mly-unit"><span class="mly-grp">Lalin</span>
@@ -2843,24 +2922,27 @@ button.mp-src{background:none;border-top:0;border-left:0;border-right:0;cursor:p
     <button class="mly" type="button" data-layer="ship" aria-pressed="false" title="Kapal" aria-label="Kapal"><svg class="ic" aria-hidden="true"><use href="#i-ship"></use></svg><span>Kpl</span></button>
     <button class="mly" type="button" data-layer="transit" aria-pressed="false" title="Transit" aria-label="Transit"><svg class="ic" aria-hidden="true"><use href="#i-bus"></use></svg><span>Bjkt</span></button></span>
     <span class="mly-unit"><span class="mly-grp">Bencana</span>
-    <button class="mly" type="button" data-layer="gempa" aria-pressed="false" title="Gempa BMKG (hari ini)" aria-label="Gempa"><svg class="ic" aria-hidden="true"><use href="#i-activity"></use></svg><span>Gempa</span></button>
-    <button class="mly" type="button" data-layer="gunung" aria-pressed="false" title="Gunung Api MAGMA (Siaga+)" aria-label="Gunung api"><svg class="ic" aria-hidden="true"><use href="#i-mountain"></use></svg><span>Gn.Api</span></button></span>
+    <button class="mly" type="button" data-layer="gempa" aria-pressed="true" title="Gempa BMKG (hari ini)" aria-label="Gempa"><svg class="ic" aria-hidden="true"><use href="#i-activity"></use></svg><span>Gempa</span></button>
+    <button class="mly" type="button" data-layer="gunung" aria-pressed="true" title="Gunung Api MAGMA (Siaga+)" aria-label="Gunung api"><svg class="ic" aria-hidden="true"><use href="#i-m-volcano"></use></svg><span>Gn.Api</span></button></span>
     </div>
     <div class="mly-sub">
     <span class="mly-unit"><span class="mly-grp">Cuaca</span>
     <button class="mly" type="button" data-layer="cuaca" aria-pressed="false" title="Cuaca &amp; Angin (Open-Meteo)" aria-label="Cuaca dan angin"><svg class="ic" aria-hidden="true"><use href="#i-cloud"></use></svg><span>Cuaca</span></button>
-    <button class="mly" type="button" data-layer="wind" aria-pressed="false" title="Partikel Angin Animasi (Open-Meteo)" aria-label="Partikel angin"><svg class="ic" aria-hidden="true"><use href="#i-wind"></use></svg><span>Wind</span></button>
+    <button class="mly" type="button" data-layer="wind" aria-pressed="true" title="Partikel Angin Animasi (Open-Meteo)" aria-label="Partikel angin"><svg class="ic" aria-hidden="true"><use href="#i-wind"></use></svg><span>Wind</span></button>
     <button class="mly" type="button" data-layer="radar" aria-pressed="false" title="Radar hujan RainViewer (timeline)" aria-label="Radar hujan timeline"><svg class="ic" aria-hidden="true"><use href="#i-radar"></use></svg><span>Radar</span></button>
     <button class="mly" type="button" data-layer="radarbmkg" aria-pressed="false" title="Radar Curah Hujan BMKG" aria-label="Radar BMKG"><svg class="ic" aria-hidden="true"><use href="#i-cloud-rain"></use></svg><span>BMKG</span></button></span>
     <span class="mly-unit"><span class="mly-grp">Satelit</span>
-    <button class="mly" type="button" data-layer="sat-ir" aria-pressed="true" title="Himawari-9 IR Enhanced (update 10 menit)" aria-label="IR Enhanced"><svg class="ic" aria-hidden="true"><use href="#i-heat"></use></svg><span>IR</span></button>
-    <button class="mly" type="button" data-layer="sat-nc" aria-pressed="false" title="Himawari-9 Natural Color (siang)" aria-label="Natural Color"><svg class="ic" aria-hidden="true"><use href="#i-satellite"></use></svg><span>Nat</span></button>
+    <button class="mly" type="button" data-layer="sat-ir" aria-pressed="false" title="Himawari-9 IR Enhanced (update 10 menit)" aria-label="IR Enhanced"><svg class="ic" aria-hidden="true"><use href="#i-m-ir"></use></svg><span>IR</span></button>
+    <button class="mly" type="button" data-layer="sat-nc" aria-pressed="false" title="Himawari-9 Natural Color (siang)" aria-label="Natural Color"><svg class="ic" aria-hidden="true"><use href="#i-m-nat"></use></svg><span>Nat</span></button>
     <button class="mly" type="button" data-layer="sat-wv" aria-pressed="false" title="Himawari-9 Water Vapor Enhanced" aria-label="Water Vapor"><svg class="ic" aria-hidden="true"><use href="#i-drop"></use></svg><span>WV</span></button>
     <button class="mly" type="button" data-layer="sat-rain" aria-pressed="false" title="Himawari-9 Rainfall Potential (produk turunan)" aria-label="Rainfall Potential"><svg class="ic" aria-hidden="true"><use href="#i-bolt"></use></svg><span>Rain</span></button></span>
     <span class="mly-unit"><span class="mly-grp">API</span>
-    <button class="mly" type="button" data-layer="fires" aria-pressed="false" title="Hotspot karhutla (SiPongi Kemenhut + NASA FIRMS)" aria-label="Hotspot kebakaran"><svg class="ic" aria-hidden="true"><use href="#i-sg-burst"></use></svg><span>Hotspot</span></button>
-    <button class="mly" type="button" data-layer="air" aria-pressed="false" title="Kualitas Udara — stasiun AQMS (SiPongi Kemenhut)" aria-label="Kualitas udara"><svg class="ic" aria-hidden="true"><use href="#i-air"></use></svg><span>Udara</span></button>
+    <button class="mly" type="button" data-layer="fires" aria-pressed="true" title="Hotspot karhutla (SiPongi Kemenhut + NASA FIRMS)" aria-label="Hotspot kebakaran"><svg class="ic" aria-hidden="true"><use href="#i-sg-burst"></use></svg><span>Hotspot</span></button>
+    <button class="mly" type="button" data-layer="air" aria-pressed="true" title="Kualitas Udara — stasiun AQMS (SiPongi Kemenhut)" aria-label="Kualitas udara"><svg class="ic" aria-hidden="true"><use href="#i-m-aqms"></use></svg><span>Udara</span></button>
     <button class="mly" type="button" data-layer="peringatan" aria-pressed="true" title="Peringatan Dini Cuaca (BMKG CAP)" aria-label="Peringatan dini"><svg class="ic" aria-hidden="true"><use href="#i-cloud-warn"></use></svg><span>Warn</span></button></span>
+    <span class="mly-unit"><span class="mly-grp">Citra</span>
+    <button class="mly" type="button" data-layer="basemap-sat" aria-pressed="true" title="Basemap foto satelit resolusi tinggi (Esri World Imagery)" aria-label="Basemap foto satelit"><svg class="ic" aria-hidden="true"><use href="#i-m-ortho"></use></svg><span>Foto</span></button>
+    <button class="mly" type="button" data-layer="sentinel2" aria-pressed="false" title="Copernicus Sentinel-2 L2A 10m (citra satelit resolusi tinggi seluruh Indonesia, cache server 24 jam)" aria-label="Copernicus Sentinel-2"><svg class="ic" aria-hidden="true"><use href="#i-m-s2"></use></svg><span>S2</span></button></span>
     <button class="mly" type="button" id="map-refresh" title="Refresh semua data peta" aria-label="Refresh peta"><svg class="ic" aria-hidden="true"><use href="#i-sync"></use></svg></button>
     <span class="map-hint" id="map-hint">Mode: Rute A/B · Lalin probe</span>
     </div>
@@ -2882,14 +2964,20 @@ button.mp-src{background:none;border-top:0;border-left:0;border-right:0;cursor:p
   <div id="map" role="application" aria-label="Peta interaktif insiden Indonesia"></div>
   <div class="flow-hint" id="flow-hint" hidden>Klik pada peta untuk cek kecepatan jalan</div>
   <div class="map-f">
-    <span class="lg"><i style="background:#f1c21b"></i>Demo</span>
-    <span class="lg"><i style="background:#da1e28"></i>Kebakaran</span>
-    <span class="lg"><i style="background:#4589ff"></i>Banjir</span>
-    <span class="lg"><i style="background:#be95ff"></i>Bencana</span>
-    <span class="lg"><i style="background:#8d8d8d"></i>Insiden</span>
-    <span class="lg"><i style="background:#00c853"></i>Lalin</span>
-    <span class="lg"><i style="background:#ff5a4e"></i>Gempa</span>
-    <span class="lg"><i style="background:#ff9f0a"></i>Gn. Api</span>
+    <span class="map-leg-items" id="map-leg-items">
+      <span class="lg"><i style="background:#f1c21b"></i>Demo</span>
+      <span class="lg"><i style="background:#da1e28"></i>Kebakaran</span>
+      <span class="lg"><i style="background:#4589ff"></i>Banjir</span>
+      <span class="lg"><i style="background:#be95ff"></i>Bencana</span>
+      <span class="lg"><i style="background:#8d8d8d"></i>Insiden</span>
+      <span class="lg"><i style="background:#c8f04b"></i>Siber</span>
+      <span class="lg"><i style="background:#ff9f43"></i>Kriminal</span>
+      <span class="lg"><i style="background:#ff6b9d"></i>Kesehatan</span>
+      <span class="lg"><i style="background:#3ddc97"></i>Ekonomi</span>
+      <span class="lg"><i style="background:#6ea8fe"></i>Politik</span>
+      <span class="lg"><i style="background:#ff5a4e"></i>Gempa</span>
+      <span class="lg"><i style="background:#ff9f0a"></i>Gunung Api</span>
+    </span>
     <span class="sp" id="map-src">sumber —</span>
     <span class="cred">© Esri · TomTom · BMKG · PVMBG</span>
   </div>
@@ -4282,6 +4370,7 @@ function bindGlobeEvents(){
   });
 }
 function renderMapLegend(st){
+  const cats = [...CAT_ORDER.filter(c => CAT_GEO[c]), ...LEGEND_SUB];
   const on = Object.keys(legendOn).filter(k => legendOn[k]).length;
   const total = Object.keys(legendOn).length;
   // innerHTML rebuild menutup dropdown yang sedang open — simpan & pulihkan state-nya
@@ -4289,9 +4378,13 @@ function renderMapLegend(st){
   const wasOpen = !!(menuEl && menuEl.classList.contains('open'));
   $('#sit-map-legend').innerHTML =
     `<button class="smlg-btn" type="button" aria-expanded="${wasOpen ? 'true' : 'false'}">Filter <span class="cm">${on}/${total}</span><i class="cr"></i></button>` +
-    `<div class="smlg-menu${wasOpen ? ' open' : ''}">` + [...CAT_ORDER.filter(c => CAT_GEO[c]), ...LEGEND_SUB].map(c =>
+    `<div class="smlg-menu${wasOpen ? ' open' : ''}">` + cats.map(c =>
       `<button class="smlg-it" type="button" data-cat="${c}" aria-pressed="${legendOn[c] ? 'true' : 'false'}"><i style="background:${CAT_COLOR[c]}"></i>${CAT_LABEL[c]}<b>${st[c] || 0}</b></button>`).join('') +
     `</div>`;
+  const mLeg = $('#map-leg-items');
+  if (mLeg) {
+    mLeg.innerHTML = cats.map(c => `<span class="lg"><i style="background:${CAT_COLOR[c]}"></i>${CAT_LABEL[c]}</span>`).join('');
+  }
 }
 function sitInitMap(){
   bindGlobeEvents();
@@ -7373,8 +7466,9 @@ function startCell(cell){
   const steps = p.steps || (p.steps = camSteps(c));
   if (!p.step && hostMode.get(p.host) === 'proxy') { const pi = proxyIdx(steps); if (pi > 0) p.step = pi; }
   const url = steps[Math.min(p.step || 0, steps.length - 1)];
-  if (!window.Hls && !v.canPlayType('application/vnd.apple.mpegurl')) {
-    ensureHls().then(() => { const st = P.get(cell); if (st && !st.dead && !st.h) startCell(cell); }).catch(() => kill(cell));
+  if (needHlsLib(v)) {
+    ensureHls().then(() => { const st = P.get(cell); if (st && !st.dead && !st.h) startCell(cell); })
+      .catch(() => { const st = P.get(cell); if (st && !st.dead && !st.h && v.canPlayType('application/vnd.apple.mpegurl')) startCell(cell); else kill(cell); });
     return;
   }
   if (window.Hls && Hls.isSupported()) {
@@ -7845,8 +7939,9 @@ function glbPlay(){
   const v = $('#glb-video'), url = glbSteps[glbStep];
   if (glbHls) { try { glbHls.destroy(); } catch (e) {} glbHls = null; }
   try { v.pause(); v.removeAttribute('src'); v.load(); } catch (e) {}
-  if (!window.Hls && !v.canPlayType('application/vnd.apple.mpegurl')) {
-    ensureHls().then(() => { const lb = $('#lightbox'); if (lb && !lb.hidden) glbPlay(); }).catch(() => {});
+  if (needHlsLib(v)) {
+    ensureHls().then(() => { const lb = $('#lightbox'); if (lb && !lb.hidden) glbPlay(); })
+      .catch(() => { const lb = $('#lightbox'); if (lb && !lb.hidden && v.canPlayType('application/vnd.apple.mpegurl')) glbPlay(); });
     return;
   }
   if (window.Hls && Hls.isSupported()) {
@@ -7945,19 +8040,20 @@ const ttIcon = (inc, sz = 20) => L.divIcon({ className: 'mk-tt-ic', iconSize: [s
 // badge ikut zoom — floor besar supaya tetap kebaca di zoom-out (pola sama dgn wxSize)
 const ttPtSize = () => { const s = Math.pow(1.3, (map ? map.getZoom() : 10) - 10); return Math.max(22, Math.min(48, Math.round(26 * s))); };
 const ttLnSize = () => { const s = Math.pow(1.3, (map ? map.getZoom() : 10) - 10); return Math.max(17, Math.min(36, Math.round(20 * s))); };
-let map = null, heat = null, pinLayer = null, regLabelLayer = null, camLayer = null, mapReady = false, mapOpen = false, mapBusy = false, mapData = [], esriRefLayer = null;
+let map = null, heat = null, pinLayer = null, regLabelLayer = null, camLayer = null, mapReady = false, mapOpen = false, mapBusy = false, mapData = [], esriRefLayer = null, esriDarkBaseLayer = null, esriSatBaseLayer = null;
 let ttFlowLayer = null, ttIncTileLayer = null, ttIncDataLayer = null, routeLayer = null, measureLayer = null;
 let flightLayer = null, shipLayer = null, transitLayer = null;
 let gempaLayer = null, gunungLayer = null, wxLayer = null, radarLayer = null, radarBmkgLayer = null, peringatanLayer = null, warnRenderer = null;
 let warnAlerts = [], warnPopup = null, warnHandlersBound = false, lastPopAt = 0;
-let satIrLayer = null, satNcLayer = null, satWvLayer = null, satRainLayer = null, airLayer = null;
+let satIrLayer = null, satNcLayer = null, satWvLayer = null, satRainLayer = null, sentinel2Layer = null, airLayer = null;
 let radarFrames = [], radarIndex = 0, radarPlaying = false, radarTimer = null, radarGenerated = 0, radarHost = 'https://tilecache.rainviewer.com';
 let radarLayerCache = {}, radarPendingLayer = null, radarSwapTimer = null, radarWasPlaying = false;
-let ttOk = false, ttIncBusy = false, ttIncInterval = 0;
+let ttOk = false, ttIncBusy = false, ttIncInterval = 0, s2Ok = false, s2StatusText = '', s2FlashUntil = 0;
 let routeMode = false, routeA = null, routeB = null, flowMode = false, flowProbe = null, flowBusy = false;
-const layerOn = { heat:true, pins:true, cams:true, ttflow:false, ttinc:false, ttdata:false, rute:false, lalin:false, flight:false, ship:false, transit:false, gempa:false, gunung:false, cuaca:false, wind:false, radar:false, radarbmkg:false, peringatan:true, 'sat-ir':true, 'sat-nc':false, 'sat-wv':false, 'sat-rain':false, fires:false, air:false };
+const layerOn = { heat:true, pins:true, cams:true, ttflow:false, ttinc:false, ttdata:false, rute:false, lalin:false, flight:false, ship:false, transit:false, gempa:true, gunung:true, cuaca:false, wind:true, radar:false, radarbmkg:false, peringatan:true, 'sat-ir':false, 'sat-nc':false, 'sat-wv':false, 'sat-rain':false, fires:true, air:true, 'basemap-sat':true, sentinel2:false };
 
 const ttTileUrl = kind => tokQ((API != null ? API : '') + '/tomtom/tile/' + kind + '/{z}/{x}/{y}.png');
+const s2TileUrl = () => tokQ((API != null ? API : '') + '/api/copernicus/tile/{z}/{x}/{y}.png');
 const havKm = (a, b) => {
   const R = 6371, rad = x => x * Math.PI / 180;
   const dLat = rad(b.lat - a.lat), dLon = rad(b.lon - a.lon);
@@ -8064,12 +8160,31 @@ function ttIncPopup(inc){
 }
 function syncLayers(){
   if (!map) return;
+  if (esriDarkBaseLayer && esriSatBaseLayer) {
+    const wantSatBase = !!layerOn['basemap-sat'];
+    if (wantSatBase) {
+      if (map.hasLayer(esriDarkBaseLayer)) map.removeLayer(esriDarkBaseLayer);
+      if (!map.hasLayer(esriSatBaseLayer)) map.addLayer(esriSatBaseLayer);
+      esriSatBaseLayer.bringToBack();
+    } else {
+      if (map.hasLayer(esriSatBaseLayer)) map.removeLayer(esriSatBaseLayer);
+      if (!map.hasLayer(esriDarkBaseLayer)) map.addLayer(esriDarkBaseLayer);
+      esriDarkBaseLayer.bringToBack();
+    }
+  }
   const pairs = [[heat, 'heat'], [pinLayer, 'pins'], [camLayer, 'cams'], [ttFlowLayer, 'ttflow'], [ttIncTileLayer, 'ttinc'], [ttIncDataLayer, 'ttdata'], [flightLayer, 'flight'], [shipLayer, 'ship'], [transitLayer, 'transit'], [gempaLayer, 'gempa'], [gunungLayer, 'gunung'], [wxLayer, 'cuaca'], [windVelocityLayer, 'wind'], [radarLayer, 'radar'], [radarBmkgLayer, 'radarbmkg'], [peringatanLayer, 'peringatan'], [satIrLayer, 'sat-ir'], [satNcLayer, 'sat-nc'], [satWvLayer, 'sat-wv'], [satRainLayer, 'sat-rain'], [airLayer, 'air']];
   for (const [l, k] of pairs) {
     if (!l) continue;
     if (layerOn[k] && !map.hasLayer(l)) map.addLayer(l);
     if (!layerOn[k] && map.hasLayer(l)) map.removeLayer(l);
   }
+  if (sentinel2Layer) {
+    const wantS2 = !!(layerOn.sentinel2 && s2Ok);
+    if (wantS2 && !map.hasLayer(sentinel2Layer)) map.addLayer(sentinel2Layer);
+    if (!wantS2 && map.hasLayer(sentinel2Layer)) map.removeLayer(sentinel2Layer);
+  }
+  const cred = document.querySelector('.map-f .cred');
+  if (cred) cred.textContent = '© Esri · TomTom · BMKG · PVMBG' + (layerOn.sentinel2 && s2Ok ? ' · Contains modified Copernicus Sentinel data' : '');
   // tile raster TomTom sudah membawa label jalanan sendiri — label Esri Reference
   // di atasnya bikin teks dobel overlap. Sembunyikan Reference selama Flow aktif.
   if (esriRefLayer) {
@@ -8111,6 +8226,11 @@ const SAT_TILES = {
 let satBasalRun = null, satModelRunAt = 0, satRunTs = 0, satRunLabel = '', wireSrcText = 'sumber —', satBusy = false, satSeq = 0;
 function paintMapSrc(){
   const el = $('#map-src'); if (!el) return;
+  if ((layerOn.sentinel2 || Date.now() < s2FlashUntil) && s2StatusText) {
+    const zNote = (layerOn.sentinel2 && map && map.getZoom() < 4) ? ' · zoom ≥4 untuk muat citra' : '';
+    el.textContent = s2StatusText + zNote;
+    return;
+  }
   const at = SAT_IDS.find(id => layerOn[id]);
   if (at && satRunTs) {
     const wibHour = (new Date().getUTCHours() + 7) % 24;
@@ -8560,6 +8680,30 @@ async function checkTomTom(){
     if (!ttOk) { wireSrcText = 'TomTom: API key belum ada'; paintMapSrc(); }
   } catch (e) {}
 }
+async function checkCopernicus(){
+  if (API == null) {
+    s2Ok = false;
+    s2StatusText = 'Copernicus S2: butuh backend aktif';
+    return false;
+  }
+  try {
+    const d = await getJson(API + '/api/copernicus/status', 8000);
+    s2Ok = Boolean(d && d.configured);
+    if (!s2Ok) {
+      s2StatusText = 'Copernicus S2: set CDSE_CLIENT_ID & CDSE_CLIENT_SECRET di .env';
+    } else if (d.dailyCap > 0 && (d.dailyUsed || 0) >= d.dailyCap) {
+      s2StatusText = `Copernicus S2: kuota harian (${d.dailyUsed}/${d.dailyCap}) penuh · reset besok`;
+    } else {
+      s2StatusText = `Copernicus S2 (${d.dailyUsed || 0}/${d.dailyCap || 1200} hr ini · ${d.cacheEntries || 0} cache)`;
+    }
+    paintMapSrc();
+    return s2Ok;
+  } catch (e) {
+    s2Ok = false;
+    s2StatusText = 'Copernicus S2: status gagal dimuat';
+    return false;
+  }
+}
 async function pullTomTomIncidents(){
   if (!mapOpen || !map || !ttOk || ttIncBusy || API == null || !layerOn.ttdata) return;
   ttIncBusy = true;
@@ -8674,12 +8818,20 @@ function ensureMap(){
   }
   map = L.map('map', { zoomControl:false, attributionControl:false, preferCanvas:true, minZoom:4, maxZoom:18 })
     .setView([-2.5, 118], 5);
-  L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}', {
-    maxNativeZoom: 16, maxZoom: 18
-  }).addTo(map);
+  esriDarkBaseLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}', {
+    maxNativeZoom: 16, maxZoom: 18, zIndex: 10
+  });
+  esriSatBaseLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+    maxNativeZoom: 17, maxZoom: 18, zIndex: 10, className: 'sat-base-pane'
+  });
+  (layerOn['basemap-sat'] ? esriSatBaseLayer : esriDarkBaseLayer).addTo(map);
   esriRefLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}', {
-    maxNativeZoom: 16, maxZoom: 18, opacity: .9
+    maxNativeZoom: 16, maxZoom: 18, opacity: .9, zIndex: 180
   }).addTo(map);
+  sentinel2Layer = L.tileLayer(s2TileUrl(), {
+    tileSize: 256, minZoom: 4, maxZoom: 18, minNativeZoom: 6, maxNativeZoom: 12,
+    zIndex: 150, opacity: .95, bounds: L.latLngBounds([-11.5, 94.5], [6.5, 141.5])
+  });
   ttFlowLayer = L.tileLayer(ttTileUrl('flow'), { opacity: .5, className: 'tt-flow-pane', maxNativeZoom: 19, maxZoom: 19 });
   ttIncTileLayer = L.tileLayer(ttTileUrl('incidents'), { opacity: .9, maxNativeZoom: 19, maxZoom: 19 });
   L.control.zoom({ position:'bottomright' }).addTo(map);
@@ -8704,6 +8856,7 @@ function ensureMap(){
     if (wxLayer) wxLayer.eachLayer(m => { if (m._wx) m.setIcon(wxIcon(m._wx.code, m._wx.col)); });
     if (ttIncDataLayer) ttIncDataLayer.eachLayer(m => { if (m._tt) m.setIcon(ttIcon(m._tt.inc, m._tt.line ? ttLnSize() : ttPtSize())); });
     if (layerOn.transit && transitLayer) pullTransit();
+    if (layerOn.sentinel2) paintMapSrc();
   });
   map.on('click', e => {
     if (routeMode) {
@@ -8932,7 +9085,7 @@ function hydrateMapLayers(){
   // Leaflet lazy-init: layer yang sedang nyala tidak punya data selama panel
   // tertutup (semua pull* early-return saat !mapOpen) — segarkan sekarang.
   if (layerOn.peringatan) pullAlerts();
-  initSatelliteLayers();
+  if (SAT_IDS.some(id => layerOn[id])) initSatelliteLayers();
   if (layerOn.cuaca) pullWeather();
   if (layerOn.wind) { pullWind(); if (windData && !windVelocityLayer) startWindAnim(); }   // data lama langsung tampil sambil fetch baru jalan
   if (layerOn.radar) pullRadar();
@@ -9033,6 +9186,42 @@ $$('.mly').forEach(b => b.addEventListener('click', () => {
     return;
   }
   if (k === 'radarbmkg' && layerOn[k]) pullRadarBmkg();
+  if (k === 'basemap-sat' || k === 'sentinel2') {
+    const turnOn = layerOn[k];   // sudah di-flip di baris atas: true = baru dinyalakan, false = baru dimatikan
+    const other = k === 'basemap-sat' ? 'sentinel2' : 'basemap-sat';
+    if (turnOn) {
+      layerOn[other] = false;
+      const ob = document.querySelector(`[data-layer="${other}"]`);
+      if (ob) ob.setAttribute('aria-pressed', 'false');
+    }
+    if (k === 'basemap-sat') {
+      paintMapSrc();
+      syncLayers();
+      return;
+    }
+    if (layerOn.sentinel2) {
+      if (!s2StatusText) s2StatusText = 'Copernicus S2: memuat status…';
+      paintMapSrc();
+      syncLayers();
+      checkCopernicus().then(ok => {
+        if (!ok) {
+          layerOn.sentinel2 = false;
+          b.setAttribute('aria-pressed', 'false');
+          s2FlashUntil = Date.now() + 6000;
+          paintMapSrc();
+        } else {
+          s2FlashUntil = 0;
+          if (sentinel2Layer) sentinel2Layer.setUrl(s2TileUrl());
+          paintMapSrc();
+        }
+        syncLayers();
+      });
+    } else {
+      paintMapSrc();
+      syncLayers();
+    }
+    return;
+  }
   if (k === 'peringatan') { if (layerOn[k]) pullAlerts(); else if (peringatanLayer && map && map.hasLayer(peringatanLayer)) map.removeLayer(peringatanLayer); }  syncLayers();
   syncLayers();
 }));
@@ -9776,7 +9965,7 @@ $('#map-refresh').addEventListener('click', async () => {
 $('#rp-go').addEventListener('click', calcRoute);
 setInterval(() => { if (mapOpen && !document.hidden && SAT_IDS.some(id => layerOn[id])) paintMapSrc(); }, 1000);   // countdown frame satelit
 schedulePoll(() => pullIncidents(), 60000, { dedupGlobalMs: 18000 });
-schedulePoll(() => initSatelliteLayers(), 60000, { mapOnly: true });   // sat punya interval sendiri — decouple dari pullIncidents
+schedulePoll(() => { if (SAT_IDS.some(id => layerOn[id])) initSatelliteLayers(); }, 60000, { mapOnly: true });   // sat punya interval sendiri — decouple dari pullIncidents
 schedulePoll(() => pullFlights(), 30000, { mapOnly: true, layer: 'flight' });
 schedulePoll(() => pullShips(), 30000, { mapOnly: true, layer: 'ship' });
 schedulePoll(() => pullTransit(), 45000, { mapOnly: true, layer: 'transit' });
@@ -9899,8 +10088,9 @@ function tvPlay(){
     return true;
   };
   let h = null;
-  if (!window.Hls && !v.canPlayType('application/vnd.apple.mpegurl')) {
-    ensureHls().then(() => { if (tvOn) tvPlay(); }).catch(() => tvFail('HLS gagal dimuat'));
+  if (needHlsLib(v)) {
+    ensureHls().then(() => { if (tvOn) tvPlay(); })
+      .catch(() => { if (tvOn && v.canPlayType('application/vnd.apple.mpegurl')) tvPlay(); else tvFail('HLS gagal dimuat'); });
     return;
   }
   if (window.Hls && Hls.isSupported()) {
@@ -9962,7 +10152,7 @@ function tvPlace(x, y){
 }
 function tvSave(){
   const r = $('#tvwrap').getBoundingClientRect();
-  try { localStorage.setItem('sitrep.tv3', JSON.stringify({ x: Math.round(r.left), y: Math.round(r.top) })); } catch (e) {}
+  try { localStorage.setItem('sitrep.tv4', JSON.stringify({ x: Math.round(r.left), y: Math.round(r.top) })); } catch (e) {}
 }
 function tvSnap(){
   const w = $('#tvwrap'), r = w.getBoundingClientRect();
@@ -9972,7 +10162,7 @@ function tvSnap(){
   tvPlace(x, r.top);
   tvSave();
 }
-function tvOpen(){
+function tvOpen(forceBottomLeft = false){
   if (tvOn) return;
   const w = $('#tvwrap');
   tvOn = true;
@@ -9981,10 +10171,12 @@ function tvOpen(){
   w.setAttribute('aria-hidden', 'false');
   $('#btn-tv').setAttribute('aria-expanded', 'true');
   let saved = null;
-  try { saved = JSON.parse(localStorage.getItem('sitrep.tv3') || 'null'); } catch (e) {}
+  if (!forceBottomLeft) {
+    try { saved = JSON.parse(localStorage.getItem('sitrep.tv4') || 'null'); } catch (e) {}
+  }
   const r = w.getBoundingClientRect();
   if (saved && Number.isFinite(saved.x) && Number.isFinite(saved.y)) tvPlace(saved.x, saved.y);
-  else tvPlace(18, innerHeight - r.height - 44);
+  else tvPlace(18, innerHeight - (r.height || 195) - 44);
   tvPlay();
 }
 function tvClose(){
@@ -9999,11 +10191,10 @@ function tvClose(){
   w.setAttribute('aria-hidden', 'true');
   $('#btn-tv').setAttribute('aria-expanded', 'false');
   $('#btn-tv').focus();
-  try { localStorage.setItem('sitrep.tvAuto', '0'); } catch (e) {}
 }
 $('#btn-tv').addEventListener('click', () => {
   if (tvOn) tvClose();
-  else { try { localStorage.setItem('sitrep.tvAuto', '1'); } catch (e) {} tvOpen(); }
+  else tvOpen();
 });
 $('#tv-close').addEventListener('click', tvClose);
 $('#tv-ch-btn').addEventListener('click', e => {
@@ -10973,7 +11164,8 @@ if (matchMedia('(max-width: 820px)').matches) {
   // "Detail situasi" dibiarkan expanded default — user collapse manual kalau mau
 }
 
-try { if (localStorage.getItem('sitrep.tvAuto') === '1') tvOpen(); } catch (e) {}
+ensureHls().catch(() => {});
+if (!tvOn) tvOpen(true);
 
 (async () => {
   await detectApi();

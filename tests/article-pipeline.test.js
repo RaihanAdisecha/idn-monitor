@@ -979,3 +979,37 @@ test('24. Rolling 24h news history retains rotated RSS tail items, keeps 01 Glob
   assert.ok(indexHtml.includes('schedulePoll(() => pullIncidents(), 60000,'), '60s globe incident refresh must run even when fullscreen map is closed');
   assert.ok(indexHtml.includes('await Promise.all([pullMedia(manual), pullSituation(manual), pullStocks()]);'), 'manual refresh must pass fresh flag to both news and situation');
 });
+
+test('25. Standalone featured <img> outside content container and editorial thumb_<slug> OG URLs resolve cleanly', async () => {
+  const url = 'https://tribratanews-resmesuji.lampung.polri.go.id/detail-post/patroli-strong-point';
+  const fullImg = 'https://tribratanews-resmesuji.lampung.polri.go.id/berkas/post-images/2026-11/patroli-strong-point.jpg';
+  const ogThumbImg = 'https://tribratanews-resmesuji.lampung.polri.go.id/berkas/post-images/2026-11/thumb_patroli-strong-point.jpg';
+  const html = `<!doctype html><html><head>
+    <meta property="og:image" content="${ogThumbImg}">
+  </head><body>
+    <header><img src="https://tribratanews-resmesuji.lampung.polri.go.id/berkas/settings/logo-header.png" alt="Logo"></header>
+    <img src="${fullImg}" class="tb-article-featured-img img-fluid" alt="Polres Mesuji Patroli" loading="eager">
+    <div class="tb-article-content">
+      MESUJI – Personel Polres Mesuji melaksanakan patroli pengaturan lalu lintas pada malam hari.</p>
+    </div>
+  </body></html>`;
+
+  assert.equal(MEDIA.classifyCandidateUrl(ogThumbImg, { role: 'hero' }).ok, true);
+  assert.equal(MEDIA.classifyCandidateUrl('https://news.example.id/gallery/thumb_small.jpg', { role: 'hero' }).ok, false);
+  assert.equal(MEDIA.classifyCandidateUrl('https://news.example.id/gallery/thumb_01.jpg', { role: 'hero' }).ok, false);
+  assert.equal(MEDIA.imageKey(ogThumbImg), MEDIA.imageKey(fullImg));
+
+  const res = await MEDIA.resolveArticleMedia({
+    requestedUrl: url,
+    canonicalUrl: url,
+    html,
+    mode: 'full',
+    probeFn: inspectAndMakeProbe({
+      [fullImg]: { buf: makePngBuffer(1152, 864, 18000, 91), ct: 'image/jpeg' },
+      [ogThumbImg]: { buf: makePngBuffer(600, 450, 9500, 92), ct: 'image/jpeg' },
+    }),
+  });
+  assert.equal(res.hero.verified, true);
+  assert.equal(res.hero.url, fullImg);
+  assert.equal(res.hero.source, 'body_lead');
+});
