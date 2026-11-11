@@ -407,7 +407,8 @@ test('P0/P1/P2 production hardening: loopback bind, HLS queue+abort, no s-maxage
   // P1: Static assets versioned immutable + lazy-load hls.js & Leaflet (inline L.VelocityLayer wrapped)
   assert.equal(html.includes('cdn.jsdelivr.net/npm/hls.js@1.5.13/dist/hls.min.js"></script>'), false, 'hls.min.js must be lazy-loaded');
   assert.equal(html.includes('cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>'), false, 'leaflet.js must be lazy-loaded');
-  assert.ok(html.includes('function ensureHls()') && html.includes('function ensureLeaflet()') && html.includes('function initLeafletVelocity()'));
+  assert.ok(html.includes('function ensureHls()') && html.includes('function ensureLeaflet()') && html.includes('function initLeafletVelocity()') && html.includes('function initLeafletWms()'));
+  assert.equal(/^(?:L\.|Hls\.)/m.test(html), false, 'no top-level synchronous L./Hls. reference allowed when lazy-loaded');
 
   const vMap = SRV.getAssetVersionMap();
   const sigInfo = vMap.get('signals.js');
