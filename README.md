@@ -8,6 +8,8 @@ Real-time situation dashboard for Indonesia: incident news, social signals, disa
 
 - **News wire** — aggregated RSS feeds with dedup and classification, plus a built-in reader that strips ads/trackers and extracts clean article text + media. The reader punches through paywalls and bot walls (direct → bot-UA → AMP → proxy → Jina → Firecrawl fallbacks)
 - **Social monitor** — X and Threads ingestion with query chips, per-topic lazy fetch, author-diversity caps, signal clustering, and in-app reading: posts open in a clean reader pane (thread context for X, full post + replies for Threads) without leaving the console
+- **Markets** — stock/index quotes with trend chips
+- **24h retention** — incidents and history persist across restarts via `data/` state
 - **Globe** — 3D view of geolocated incidents from the last 24h, each point linked back to its news/social source
 
   ![3D globe with 24h incident points](docs/globe.jpg)
@@ -20,8 +22,6 @@ Real-time situation dashboard for Indonesia: incident news, social signals, disa
 - **CCTV/TV gateway** — HLS/VHS proxy with segment caching, playlist rewriting, and a curated camera catalog (BPJT, Jogja, Molecool, international channels)
 
   ![Live CCTV camera grid](docs/cctv.jpg)
-- **Markets** — stock/index quotes with trend chips
-- **24h retention** — incidents and history persist across restarts via `data/` state
 
 ## Stack
 
