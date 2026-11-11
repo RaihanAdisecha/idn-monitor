@@ -17,6 +17,16 @@
 <script src="wire-core.js"></script>
 <script src="cctv-core.js"></script>
 <script>
+if (typeof HTMLCanvasElement !== 'undefined' && !HTMLCanvasElement.prototype._sitrepPatched) {
+  HTMLCanvasElement.prototype._sitrepPatched = true;
+  const _origGetCtx = HTMLCanvasElement.prototype.getContext;
+  HTMLCanvasElement.prototype.getContext = function(type, attribs) {
+    if (type === '2d') {
+      attribs = Object.assign({ willReadFrequently: true }, attribs);
+    }
+    return _origGetCtx.call(this, type, attribs);
+  };
+}
 const _extCssDone = new Set(), _extJsP = new Map();
 function loadExtCss(href) {
   if (_extCssDone.has(href) || document.querySelector('link[href="' + href + '"]')) { _extCssDone.add(href); return; }
@@ -8270,7 +8280,10 @@ let satBasalRun = null, satModelRunAt = 0, satRunTs = 0, satRunLabel = '', wireS
 function paintMapSrc(){
   const el = $('#map-src'); if (!el) return;
   if ((layerOn.sentinel2 || Date.now() < s2FlashUntil) && s2StatusText) {
-    const zNote = (layerOn.sentinel2 && map && map.getZoom() < 4) ? ' · zoom ≥4 untuk muat citra' : '';
+    const zm = (map && typeof map.getZoom === 'function') ? map.getZoom() : 0;
+    const zNote = (layerOn.sentinel2 && map && zm < 6)
+      ? ` · zoom in ke z≥6 untuk citra 10m (saat ini z${zm})`
+      : (map && zm > 12 ? ' · zoom 12 (skala visual)' : ' · 10m L2A NRT');
     el.textContent = s2StatusText + zNote;
     return;
   }
@@ -8872,7 +8885,7 @@ function ensureMap(){
     maxNativeZoom: 16, maxZoom: 18, opacity: .9, zIndex: 180
   }).addTo(map);
   sentinel2Layer = L.tileLayer(s2TileUrl(), {
-    tileSize: 256, minZoom: 4, maxZoom: 18, minNativeZoom: 6, maxNativeZoom: 12,
+    tileSize: 256, minZoom: 6, maxZoom: 18, minNativeZoom: 6, maxNativeZoom: 12,
     zIndex: 150, opacity: .95, bounds: L.latLngBounds([-11.5, 94.5], [6.5, 141.5])
   });
   ttFlowLayer = L.tileLayer(ttTileUrl('flow'), { opacity: .5, className: 'tt-flow-pane', maxNativeZoom: 19, maxZoom: 19 });
@@ -10056,7 +10069,7 @@ const TV_CH = [
   { n:'TRT World',          grp:'Internasional (Global)', badge:'TR', s:'https://tv-trtworld.medya.trt.com.tr/master.m3u8', src:'trt',
     pg:'https://www.trtworld.com/live' }
 ];
-let tvOn = false, tvIx = 0, tvHls = null, tvDrag = null, tvRz = null, tvIdleT = null, tvPx = false, tvTry = 0, tvRetryT = null, tvLoadAt = 0;
+let tvOn = false, tvIx = 0, tvHls = null, tvDrag = null, tvRz = null, tvIdleT = null, tvPx = false, tvTry = 0, tvRetryT = null, tvLoadAt = 0, tvLoadT = null;
 
 function renderTvMenu(){
   const menu = $('#tv-menu');
@@ -10107,6 +10120,7 @@ function tvFail(msg){
   $('#tv-msg-s').textContent = (msg ? msg + ' · ' : '') + 'auto-retry 90s';
 }
 function tvStop(){
+  clearTimeout(tvLoadT); tvLoadT = null;
   const v = $('#tv-video');
   if (tvHls) { try { tvHls.destroy(); } catch (e) {} tvHls = null; }
   try { v.pause(); } catch (e) {}
@@ -10130,6 +10144,19 @@ function tvPlay(){
     setTimeout(() => { if (tvOn) tvPlay(); }, 700);
     return true;
   };
+  clearTimeout(tvLoadT);
+  tvLoadT = setTimeout(() => {
+    if (tvOn && body.dataset.state === 'load') {
+      if (retryPx()) return;
+      tvFail('koneksi lambat / timeout');
+    }
+  }, 9000);
+  const markOk = () => {
+    clearTimeout(tvLoadT); tvLoadT = null;
+    clearTimeout(tvRetryT); tvRetryT = null;
+    body.dataset.state = 'ok';
+  };
+  v.addEventListener('playing', markOk, { once: true });
   let h = null;
   if (needHlsLib(v)) {
     ensureHls().then(() => { if (tvOn) tvPlay(); })
@@ -10140,12 +10167,12 @@ function tvPlay(){
     h = new Hls(hlsJak({ liveSyncDurationCount: 2, maxBufferLength: 6, capLevelToPlayerSize: true }));
     tvHls = h;
     h.on(Hls.Events.MANIFEST_PARSED, () => {
-      clearTimeout(tvRetryT); tvRetryT = null;
-      body.dataset.state = 'ok';
+      markOk();
       v.play().catch(() => {});
     });
     h.on(Hls.Events.ERROR, (ev, d) => {
       if (!d || !d.fatal) return;
+      clearTimeout(tvLoadT); tvLoadT = null;
       if (retryPx()) return;
       tvPx = false; tvTry = 0;
       tvFail(d.details);
@@ -10156,16 +10183,18 @@ function tvPlay(){
     h.attachMedia(v);
   } else if (v.canPlayType('application/vnd.apple.mpegurl')) {
     v.addEventListener('loadedmetadata', () => {
-      body.dataset.state = 'ok';
+      markOk();
       v.play().catch(() => {});
     }, { once: true });
     v.addEventListener('error', () => {
+      clearTimeout(tvLoadT); tvLoadT = null;
       if (retryPx()) return;
       tvPx = false; tvTry = 0; tvFail('stream mati');
       tvRetryT = setTimeout(() => { tvRetryT = null; if (tvOn) tvPlay(); }, 90000);
     }, { once: true });
     v.src = src;
   } else {
+    clearTimeout(tvLoadT); tvLoadT = null;
     tvFail('HLS tidak didukung browser ini');
   }
 }
@@ -10187,7 +10216,9 @@ function tvPlace(x, y){
   const ww = r.width || 344, hh = r.height || 250;
   const mob = innerWidth <= 820;
   const minX = mob ? 8 : 64 - ww, maxX = mob ? innerWidth - ww - 8 : innerWidth - 64;
-  const minY = mob ? 8 : 6, maxY = innerHeight - (mob ? hh + 8 : 44);
+  const footEl = document.querySelector('.foot');
+  const footH = (footEl && footEl.offsetHeight) || 36;
+  const minY = mob ? 8 : 6, maxY = Math.max(minY, innerHeight - hh - (mob ? 8 : footH + 12));
   w.style.left = Math.round(Math.max(minX, Math.min(maxX, x))) + 'px';
   w.style.top = Math.round(Math.max(minY, Math.min(maxY, y))) + 'px';
   w.style.right = 'auto';
@@ -10218,8 +10249,13 @@ function tvOpen(forceBottomLeft = false){
     try { saved = JSON.parse(localStorage.getItem('sitrep.tv4') || 'null'); } catch (e) {}
   }
   const r = w.getBoundingClientRect();
+  const ww = r.width || 344, hh = r.height || 250;
+  const mob = innerWidth <= 820;
+  const footEl = document.querySelector('.foot');
+  const footH = (footEl && footEl.offsetHeight) || 36;
+  const defY = Math.max(6, innerHeight - hh - (mob ? 8 : footH + 12));
   if (saved && Number.isFinite(saved.x) && Number.isFinite(saved.y)) tvPlace(saved.x, saved.y);
-  else tvPlace(18, innerHeight - (r.height || 195) - 44);
+  else tvPlace(mob ? 8 : 18, defY);
   tvPlay();
 }
 function tvClose(){

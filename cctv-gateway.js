@@ -258,9 +258,11 @@ function createGateway(d) {
     if (res.destroyed || res.writableEnded) fin();
   });
 
-  function sanitizeMediaCt(ct) {
+  function sanitizeMediaCt(ct, url = '') {
     const low = String(ct || '').split(';')[0].trim().toLowerCase();
-    if (!low) return 'video/mp2t';
+    if (!low || low === 'text/vnd.trolltech.linguist' || low === 'text/plain') return 'video/mp2t';
+    if (/\.ts(?:\?|#|$)/i.test(url) && (low.startsWith('text/') || low === 'application/octet-stream')) return 'video/mp2t';
+    if (/\.m4s(?:\?|#|$)/i.test(url)) return 'video/iso.segment';
     if (/^(?:text\/html|application\/xhtml|image\/svg|text\/javascript|application\/javascript)/i.test(low)) return 'application/octet-stream';
     return low;
   }
@@ -369,7 +371,7 @@ function createGateway(d) {
       if (!r.ok) { try { r.body && r.body.cancel && await r.body.cancel(); } catch (e) {} return { status: r.status, noCache: true }; }
       const isPl = /mpegurl/i.test(ct) || /\.m3u8(\?|#|$)/i.test(furl);
       fl.isPl = isPl;
-      fl.ct = isPl ? 'application/vnd.apple.mpegurl' : sanitizeMediaCt(ct);
+      fl.ct = isPl ? 'application/vnd.apple.mpegurl' : sanitizeMediaCt(ct, furl);
       fl.status = 200;
       const reader = r.body && r.body.getReader ? r.body.getReader() : null;
       const limit = isPl ? 2 << 20 : O.segMax;
