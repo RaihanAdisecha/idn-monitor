@@ -8,15 +8,18 @@ Real-time situation dashboard for Indonesia: incident news, social signals, disa
 
 - **News wire** — aggregated RSS feeds with dedup, classification, and a reader that punches through paywalls and bot walls (direct → bot-UA → AMP → proxy → Jina → Firecrawl fallbacks)
 - **Social monitor** — X and Threads ingestion with query chips, per-topic lazy fetch, author-diversity caps, and signal clustering
-- **Incident map** — BMKG earthquakes, volcano alerts, weather warnings, air quality, wildfire hotspots (NASA FIRMS), TomTom traffic, and situation clustering on a Leaflet map + 3D globe
+- **Incident map** — Leaflet detail view: BMKG earthquakes, volcano alerts, weather warnings, air quality, wildfire hotspots (NASA FIRMS), and TomTom traffic
 
   ![Map layers: weather, air quality, wildfire hotspots](docs/map-conditions.jpg)
+- **Globe** — 3D view of geolocated incidents from the last 24h, each point linked back to its news/social source
 
-  ![3D globe view with incident arcs](docs/globe.jpg)
+  ![3D globe with 24h incident points](docs/globe.jpg)
 - **Satellite** — Copernicus Sentinel-2 L2A tile proxy (CDSE) with quota caps and disk cache
 
   ![Sentinel-2 true-color overlay via Copernicus](docs/map-copernicus.jpg)
 - **CCTV/TV gateway** — HLS/VHS proxy with segment caching, playlist rewriting, and a curated camera catalog (BPJT, Jogja, Molecool, international channels)
+
+  ![Live CCTV camera grid](docs/cctv.jpg)
 - **Markets** — stock/index quotes with trend chips
 - **24h retention** — incidents and history persist across restarts via `data/` state
 
