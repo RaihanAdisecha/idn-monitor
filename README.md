@@ -71,6 +71,8 @@ All secrets come from env / `.env` (auto-loaded by `server.js`, real env wins). 
 | `SITREP_PUBLIC` / `SITREP_USERS` / `SITREP_AUTH_SECRET` | Deployment auth modes |
 | `PORT` / `SERVER_PORT` | Listen port (default `8787`) |
 
+> **⚠️ Use burner accounts for X/Threads — never your primary.** Social ingestion works by replaying browser session cookies through unofficial scraping. That violates both platforms' Terms of Service, gets accounts rate-limited or banned regularly, and the risk sits entirely with whoever supplies the cookies. Dedicate throwaway accounts to this, keep your main accounts far away, and expect cookies to expire without warning.
+
 Everything else — tuning knobs, rate limits, cache sizes, NLP adapter, HLS gateway settings — lives in [`.env.example`](.env.example). `config.json` is non-secret only (hosts, port, CCTV tuning); the server warns at boot if credential-looking fields show up there.
 
 ## Security modes
