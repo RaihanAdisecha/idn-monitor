@@ -1229,3 +1229,26 @@ test('DOM-XSS hardening: all URL sinks use escUrl/safeUrl and category attribute
   assert.ok(!/data-cat="\$\{(?!esc\()[^}]+\}"/.test(html), 'data-cat must use esc()');
   assert.ok(!/class="[^"]*\$\{(?!esc\()[^}]*cat[^}]*\}[^"]*"/.test(html), 'cat in class attributes must use esc()');
 });
+
+test('social cold-start guard: warming/empty streaks delay "no data" and "error" states', () => {
+  const fs = require('fs');
+  const path = require('path');
+  const html = fs.readFileSync(path.join(__dirname, '../public/index.html'), 'utf8');
+
+  // Server contract: warmSocial must flag cold-memo responses so the UI can
+  // distinguish "collector still running" from "genuinely empty"
+  const serverJs = fs.readFileSync(path.join(__dirname, '../server.js'), 'utf8');
+  assert.ok(serverJs.includes('warming: true'), 'warmSocial must emit warming flag');
+
+  // Client must consume the flag and gate empty/error copy behind streaks
+  assert.ok(html.includes('xCold'), 'X cold-start state missing');
+  assert.ok(html.includes('tCold'), 'Threads cold-start state missing');
+  assert.ok(html.includes('!!d.warming'), 'pullX/pullThreads must read d.warming');
+  assert.ok(html.includes('xEmptyStreak') && html.includes('tEmptyStreak'), 'empty streak counters missing');
+  assert.ok(html.includes('xErrStreak') && html.includes('tErrStreak'), 'error streak counters missing');
+  assert.ok(html.includes('kolektor sedang berjalan'), 'loading copy for warming state missing');
+  assert.ok(html.includes('.empty.wait'), 'waiting visual state missing');
+
+  // Hard failure copy must be streak-gated, not shown on first transient error
+  assert.ok(!html.includes("Server tidak merespons. Jalankan node server.js.</div>');"), 'unconditional server-down copy must be removed');
+});

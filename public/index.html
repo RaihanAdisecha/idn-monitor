@@ -1274,6 +1274,8 @@ a{color:inherit;text-decoration:none;text-underline-offset:2px}
 }
 .nw-day::after{content:"";flex:1;height:1px;background:var(--border)}
 .empty{padding:18px 14px;font:400 12px/1.6 var(--mono);color:var(--text3);text-transform:uppercase;letter-spacing:.04em}
+.empty.wait{display:flex;align-items:center;gap:9px}
+.empty.wait::before{content:"";width:7px;height:7px;border-radius:50%;background:var(--info);animation:livepulse 1.6s ease-in-out infinite;flex:none}
 .xmore{display:block;width:calc(100% - 24px);margin:10px 12px 14px;padding:9px 0;background:none;border:1px solid var(--border2);cursor:pointer;
   font:600 9px/1 var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--text3);transition:color .12s,border-color .12s}
 .xmore:hover{color:var(--text);border-color:var(--text3)}
@@ -5623,6 +5625,10 @@ const VF = `<svg class="ic solid vf" aria-label="Terverifikasi" role="img"><use 
 let xLastErr = '';
 let xPosts = [], xQuery = '', xQueries = [], xTrending = [], xSeen = new Set(), xFresh = new Set(), xReveal = new Set(), xSkTimer = 0;
 const xAll = new Map(); let xShown = 30;
+// guard "belum muncul": cold = server sehat tapi kolektor belum hasil apa pun;
+// streak menghitung siklus kosong/gagal supaya error & empty definitive tidak
+// muncul sebelum sempat retry (cold start Railway butuh beberapa menit)
+let xCold = false, xEmptyStreak = 0, xErrStreak = 0;
 
 function linkify(t){
   return esc(deEmoji(t))
@@ -5854,8 +5860,15 @@ function renderX(){
     (!q || ((p.text || '') + ' ' + (p.handle || '') + ' ' + (p.name || '')).toLowerCase().includes(q)));
   if ($('#xmeta')) $('#xmeta').textContent = list.length + ' post';
   const page = list.slice(0, xShown);
+  const xWait = API != null && !xPosts.length && (xCold || (xErrStreak < 3 && xEmptyStreak < 3));
+  const xMsg = xPosts.length ? 'Tidak ada post yang cocok dengan saringan ini.'
+    : API == null ? 'Feed X butuh server.'
+    : xCold || (xErrStreak < 3 && xEmptyStreak < 3)
+      ? (xErrStreak ? 'Menghubungkan ulang ke X…' : 'Menarik data X… kolektor sedang berjalan.')
+      : xErrStreak >= 3 ? 'X error' + (xLastErr ? ': ' + esc(xLastErr.slice(0, 220)) : '.')
+      : 'Belum ada post X' + (xLastErr ? ': ' + esc(xLastErr.slice(0, 220)) : '. Server belum selesai menarik, atau X mengembalikan hasil kosong.');
   $('#xlist').innerHTML = (page.length ? page.map(tweetCard).join('')
-    : `<div class="empty">${xPosts.length ? 'Tidak ada post yang cocok dengan saringan ini.' : 'Belum ada post X' + (xLastErr ? ': ' + esc(xLastErr.slice(0, 220)) : '. Server belum selesai menarik, atau X mengembalikan hasil kosong.')}</div>`) +
+    : `<div class="empty${xWait ? ' wait' : ''}">${xMsg}</div>`) +
     (list.length > xShown ? `<button class="xmore" type="button">Muat ${Math.min(30, list.length - xShown)} lagi · ${list.length - xShown} tersisa</button>` : '');
   $('#f-x').textContent = xPosts.length;
   xReveal.clear();
@@ -5886,6 +5899,7 @@ $('#xq').addEventListener('input', debounce(() => { xShown = 30; renderX(); }, 1
 let tPosts = [], tAt = 0, tBusy = false, socTab = 'x';
 let tQuery = '', tQueries = [], tTrending = [], tErrs = [], tNewestTs = 0;
 const tAll = new Map(); let tShown = 30;
+let tCold = false, tEmptyStreak = 0, tErrStreak = 0, tLastErr = '';
 
 function linkifyThreads(t){
   return esc(deEmoji(t))
@@ -5950,8 +5964,15 @@ function renderThreads(){
   if ($('#tmeta')) $('#tmeta').textContent = list.length + ' post';
   $('#f-th').textContent = tPosts.length;
   const page = list.slice(0, tShown);
+  const tWait = API != null && !tPosts.length && (tCold || (tErrStreak < 3 && tEmptyStreak < 3));
+  const tMsg = tPosts.length ? 'Tidak ada post yang cocok.'
+    : API == null ? 'Threads butuh server (scraper Python).'
+    : tCold || (tErrStreak < 3 && tEmptyStreak < 3)
+      ? (tErrStreak ? 'Menghubungkan ulang ke Threads…' : 'Menarik data Threads… scraper sedang berjalan.')
+      : tErrStreak >= 3 ? 'Threads error' + (tLastErr ? ': ' + esc(tLastErr.slice(0, 160)) : '.')
+      : 'Belum ada post Threads untuk query ini.';
   $('#tlist').innerHTML = (page.length ? page.map(threadCard).join('')
-    : `<div class="empty">${tPosts.length ? 'Tidak ada post yang cocok.' : (API == null ? 'Threads butuh server (scraper Python).' : 'Belum ada post Threads untuk query ini.')}</div>`) +
+    : `<div class="empty${tWait ? ' wait' : ''}">${tMsg}</div>`) +
     (list.length > tShown ? `<button class="xmore" type="button">Muat ${Math.min(30, list.length - tShown)} lagi · ${list.length - tShown} tersisa</button>` : '');
   updateDistress();
 }
@@ -5989,16 +6010,23 @@ async function pullThreads(){
   $('#tmeta').textContent = 'menarik…';
   try {
     const d = await getJson(API + '/api/threads', 160000);
+    tErrStreak = 0;
     tErrs = Array.isArray(d.errs) ? d.errs : [];
     tNewestTs = d && Number.isFinite(d.newestTs) ? d.newestTs : 0;
     const acc = acceptSocialSnapshot('th', d);
+    tCold = !tPosts.length && !!d.warming;
+    if (tPosts.length) tEmptyStreak = 0; else if (!tCold) tEmptyStreak++;
     if (acc || d.queries) socApply(d);
     renderAllQchips();   // kedua baris chip menampilkan count sinkron & validasi filter active sebelum render feed
     renderThreads();
   } catch (e) {
     tSignalCurrent = false; updateDistress();
-    if (!tPosts.length) $('#tlist').innerHTML = '<div class="empty">Threads gagal: ' + esc(e.message || e) + '</div>';
-    $('#tmeta').textContent = 'gagal';
+    tErrStreak++; tCold = false;
+    tLastErr = String(e && e.message || e || 'tidak ada respons').slice(0, 160);
+    if (!tPosts.length) {
+      renderThreads();
+      $('#tmeta').textContent = tErrStreak >= 3 ? 'gagal' : 'mencoba lagi…';
+    }
   } finally { tBusy = false; }
 }
 function setSocTab(t){
@@ -10477,28 +10505,42 @@ async function pullX(){
     const d = await getJson(API + '/api/x', 110000);
     xLastErr = d.err || '';
     if (d.ok) {
+      xErrStreak = 0;
       // Hanya timpa state/UI kalau snapshot benar-benar diterima — payload stale
       // (snapshotAt lama / versi asing) tidak boleh mengubah xmeta & render.
       const acc = acceptSocialSnapshot('x', d);
+      // d.warming = memo dingin, kolektor background masih berjalan — status
+      // tetap "menarik", bukan "tidak ada data" (cold start butuh beberapa menit)
+      xCold = !xPosts.length && !!d.warming;
+      if (xPosts.length) xEmptyStreak = 0; else if (!xCold) xEmptyStreak++;
       if (acc) {
         socApply(d);
         if (xShown > xPosts.length) xShown = Math.max(30, xPosts.length);
         renderAllQchips();
         renderX();
         $('#xmeta').textContent = xPosts.length + ' post' + (d.err ? ' · sebagian gagal' : '');
-      }
+      } else renderX();
     } else if (xPosts.length) {
+      if (d.warming) { xCold = false; xErrStreak = 0; }
+      else xErrStreak++;
       if (d.queries) { socApply(d); renderAllQchips(); }
       xSignalCurrent = false; updateDistress();
       $('#xmeta').textContent = xPosts.length + ' post · data terakhir';
     } else {
+      if (d.warming) { xCold = true; xErrStreak = 0; }
+      else { xErrStreak++; xCold = false; }
       if (d.queries) { socApply(d); renderAllQchips(); }
-      $('#xlist').innerHTML = '<div class="empty">X gagal: ' + esc(d.err || 'tidak ada hasil') + '</div>';
-      $('#xmeta').textContent = 'gagal';
+      renderX();
+      $('#xmeta').textContent = xCold ? 'kolektor berjalan…' : (xErrStreak >= 3 ? 'gagal' : 'mencoba lagi…');
     }
   } catch (e) {
     xSignalCurrent = false; updateDistress();
-    if (!xPosts.length) $('#xlist').innerHTML = '<div class="empty">Server tidak merespons. Jalankan node server.js.</div>';
+    xErrStreak++; xCold = false;
+    xLastErr = String(e && e.message || e || 'tidak ada respons').slice(0, 160);
+    if (!xPosts.length) {
+      renderX();
+      $('#xmeta').textContent = xErrStreak >= 3 ? 'gagal' : 'mencoba lagi…';
+    }
   } finally { xBusy = false; }
 }
 

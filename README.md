@@ -1,118 +1,120 @@
 # SITREP — OSINT Console
 
-Dashboard situasi real-time: news wire, monitor sosial (X + Threads), globe & peta insiden (gempa BMKG, gunung api, cuaca, radar, Copernicus Sentinel-2), data pasar, dan live TV/CCTV.
+Real-time situation dashboard for Indonesia: incident news, social signals, disaster tracking, markets, and live CCTV/TV — all in one local-first web console.
+
+![SITREP dashboard](docs/screenshot.jpg)
+
+## Features
+
+- **News wire** — aggregated RSS feeds with dedup, classification, and a reader that punches through paywalls and bot walls (direct → bot-UA → AMP → proxy → Jina → Firecrawl fallbacks)
+- **Social monitor** — X and Threads ingestion with query chips, per-topic lazy fetch, author-diversity caps, and signal clustering
+- **Incident map** — BMKG earthquakes, volcano alerts, weather warnings, air quality, wildfire hotspots (NASA FIRMS), TomTom traffic, and situation clustering on a Leaflet map + 3D globe
+
+  ![Map layers: weather, air quality, wildfire hotspots](docs/map-conditions.jpg)
+- **Satellite** — Copernicus Sentinel-2 L2A tile proxy (CDSE) with quota caps and disk cache
+
+  ![Sentinel-2 true-color overlay via Copernicus](docs/map-copernicus.jpg)
+- **CCTV/TV gateway** — HLS/VHS proxy with segment caching, playlist rewriting, and a curated camera catalog (BPJT, Jogja, Molecool, international channels)
+- **Markets** — stock/index quotes with trend chips
+- **24h retention** — incidents and history persist across restarts via `data/` state
 
 ## Stack
 
-- **Backend:** `server.js` — Node.js ≥24, `http` native + `franc` (`6.2.0`)
-- **Worker:** `vendor/threads_*.py` — Python 3 + `curl_cffi` (pinned di `requirements.txt`)
-- **Frontend:** `public/index.html` — single-file vanilla JS/CSS, tanpa build step
+- **Backend:** `server.js` — Node.js ≥24, native `http` + `franc` (only runtime dep)
+- **Worker:** `vendor/threads_*.py` — Python 3 + `curl_cffi` (pinned in `requirements.txt`)
+- **Frontend:** `public/index.html` — single-file vanilla JS/CSS, no build step
 
-## Menjalankan lokal
+## Quickstart
 
 ```bash
-# butuh: node >=24, python3
+# needs: node >=24, python3
 npm ci
-python3 -m venv .venv
-.venv/bin/pip install -r requirements.txt
+python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 
-cp .env.example .env   # isi credentials yang diperlukan
-node server.js         # atau: bash start.sh
+cp .env.example .env   # fill in whatever credentials you have
+node server.js         # or: bash start.sh
 ```
 
-Buka `http://localhost:8787` — frontend auto-detect API (same-origin, `?api=`, atau `localhost:8787`).
+Open `http://localhost:8787`. The frontend auto-detects the API (same-origin, `?api=`, or `localhost:8787`).
 
-Secara default di mode lokal, server bind ke **`127.0.0.1` (loopback)** sehingga dashboard lokal langsung berfungsi lewat `<meta name="sitrep-token">` tanpa mengekspos token ke jaringan LAN/WAN. Jangan pernah commit file `.env` atau `.env.*` (kecuali `.env.example`).
+By default the server binds to **`127.0.0.1`** in local mode — the dashboard works out of the box via an injected `<meta name="sitrep-token">`, and refuses to bind non-loopback without `SITREP_PUBLIC=1`, `SITREP_USERS`, or explicit `SITREP_ALLOW_LAN_TOKEN=1`. Never commit `.env`.
 
-## Environment variables
+## Configuration
 
-Semua secret dibaca dari env / `.env` (file `.env` dimuat otomatis oleh `server.js`):
+All secrets come from env / `.env` (auto-loaded by `server.js`, real env wins). The short version:
 
-| Key | Untuk |
+| Key | Purpose |
 |---|---|
-| `TOMTOM_API_KEY` | Routing/lalin di peta |
-| `AISSTREAM_API_KEY` | Stream AIS kapal (WebSocket) |
-| `NASA_FIRMS_API_KEY` | Hotspot karhutla |
-| `FIRECRAWL_API_KEY` | Fallback reader untuk situs anti-bot (Cloudflare) |
-| `CDSE_CLIENT_ID`, `CDSE_CLIENT_SECRET` | Copernicus Data Space Ecosystem (Sentinel-2 L2A, Indonesia ROI, cache 24 jam) |
-| `X_AUTH_TOKEN`, `X_CT0` | Cookie sesi X untuk search (mendukung rotasi multi-akun `X_AUTH_TOKEN_2..10`) |
-| `X_BEARER`, `X_QUERY_ID` | Opsional — override bearer/query-id X |
-| `PORT` / `SERVER_PORT` | Port listen (default `8787`) |
-| `SITREP_HOST` | Host bind (default `127.0.0.1` di mode lokal, `0.0.0.0` di mode publik/session) |
-| `SITREP_PUBLIC` | `1` = mode dashboard OSINT publik read-only (`viewer`, tanpa login, tanpa token di HTML) |
-| `SITREP_USERS` | Daftar akun sesi + RBAC (`user:role:password` atau `scrypt$...`, role `viewer`/`operator`/`admin`) |
-| `SITREP_AUTH_SECRET` | Secret HMAC-SHA256 minimal 32 karakter untuk cookie `HttpOnly` `sitrep_sess` |
-| `SITREP_TOKEN` | Token gate API (dipakai di mode lokal atau klien headless/operator) |
-| `SITREP_TOKEN_ROLE` | Role untuk `SITREP_TOKEN` (`operator` di public deploy, `admin` di mode lokal) |
-| `SITREP_TRUST_PROXY` | `1` = percaya `X-Forwarded-For` / `X-Forwarded-Proto` di belakang reverse proxy |
-| `SITREP_TRUST_CF` | `1` = prioritaskan `CF-Connecting-IP` di belakang Cloudflare |
-| `SITREP_EXTRA_CA` | Path file PEM CA tambahan untuk verifikasi TLS upstream (opsional) |
+| `TOMTOM_API_KEY` | Traffic/routing on the map |
+| `AISSTREAM_API_KEY` | AIS vessel stream (WebSocket) |
+| `NASA_FIRMS_API_KEY` | Wildfire hotspots |
+| `FIRECRAWL_API_KEY` | Reader fallback for anti-bot sites |
+| `JINA_API_KEY` | Reader fallback (optional) |
+| `CDSE_CLIENT_ID`, `CDSE_CLIENT_SECRET` | Copernicus Sentinel-2 tiles |
+| `X_AUTH_TOKEN`, `X_CT0` | X session cookies (multi-account via `X_AUTH_TOKEN_2..10`) |
+| `SITREP_PUBLIC` / `SITREP_USERS` / `SITREP_AUTH_SECRET` | Deployment auth modes |
+| `PORT` / `SERVER_PORT` | Listen port (default `8787`) |
 
-`config.json` hanya berisi konfigurasi non-secret (port, host CCTV/TV). Topik sosial (X + Threads) ada di `social.js` (`SOC_TOPICS`).
+Everything else — tuning knobs, rate limits, cache sizes, NLP adapter, HLS gateway settings — lives in [`.env.example`](.env.example). `config.json` is non-secret only (hosts, port, CCTV tuning); the server warns at boot if credential-looking fields show up there.
 
-### Variabel tuning lanjutan
+## Security modes
 
-Selain tabel di atas, ada knob opsional (semua punya default aman — lihat `.env.example` untuk daftar lengkap): `JINA_API_KEY` (fallback reader), `CUSTOM_PROXY_URL`/`PROXY_URL`, `FFMPEG_PATH`, `CDSE_*` (cap & cache Copernicus), `SITREP_NLP_*` (adapter NLP eksternal, default offline), `SITREP_RSS_CONCURRENCY`/`SITREP_RSS_JITTER_MS`, `SITREP_DOC_CACHE_BYTES`, blok `SITREP_HLS_*` (gateway CCTV), `SITREP_MAC_PROFILE`, `SITREP_NO_WESERV`, `SITREP_NO_SUPERVISOR`, `SITREP_DISABLE_QUERY_TOKEN`, `SITREP_ALLOW_LAN_TOKEN` (opt-in berbahaya — mengizinkan bind non-loopback di mode token lokal).
+Three fail-closed auth modes, summarized in 10 seconds:
 
-## Mode Keamanan & Deployment
+- **Local token (default):** loopback only, token injected into `GET /`. Headless clients use the `x-sitrep-token` header.
+- **Public (`SITREP_PUBLIC=1`):** anonymous read-only `viewer` role, no token in HTML. Set `SITREP_TRUST_PROXY=1` behind a reverse proxy.
+- **Session (`SITREP_USERS` + `SITREP_AUTH_SECRET`):** login + RBAC (`viewer`/`operator`/`admin`) + CSRF checks for private deployments.
 
-SITREP memiliki tiga mode autentikasi fail-closed (detail di [`SECURITY.md`](SECURITY.md)):
+Full model, SSRF/DNS-pinning details, and reporting policy: [`SECURITY.md`](SECURITY.md).
 
-1. **Mode Token Lokal (default lokal):**
-   - Aktif bila `SITREP_PUBLIC` dan `SITREP_USERS` kosong.
-   - Server otomatis bind ke `127.0.0.1` dan menyisipkan `<meta name="sitrep-token">` ke `GET /`.
-   - **Startup Guard:** server menolak jalan (`exit 78`) bila dipaksa bind ke alamat non-loopback (mis. `SITREP_HOST=0.0.0.0`) tanpa `SITREP_PUBLIC=1`, tanpa `SITREP_USERS`, atau tanpa opt-in eksplisit `SITREP_ALLOW_LAN_TOKEN=1`.
-2. **Mode Dashboard Publik OSINT (`SITREP_PUBLIC=1`):**
-   - Cocok untuk deployment publik read-only (Railway/Render/VPS di belakang reverse proxy).
-   - Pengunjung anonim mendapat role `viewer` dan **tidak ada token API yang disisipkan ke HTML**.
-   - Akses operator/otomasi (`?fresh=1`, `/api/metrics`) memakai header `x-sitrep-token` dengan `SITREP_TOKEN`.
-3. **Mode Sesi Multi-User (`SITREP_USERS` + `SITREP_AUTH_SECRET`):**
-   - Cocok untuk deployment privat/tim yang mewajibkan login.
-   - Menggunakan password `scrypt`, cookie `HttpOnly` `sitrep_sess`, RBAC, dan verifikasi CSRF same-origin.
-
-Untuk panggilan lintas-origin atau CLI (`curl`, `scripts/audit-reader.js`), kirim header `x-sitrep-token: <TOKEN>` atau parameter `?token=<TOKEN>` (hanya aktif di mode lokal kecuali `SITREP_DISABLE_QUERY_TOKEN=1`).
-
-## Struktur
+## Project layout
 
 ```text
-server.js              API + scraping + proxy + WS + startup auth guard
-security.js            SSRF guard, DNS-pinned HTTP/TLS client, AIA repair, RBAC, rate-limit
-copernicus.js          Proxy tile Sentinel-2 L2A (CDSE) + kuota atomik & disk cache
-cctv-gateway.js        Gateway /hls, cache segmen, coalescing & RUM
-public/index.html      UI utama (CSS + JS vanilla)
-vendor/                Worker scraper Python (lihat vendor/THREADS-SCRAPER-LICENSE)
-geo/                   Gazetteer & indeks wilayah Indonesia
-start.sh               Bootstrap venv + supervisor restart loop
+server.js              API + scraping + proxies + WS + auth guard
+security.js            SSRF guard, DNS-pinned HTTP/TLS, RBAC, rate-limit
+copernicus.js          Sentinel-2 tile proxy + quota + disk cache
+cctv-gateway.js        /hls & /vhs gateway, segment cache, coalescing
+social*.js             X/Threads ingestion, clustering, history, diagnostics
+public/index.html      UI (vanilla JS/CSS, no build)
+vendor/                Python Threads scraper (see vendor/THREADS-SCRAPER-LICENSE)
+geo/                   Indonesian gazetteer & village index
+tests/                 node:test suite — npm test
 ```
 
 ## Deploy
 
-Butuh host dengan proses persisten + filesystem writable + outbound WebSocket (VPS `systemd`/`pm2`, Railway/Render disk persisten, atau Docker).
+Needs a host with a persistent process + writable filesystem + outbound WebSocket (VPS `systemd`/`pm2`, Railway/Render with a persistent disk, or Docker).
 
 ```bash
-# Contoh Docker publik read-only di balik reverse proxy:
 docker build -t sitrep .
 docker run -d --name sitrep -p 8787:8787 \
-  -e SITREP_PUBLIC=1 \
-  -e SITREP_TRUST_PROXY=1 \
-  --env-file .env \
-  -v sitrep-data:/app/data \
+  -e SITREP_PUBLIC=1 -e SITREP_TRUST_PROXY=1 \
+  --env-file .env -v sitrep-data:/app/data \
   sitrep
 ```
 
-Untuk deployment di balik reverse proxy/Cloudflare Tunnel, set `SITREP_TRUST_PROXY=1` (dan `SITREP_TRUST_CF=1` jika di balik Cloudflare).
+Mount a volume for `/app/data` or history, caches, and market state die on every redeploy.
 
-Volume `-v sitrep-data:/app/data` menjaga history berita/insiden, cache Copernicus, dan data pasar tetap ada saat container di-recreate — tanpa volume itu semua state hilang.
+## Limitations
 
-`config.json` hanya untuk konfigurasi **non-secret** (port, host CCTV/TV, tuning). Credential (cookie X/Threads, API key, client secret) **wajib** lewat env/`.env` — server menolak membaca secret dari `config.json` dan akan mencetak peringatan bila field secret terisi.
+Honest scope, so you know what you're running:
 
-## Pengujian & Audit
+- **X/Threads coverage is best-effort.** Upstream rate limits and scraper breakage mean quiet periods happen; the UI shows a "collector running" state during cold starts instead of faking data.
+- **Social topics are fixed** in `social.js` (`SOC_TOPICS`) — not user-configurable at runtime.
+- **CCTV catalog is curated, not exhaustive** — streams die when upstream sources change their URLs.
+- **Copernicus tiles are quota-capped** (CDSE free tier) — heavy zoom/pan sessions can hit the daily cap.
+- **Single-instance.** No clustering, no multi-tenant isolation — run one process per deployment.
+- **News classification is heuristic** (Indonesian keyword/NLP rules) — expect false positives/negatives on edge cases.
+
+## Development
 
 ```bash
-npm test                      # jalankan seluruh test suite (tests/*.js)
-node scripts/audit-reader.js  # audit reader: [maxPerSource] [baseUrl]
+npm test                      # full suite (tests/*.js)
+node scripts/audit-reader.js  # reader audit: [maxPerSource] [baseUrl]
 ```
 
-## Lisensi & Atribusi
+See [`CONTRIBUTING.md`](CONTRIBUTING.md) for setup, code rules, and PR expectations.
 
-Kode SITREP dilisensikan di bawah [`LICENSE`](LICENSE) (MIT). Komponen vendor, library, dan dataset pihak ketiga tunduk pada ketentuannya masing-masing yang tercantum di [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).
+## License & attribution
+
+SITREP code is MIT — see [`LICENSE`](LICENSE). Vendored code, libraries, and third-party datasets keep their own terms, listed in [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md). Notably, `geo/desa-kelurahan-big.json` derives from Indonesian government (BIG) administrative boundary data — verify redistribution terms before mirroring.
