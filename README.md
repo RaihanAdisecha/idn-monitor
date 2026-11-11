@@ -18,6 +18,10 @@ Real-time situation dashboard for Indonesia: incident news, social signals, disa
 - **Incident map** — Leaflet detail view with layered live data: BMKG earthquakes/volcano/weather warnings, air quality (AQMS), wildfire hotspots (SiPongi + NASA FIRMS), TomTom traffic flow & incidents, A→B routing with traffic probe, live flights (ADS-B), ships (AIS), TransJakarta transit, rain radar (RainViewer timeline + BMKG), Himawari-9 satellite layers (IR / natural color / water vapor / rainfall), wind particles, and CCTV camera markers
 
   ![Map layers: weather, air quality, wildfire hotspots](docs/map-conditions.jpg)
+
+  ![Default map with live flights and ships](docs/map-traffic.jpg)
+
+  ![Traffic incidents, routing and road conditions](docs/map-traffic-conditions.jpg)
 - **Satellite** — Copernicus Sentinel-2 L2A tile proxy (CDSE) with quota caps and disk cache
 
   ![Sentinel-2 true-color overlay via Copernicus](docs/map-copernicus.jpg)
