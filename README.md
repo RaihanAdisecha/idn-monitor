@@ -11,6 +11,8 @@ Real-time situation dashboard for Indonesia: incident news, social signals, disa
 - **Incident map** — BMKG earthquakes, volcano alerts, weather warnings, air quality, wildfire hotspots (NASA FIRMS), TomTom traffic, and situation clustering on a Leaflet map + 3D globe
 
   ![Map layers: weather, air quality, wildfire hotspots](docs/map-conditions.jpg)
+
+  ![3D globe view with incident arcs](docs/globe.jpg)
 - **Satellite** — Copernicus Sentinel-2 L2A tile proxy (CDSE) with quota caps and disk cache
 
   ![Sentinel-2 true-color overlay via Copernicus](docs/map-copernicus.jpg)
