@@ -1013,3 +1013,62 @@ test('25. Standalone featured <img> outside content container and editorial thum
   assert.equal(res.hero.url, fullImg);
   assert.equal(res.hero.source, 'body_lead');
 });
+
+test('26. bsinews.id: extracts body lead image with width="100%", upgrades CDN images, and cleans publisher/redactional title prefixes and suffixes', async () => {
+  const url = 'https://bsinews.id/polisi-kantongi-calon-tersangka-lombok';
+  const cdnRaw = 'https://cdn.bsinews.id/media/images/2026/11/3VWhGUgKQg.jpeg?location=1&width=&height=&quality=90&fit=1';
+  const cdnUpgraded = 'https://cdn.bsinews.id/media/images/2026/11/3VWhGUgKQg.jpeg?location=1&width=1200&height=674&quality=80&fit=1';
+  const ogImg = 'https://cdn.bsinews.id/media/images/2026/11/3VWhGUgKQg.jpeg?location=1&width=1200&height=674&quality=80&watermark=1';
+
+  // Verify attribute percentage width does not trigger small_html_attr_dimensions rejection
+  const attrCheck = MEDIA.classifyCandidateAttrs({ width: '100%', alt: 'Foto Olah TKP' });
+  assert.equal(attrCheck.ok, true);
+
+  // Verify upgradeImage sets 1200x674 for cdn.bsinews.id
+  assert.equal(MEDIA.upgradeImage(cdnRaw), cdnUpgraded);
+
+  // Verify cleanArticleTitle cleans redaksional prefix and bsinews suffix
+  const rawTitle = 'Breaking News - Polisi Kantongi Calon Tersangka Pembunuhan Perempuan di Lombok Tengah - bsinews.id';
+  const cleanT = EXTRACT.cleanArticleTitle(rawTitle, 'BSI News', url);
+  assert.equal(cleanT, 'Polisi Kantongi Calon Tersangka Pembunuhan Perempuan di Lombok Tengah');
+
+  const html = `<!DOCTYPE html><html><head>
+    <title>${rawTitle}</title>
+    <meta property="og:title" content="${rawTitle}">
+    <meta property="og:site_name" content="Bsinews.id">
+    <meta property="og:image" content="${ogImg}">
+  </head><body>
+    <article>
+      <h1>${rawTitle}</h1>
+      <figure>
+        <a class="spotlight" href="${cdnRaw}" data-description="Kasat Reskrim Polresta Lombok Tengah. (Foto: Edi Suryansyah/detikBali)">
+          <img src="${cdnRaw}" alt="Foto Olah TKP" width="100%" decoding="async">
+        </a>
+        <figcaption>Kasat Reskrim Polresta Lombok Tengah. (Foto: Edi Suryansyah/detikBali)</figcaption>
+      </figure>
+      <p>Penyelidikan kematian perempuan berinisial M (57) yang ditemukan terbakar di Desa Selebung, Kecamatan Batukliang, Lombok Tengah, mulai mengerucut pada satu calon tersangka.</p>
+      <p>Menurut kepolisian, penyidik telah mengumpulkan sejumlah barang bukti dan meminta keterangan saksi di lokasi kejadian perkara.</p>
+    </article>
+  </body></html>`;
+
+  const ext = EXTRACT.rdExtract(html, url);
+  assert.equal(ext.title, 'Polisi Kantongi Calon Tersangka Pembunuhan Perempuan di Lombok Tengah');
+  assert.equal(ext.site, 'BSI News');
+
+  const media = await MEDIA.resolveArticleMedia({
+    requestedUrl: url,
+    canonicalUrl: url,
+    html,
+    title: ext.title,
+    mode: 'full',
+    probeFn: inspectAndMakeProbe({
+      [cdnUpgraded]: { buf: makeJpegBuffer(1200, 674, 25000, 71), ct: 'image/jpeg' },
+      [ogImg]: { buf: makeJpegBuffer(1200, 674, 25000, 72), ct: 'image/jpeg' },
+    }),
+  });
+
+  assert.equal(media.hero.verified, true);
+  assert.equal(media.hero.url, cdnUpgraded);
+  assert.equal(media.hero.source, 'body_lead');
+  assert.ok(media.hero.caption.includes('Kasat Reskrim'));
+});

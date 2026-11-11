@@ -72,6 +72,15 @@ function upgradeImage(u) {
   if (/(^|\.)tribunnews\.com$/i.test(h) && /\/\d+x\d+\//.test(x.pathname)) {
     return u.replace(/\/\d+x\d+\//, '/1200x675/');
   }
+  if (/(^|\.)cdn\.bsinews\.id$/i.test(h) || /(^|\.)bsinews\.id$/i.test(h)) {
+    const w = parseInt(x.searchParams.get('width') || '0', 10);
+    if (!w || w < 1200) {
+      x.searchParams.set('width', '1200');
+      x.searchParams.set('height', '674');
+      x.searchParams.set('quality', '80');
+      return x.href;
+    }
+  }
   return u;
 }
 
@@ -156,8 +165,10 @@ function classifyCandidateAttrs(attrs = {}) {
       return { ok: false, reason: 'non_editorial_alt_text' };
     }
   }
-  const w = parseInt(attrs.width, 10) || 0;
-  const h = parseInt(attrs.height, 10) || 0;
+  const rawW = String(attrs.width || '').trim();
+  const rawH = String(attrs.height || '').trim();
+  const w = (!rawW.endsWith('%') ? parseInt(rawW, 10) : 0) || 0;
+  const h = (!rawH.endsWith('%') ? parseInt(rawH, 10) : 0) || 0;
   if ((w > 0 && w < 200) || (h > 0 && h < 120)) return { ok: false, reason: 'small_html_attr_dimensions' };
   if (w >= 200 && h > 0 && w / h > 3.2) return { ok: false, reason: 'extreme_banner_html_attrs' };
   return { ok: true };
@@ -415,9 +426,13 @@ function extractHtmlImageCandidates(html, baseUrl) {
     for (const fig of cleanLm.matchAll(/<figure\b[^>]*>([\s\S]*?)<\/figure\s*>/gi)) {
       const imgM = fig[1].match(/<(?:img|amp-img)\b[^>]*>/i);
       if (!imgM) continue;
-      const cap = EXTRACT.rdInline(((fig[1].match(/<figcaption\b[^>]*>([\s\S]*?)<\/figcaption\s*>/i) || [])[1] || '').replace(/<[^>]+>/g, ' '));
+      const aSpotDesc = (fig[1].match(/<a\b[^>]*data-description=["']([^"']+)["']/i) || [])[1];
+      const cap = EXTRACT.rdInline(((fig[1].match(/<figcaption\b[^>]*>([\s\S]*?)<\/figcaption\s*>/i) || [])[1] || '').replace(/<[^>]+>/g, ' ')) ||
+        (aSpotDesc ? EXTRACT.rdInline(aSpotDesc) : '');
       const a = EXTRACT.parseAttrs(imgM[0]);
-      const src = EXTRACT.pickBestSrcset(a['data-srcset'] || a.srcset, baseUrl) || a['data-src'] || a['data-lazy-src'] || a['data-original'] || a['data-lazy'] || a['data-url'] || a.src;
+      const aSpotLink = (fig[1].match(/<a\b[^>]*href=["']([^"']+\.(?:jpe?g|png|webp|avif)[^"']*)["']/i) || [])[1];
+      const src = (aSpotLink && !/\.(?:svg|ico)$/i.test(aSpotLink) ? aSpotLink : '') ||
+        EXTRACT.pickBestSrcset(a['data-srcset'] || a.srcset, baseUrl) || a['data-src'] || a['data-lazy-src'] || a['data-original'] || a['data-lazy'] || a['data-url'] || a.src;
       const resolved = resolveUrl(src, baseUrl);
       if (resolved && !bodySeen.has(resolved)) {
         bodySeen.add(resolved);
@@ -666,8 +681,11 @@ async function resolveArticleMedia({
 
   // Order for probing with per-tier slot reservations so numerous body_lead cards never starve og/twitter/ld/rss
   const attrArea = c => {
-    const w = parseInt((c.attrs && c.attrs.width) || '0', 10) || 0;
-    const h = parseInt((c.attrs && c.attrs.height) || '0', 10) || 0;
+    const rawW = String((c.attrs && c.attrs.width) || '').trim();
+    const rawH = String((c.attrs && c.attrs.height) || '').trim();
+    if (rawW.endsWith('%') || rawH.endsWith('%')) return 1;
+    const w = parseInt(rawW || '0', 10) || 0;
+    const h = parseInt(rawH || '0', 10) || 0;
     if (w > 0 && w < 320) return -1;
     if (h > 0 && h < 180) return -1;
     return w > 0 ? 1 : 0;

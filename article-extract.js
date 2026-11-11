@@ -619,8 +619,10 @@ function extractTagImage(tag, finalURL) {
   if (/^(?:like|dislike|vote|rate|bagus|jelek|setuju|tidak setuju|share|comment|komentar|emoji|logo|favicon|icon|avatar|iklan|advertisement)/i.test(alt)) {
     return null;
   }
-  const w = parseInt(a.width, 10) || 0;
-  const h = parseInt(a.height, 10) || 0;
+  const rawW = String(a.width || '').trim();
+  const rawH = String(a.height || '').trim();
+  const w = (!rawW.endsWith('%') ? parseInt(rawW, 10) : 0) || 0;
+  const h = (!rawH.endsWith('%') ? parseInt(rawH, 10) : 0) || 0;
   if ((w > 0 && w < 200) || (h > 0 && h < 120)) return null;
   if (w >= 200 && h > 0 && w / h > 3.2) return null;
 
@@ -836,6 +838,7 @@ function computeTextQuality({ title, expectedTitle, url, desc, blocks, boilerpla
 
 function cleanArticleTitle(rawTitle, site, finalURL) {
   let title = rdClean(rawTitle || '');
+  title = title.replace(/^(?:(?:breaking\s+news|berita\s+video|video|foto|live|eksklusif|update|terkini)\s*[-–—:]\s*)+/i, '').trim();
   const dc = title.match(/\s*::\s*(\S.{1,60}?)\s*$/);
   if (dc && site) {
     const norm = x => x.toLowerCase().replace(/[^a-z0-9]+/g, '');
@@ -846,7 +849,8 @@ function cleanArticleTitle(rawTitle, site, finalURL) {
   if (sep) {
     const norm = x => x.toLowerCase().replace(/[^a-z0-9]+/g, '');
     const tail = norm(sep[1]);
-    const cands = [norm(site), norm(rdHost(finalURL))].filter(x => x.length >= 4);
+    const host = rdHost(finalURL);
+    const cands = [norm(site), norm(host), norm(host.replace(/\.[a-z]{2,8}$/i, ''))].filter(x => x.length >= 3);
     if (tail && cands.some(s => s === tail || s.includes(tail) || tail.includes(s))) {
       title = title.slice(0, sep.index).trim();
     }
@@ -862,9 +866,16 @@ function rdExtract(html, finalURL, opts = {}) {
   const vid = ld.find(n => /video/i.test(String(n['@type'] || ''))) || {};
   const pubName = art.publisher && (typeof art.publisher === 'string' ? art.publisher : art.publisher.name);
   const site = WireCore.cleanSiteName(meta['og:site_name'] || pubName || '', finalURL);
-  const rawTitle = meta['og:title'] || meta['twitter:title'] || rdName(art.headline) ||
+  let rawTitle = meta['og:title'] || meta['twitter:title'] || rdName(art.headline) ||
     (sHtml.match(/<title[^>]*>([\s\S]*?)<\/title>/i) || [])[1] || '';
-  const title = cleanArticleTitle(rawTitle, site, finalURL);
+  if (!rawTitle) {
+    const h1 = (sHtml.match(/<h1\b[^>]*>([\s\S]*?)<\/h1>/i) || [])[1];
+    if (h1) rawTitle = rdClean(h1);
+  }
+  let title = cleanArticleTitle(rawTitle, site, finalURL);
+  if ((!title || title === rdHost(finalURL)) && opts.expectedTitle) {
+    title = cleanArticleTitle(opts.expectedTitle, site, finalURL);
+  }
   const rawDesc = meta['og:description'] || meta['twitter:description'] || meta.description ||
     (typeof art.description === 'string' ? art.description : '') || '';
   const byline = meta.author || meta['article:author'] || rdName(art.author) || '';
@@ -990,7 +1001,7 @@ function rdExtract(html, finalURL, opts = {}) {
     offTopic,
     url: finalURL,
     final: finalURL,
-    title: title || rdHost(finalURL) || 'Tanpa judul',
+    title: ((!title || title === rdHost(finalURL)) && opts.expectedTitle ? cleanArticleTitle(opts.expectedTitle, site, finalURL) : title) || rdHost(finalURL) || 'Tanpa judul',
     site,
     byline,
     time: time ? String(time) : '',

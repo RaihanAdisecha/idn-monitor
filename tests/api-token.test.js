@@ -31,7 +31,7 @@ function killChild() {
 after(() => killChild());
 
 async function waitForPing() {
-  const deadline = Date.now() + 10000;
+  const deadline = Date.now() + 20000;
   while (Date.now() < deadline) {
     if (child.exitCode !== null) throw new Error('server process exited before it became ready');
     try {

@@ -83,6 +83,7 @@
     'kontan.co.id': 'Kontan',
     'katadata.co.id': 'Katadata',
     'tirto.id': 'Tirto',
+    'bsinews.id': 'BSI News',
     'idntimes.com': 'IDN Times',
     'brilio.net': 'Brilio',
     'youtube.com': 'YouTube',
@@ -93,7 +94,7 @@
     const s = String(v || '').trim();
     if (!s) return '';
     const looksUrl = /^(?:https?:)?\/\//i.test(s) || /^www\./i.test(s);
-    const looksDom = /^[a-z0-9-]+(?:\.[a-z0-9-]+)+\.[a-z]{2,}(?:[/:?#]|$)/i.test(s);
+    const looksDom = /^[a-z0-9-]+(?:\.[a-z0-9-]+)*\.[a-z]{2,}(?:[/:?#]|$)/i.test(s);
     if (!looksUrl && !looksDom) return '';
     try {
       const u = new URL(/^https?:\/\//i.test(s) ? s : (/^\/\//.test(s) ? 'https:' + s : 'https://' + s));

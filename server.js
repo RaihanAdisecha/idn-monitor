@@ -3801,6 +3801,49 @@ function formatThumbResponse(mediaRes) {
   };
 }
 
+function injectSyntheticHead(html, md = {}) {
+  let s = String(html || '');
+  if (!md || typeof md !== 'object') return s;
+  const escAttr = v => String(v || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const title = md.title || md.ogTitle || md['og:title'] || '';
+  const desc = md.description || md.ogDescription || md['og:description'] || '';
+  const site = md.ogSiteName || md['og:site_name'] || '';
+  const time = md['article:published_time'] || md.publishedTime || '';
+  const author = md['article:author'] || md.author || '';
+  const img = md.ogImage || (Array.isArray(md['og:image']) ? md['og:image'][0] : md['og:image']) || '';
+
+  const tags = [];
+  if (title) {
+    if (!/<title\b/i.test(s)) tags.push(`<title>${escAttr(title)}</title>`);
+    if (!/<meta\b[^>]*property=["']og:title["']/i.test(s)) tags.push(`<meta property="og:title" content="${escAttr(title)}">`);
+  }
+  if (desc && !/<meta\b[^>]*property=["']og:description["']/i.test(s)) {
+    tags.push(`<meta property="og:description" content="${escAttr(desc)}">`);
+    tags.push(`<meta name="description" content="${escAttr(desc)}">`);
+  }
+  if (site && !/<meta\b[^>]*property=["']og:site_name["']/i.test(s)) {
+    tags.push(`<meta property="og:site_name" content="${escAttr(site)}">`);
+  }
+  if (time && !/<meta\b[^>]*property=["']article:published_time["']/i.test(s)) {
+    tags.push(`<meta property="article:published_time" content="${escAttr(time)}">`);
+  }
+  if (author && !/<meta\b[^>]*name=["']author["']/i.test(s)) {
+    tags.push(`<meta name="author" content="${escAttr(author)}">`);
+  }
+  if (img && !/<meta\b[^>]*property=["']og:image["']/i.test(s)) {
+    tags.push(`<meta property="og:image" content="${escAttr(img)}">`);
+  }
+  if (!tags.length) return s;
+
+  if (/<head\b[^>]*>/i.test(s)) {
+    return s.replace(/<head\b[^>]*>/i, `$&\n${tags.join('\n')}`);
+  }
+  if (/<body\b/i.test(s)) {
+    return s.replace(/<body\b/i, `<head>\n${tags.join('\n')}\n</head>\n$&`);
+  }
+  return `<head>\n${tags.join('\n')}\n</head>\n${s}`;
+}
+
 async function thumbRun(u) {
   const x = publicURL(u);
   if (!x) throw new Error('url tidak valid');
@@ -3930,9 +3973,11 @@ async function thumbFetchAndResolve(u, article, canon, wireIt) {
         }, 9000);
         if (r.ok) {
           const j = await r.json();
-          const html = j && j.data && j.data.html;
+          let html = j && j.data && j.data.html;
+          const md = (j && j.data && j.data.metadata) || {};
           if (html && String(html).length > 500 && !BOT_CHALLENGE_RE.test(String(html).slice(0, 30000))) {
-            doc = { html: String(html).slice(0, 3e6), finalUrl: article, via: 'firecrawl' };
+            html = injectSyntheticHead(String(html), md);
+            doc = { html: html.slice(0, 3e6), finalUrl: article, via: 'firecrawl' };
             fcOk = true;
           }
         }
@@ -5443,17 +5488,18 @@ async function rdRead(raw, bg, forceFresh = false) {
         }, Math.min(15000, left() - 5000));
         if (r.ok) {
           const j = await r.json();
-          const html = j && j.data && j.data.html;
+          let html = j && j.data && j.data.html;
+          const md = (j && j.data && j.data.metadata) || {};
           if (html && String(html).length > 500) {
-            const d = evaluateHtml(String(html).slice(0, 3e6), target);
-            const md = j.data.metadata || {};
+            html = injectSyntheticHead(String(html), md);
+            const d = evaluateHtml(html.slice(0, 3e6), target);
             if (!d.title || /^(undefined|null)$/i.test(d.title) || d.title === rdHost(target)) d.title = md.title || md.ogTitle || d.title;
             if (!d.desc && (md.ogDescription || md['og:description'])) d.desc = md.ogDescription || md['og:description'];
             if (!d.byline && md.author) d.byline = md.author;
             if (!d.time && md['article:published_time']) d.time = md['article:published_time'];
             fetchMs = Date.now() - t0;
             fcOk = true;
-            return await fin(d, target, String(html), null, 'firecrawl');
+            return await fin(d, target, html, null, 'firecrawl');
           }
         }
       } catch (e) { lastErr = e; attempts.push({ via: 'firecrawl', err: String(e && e.message || e).slice(0, 90) }); }

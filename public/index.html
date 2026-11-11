@@ -3308,7 +3308,7 @@ const catOfTitle = t => {
   if (!hits.size) return '';
   return resolveCategory(hits, t);
 };
-const SRC_TAIL = /(kompas|antara|detik|cnn|tempo|liputan6|republika|tribun|cnbc|jpnn|okezone|jawapos|viva|kumparan|suara|radar|inilah|merdeka|indosport|youtube|news|kabar|berita|radio|bmkg|bnpb|bpbd|kemendagri|kapolri|tni|voice|akurat|acehinfo|polda|polres|polsek|polresta|tribrata|tribatanews|tribratanews|times|update|harian|pos|post|media|koran|portal|suarakalbar|suarasurabaya|conversation|\btv\b)/i;
+const SRC_TAIL = /(kompas|antara|detik|cnn|tempo|liputan6|republika|tribun|cnbc|jpnn|okezone|jawapos|viva|kumparan|suara|radar|inilah|merdeka|indosport|youtube|news|bsinews|kabar|berita|radio|bmkg|bnpb|bpbd|kemendagri|kapolri|tni|voice|akurat|acehinfo|polda|polres|polsek|polresta|tribrata|tribatanews|tribratanews|times|update|harian|pos|post|media|koran|portal|suarakalbar|suarasurabaya|conversation|\btv\b)/i;
 const DOMAIN_TAIL = /\.(?:com|id|net|org|co|asia|info|tv|xyz|online|site|biz|tech|me|app|pro|co\.[a-z]{2}|go\.[a-z]{2}|or\.[a-z]{2}|ac\.[a-z]{2}|sch\.[a-z]{2}|my\.id|web\.id|biz\.id)(?:\:[0-9]+)?$/i;
 const cleanTitle = (t, pub) => {
   let s0 = String(t || '').trim();
@@ -3358,7 +3358,11 @@ const tkPub = v => {
 };
 const cleanSrc = (src, pub) => {
   const p = tkPub(pub);
-  if (p) return p.replace(/\s*[·•|–—-]\s*(?:kesehatan|keracunan|bencana|banjir|kebakaran|demo|kriminal|ekonomi|politik|siber|lingkungan|insiden|metro|nasional|internasional|hukum|daerah|regional|situasi|feed|news|update|terkini|breaking).*$/i, '').trim() || p;
+  if (p) {
+    const wc = (typeof window !== 'undefined' && window.WireCore) || (typeof WireCore !== 'undefined' ? WireCore : null);
+    const branded = (wc && wc.cleanSiteName) ? wc.cleanSiteName(p, '') : p;
+    return branded.replace(/\s*[·•|–—-]\s*(?:kesehatan|keracunan|bencana|banjir|kebakaran|demo|kriminal|ekonomi|politik|siber|lingkungan|insiden|metro|nasional|internasional|hukum|daerah|regional|situasi|feed|news|update|terkini|breaking).*$/i, '').trim() || branded;
+  }
   let s = String(src || '').trim();
   if (/^GNEWS\s*[·•|–—-]/i.test(s)) return 'GNEWS';
   return s.replace(/\s*[·•|–—-]\s*(?:kesehatan|keracunan|bencana|banjir|kebakaran|demo|kriminal|ekonomi|politik|siber|lingkungan|insiden|metro|nasional|internasional|hukum|daerah|regional|situasi|feed|news|update|terkini|breaking).*$/i, '').trim() || s;
