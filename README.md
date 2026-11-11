@@ -36,8 +36,11 @@ Semua secret dibaca dari env / `.env` (file `.env` dimuat otomatis oleh `server.
 | `X_AUTH_TOKEN` + `X_CT0` | Cookie sesi X untuk search (wajib untuk `/api/x`) |
 | `X_BEARER`, `X_QUERY_ID` | Opsional — override bearer/query-id X |
 | `PORT` / `SERVER_PORT` | Port listen (default 8787) |
-| `SITREP_TOKEN` | Token gate API; kosong → token acak per-boot (lihat **Token API**) |
-| `SITREP_INSECURE_TLS` | `1` = matikan validasi TLS (hanya debugging, jangan di produksi) |
+| `SITREP_TOKEN` | Token gate API (dipakai di mode lokal atau klien headless bila diset eksplisit) |
+| `SITREP_USERS` | Daftar akun sesi + RBAC (`user:role:password` atau `scrypt$...`, role `viewer`/`operator`/`admin`) |
+| `SITREP_AUTH_SECRET` | Secret HMAC-SHA256 untuk cookie `HttpOnly` `sitrep_sess` |
+| `SITREP_TRUST_PROXY` | `1` = percaya `X-Forwarded-For` / `X-Forwarded-Proto` di belakang reverse proxy |
+| `SITREP_EXTRA_CA` | Path file PEM CA tambahan untuk verifikasi TLS upstream (opsional) |
 
 > **Catatan:** file `.env` yang ada saat ini **belum memuat `FIRECRAWL_API_KEY`**, padahal kode dan README merujuknya. Tambahkan dari `.env.example` agar fallback reader anti-bot berfungsi.
 
@@ -63,9 +66,10 @@ http://<host-frontend>/?api=https://server-sitrep&token=<TOKEN>
 
 ```
 server.js          API + scraping + proxy + WS
+security.js        DNS-pinned HTTP/TLS client, AIA repair, sesi/RBAC, rate-limit, fatal guard
 public/index.html  seluruh UI (CSS+JS inline)
 vendor/            threads scraper python
-start.sh           bootstrap venv + jalankan server (untuk panel host)
+start.sh           bootstrap venv + supervisor restart loop server
 data/              history sosial persisten (runtime, di-gitignore)
 fxhist.json        histori forex (runtime, di-gitignore)
 ```
@@ -92,5 +96,24 @@ node scripts/audit-reader.js  # audit noise reader: [maxPerSource] [baseUrl]
 ## Catatan
 
 - X scraping memakai cookie akun sendiri — rotasi `auth_token`/`ct0` berkala.
-- Endpoint `/img`, `/api/read`, proxy endpoints memblokir host privat (SSRF guard). `/img`, `/hls`, `/vhs` juga melewati gate token (lihat **Token API**).
-- Validasi TLS **tidak lagi** diatur lewat `config.json` — flag `"insecure_tls"` sudah dihapus dari `config.json` dan tidak dibaca `server.js`. Untuk mematikannya wajib set env **`SITREP_INSECURE_TLS=1`** secara eksplisit (hanya debugging, jangan di produksi).
+- Endpoint `/img`, `/hls`, `/vhs`, `/api/read` mempin IP hasil validasi DNS ke socket koneksi (tahan DNS rebinding) dan memblokir host privat.
+- Verifikasi sertifikat TLS selalu aktif (tidak ada fallback `rejectUnauthorized: false`). Upstream yang rantai intermediate-nya tidak lengkap ditambal lewat AIA chain repair yang terjangkar ke CA tepercaya (`tls.rootCertificates` + `SITREP_EXTRA_CA`).
+- Untuk deployment publik, set **`SITREP_USERS`** dan **`SITREP_AUTH_SECRET`** agar login memakai cookie `HttpOnly` dan RBAC (`viewer` / `operator` / `admin`) tanpa menanam token API ke HTML.
+
+## CCTV: arsitektur & operasi
+
+Prinsip: **control plane di server, data plane langsung dari browser ke origin kamera**. Proxy `/hls` hanya cadangan (host tanpa CORS, geo-block), jadi dibuat murah.
+
+| Bagian | File | Fungsi |
+|---|---|---|
+| Logika murni klien | `public/cctv-core.js` | dedupe stream, sanitasi `fb`, urutan langkah playback, scheduler per-host (round-robin) |
+| Gateway server | `cctv-gateway.js` | lane `/hls` sendiri (maks 48, 8 per host), cache playlist + segmen, coalescing, tee-stream, rate limit per IP (request + byte), snapshot ffmpeg, laporan kesehatan (kuorum 2 pelapor), RUM |
+| Katalog + probe | `server.js` | sumber BPJT/Jogja/Bekasi/Molecool, probe 12 paralel via lane terpisah, deteksi CORS per host (`d:0` = langsung proxy) |
+
+Endpoint: `/hls`, `/api/cctv`, `/api/cctv/snap?u=` (butuh `ffmpeg`, 501 bila tidak ada), `/api/cctv/report`, `/api/cctv/rum` (POST), `/api/cctv/stats` (ttff p50/p95, gagal, stall per host + metrik gateway).
+
+Env: `TRUST_PROXY=1` (otomatis di Railway) agar IP klien dibaca dari `x-forwarded-for`; `SITREP_DATA_DIR` memindahkan folder history (mis. ke volume Railway); `FFMPEG_PATH` bila ffmpeg tidak ada di PATH.
+
+Batas klien (`index.html`): 6 load paralel, 2 per host, 6 live bersamaan (`LIVE_CAP`), sisanya snapshot; slot yang macet >12 dtk dilepas bila host lain antre; sel di luar layar >20 dtk dibongkar (decoder + elemen video).
+
+Skala lanjut (belum diimplementasi, butuh keputusan infrastruktur): pisah proses web/gateway vs worker sosial, katalog + status kesehatan di Redis untuk multi-replica, CDN di depan `/hls`.

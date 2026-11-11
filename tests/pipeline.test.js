@@ -17,14 +17,15 @@ const banjirReg = [{ id: 'banjir', pos: /banjir/i }];
 const reportTypeOf = (text) => A.assess(text, banjirReg).findings[0].reportType;
 
 test('FEED_ONLY topics never produce a signalEligible finding', () => {
-  const feedOnly = ['mbg', 'bbm', 'pangan', 'bansos', 'hukum', 'olahraga', 'transport', 'pendidikan'];
+  const feedOnly = ['mbg', 'bbm', 'pangan', 'bansos', 'hukum', 'transport', 'pendidikan'];
   for (const id of feedOnly) assert.ok(A.FEED_ONLY.has(id), `${id} should be in FEED_ONLY`);
+  assert.equal(A.FEED_ONLY.has('olahraga'), false, 'olahraga must not be in FEED_ONLY');
 
   const registry = feedOnly.map((id) => ({ id, pos: new RegExp(id, 'i') }));
   // Include concrete event language + an Indonesian location so these findings
   // would otherwise look reportable; the FEED_ONLY flag must still veto signals.
   const r = A.assess(
-    'MBG BBM Pangan Bansos Hukum Olahraga Transport Pendidikan melanda Jakarta terjadi',
+    'MBG BBM Pangan Bansos Hukum Transport Pendidikan melanda Jakarta terjadi',
     registry,
   );
   const findings = r.findings.filter((f) => A.FEED_ONLY.has(f.topic));

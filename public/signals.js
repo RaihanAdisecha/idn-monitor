@@ -21,7 +21,10 @@
     'dini reported report laporan lapor dilaporkan server rumah akun account house ' +
     'attack serangan siber cyber ransomware outage padam listrik insiden incident ' +
     'kecelakaan accident accidents penembakan shooting pencurian theft penangkapan arrest ' +
-    'longsor landslide wabah outbreak karhutla wildfire bmkg bpbd pvmbg magnitudo magnitude').split(/\s+/));
+    'longsor landslide wabah outbreak karhutla wildfire bmkg bpbd pvmbg magnitudo magnitude ' +
+    'malam pagi siang sore subuh barusan kemarin hebat besar parah diduga akibat ' +
+    'wilayah daerah kawasan lokasi sekitar dekat kota kabupaten provinsi kecamatan kelurahan desa ' +
+    'barat timur utara selatan tengah pusat').split(/\s+/));
   const GENERIC_TARGETS = new Set(['server', 'rumah', 'akun', 'account', 'house', 'website', 'situs', 'system', 'sistem']);
 
   function normalize(value) {
@@ -30,10 +33,13 @@
       .replace(/[^\p{L}\p{N}]+/gu, ' ').trim().replace(/\s+/g, ' ') : '';
   }
 
-  function tokens(value) {
+  function tokens(value, locationName, targetName) {
     const evidence = typeof value === 'string' ? value.replace(/@[\p{L}\p{N}_.]+/gu, ' ') : '';
+    const excl = new Set();
+    if (locationName) for (const w of normalize(locationName).split(' ')) if (w) excl.add(w);
+    if (targetName) for (const w of normalize(targetName).split(' ')) if (w) excl.add(w);
     return Array.from(new Set(normalize(evidence).split(' ')
-      .filter(token => token.length > 1 && !GENERIC.has(token) && !/^\d+$/.test(token))));
+      .filter(token => token.length > 1 && !GENERIC.has(token) && !excl.has(token) && !/^\d+$/.test(token))));
   }
 
   function validTime(ts, now, window) {
@@ -52,6 +58,7 @@
   function eligibleEvents(post) {
     const a = currentAssessment(post);
     if (!a || !a.signalEligible || a.scope !== 'Indonesia' || !REPORT_TYPES.has(a.reportType)) return [];
+    if (typeof a.feedLane === 'string' && a.feedLane !== 'incident_signals') return [];
     return a.events.filter(event => event && event.scope === 'Indonesia' &&
       REPORT_TYPES.has(event.reportType) && event.signalEligible === true && typeof event.topic === 'string' &&
       a.topics.includes(event.topic) && typeof event.category === 'string' && event.category.trim() &&
@@ -89,41 +96,25 @@
     const anchorStrong = (placeA && placeA === placeB) || (targetA && targetA === targetB);
     const anchorWeak = anchorStrong || (provA && provA === provB);
     if (!anchorWeak) return null;
-    const left = new Set(tokens(a.evidence)), right = new Set(tokens(b.evidence));
+    const left = new Set(tokens(a.evidence, placeA, targetA));
+    const right = new Set(tokens(b.evidence, placeB, targetB));
     let overlap = 0;
     for (const token of left) if (right.has(token)) overlap++;
     const union = left.size + right.size - overlap;
     const jac = union ? overlap / union : 0;
-    // Strong butuh anchor + evidence — headline vs tweet wajar beda diksi jadi jac
-    // ketat dibuang; sebagai gantinya tipe kejadian langka (gempa/erupsi/tsunami/
-    // ransomware/dll) di tempat spesifik (POI/kab/kota) boleh strong dengan
-    // overlap >= 1. Tipe umum (kebakaran/demo) di tempat umum butuh overlap >= 2.
-    const precA = normalize(a.location && a.location.prec), precB = normalize(b.location && b.location.prec);
-    const specific = (placeA && placeA === placeB && /^(poi|desa|kelurahan|kec|kab|kota|kodya|city|district|kecamatan)/.test(precA || precB || '')) ||
-      (targetA && targetA === targetB);
-    const rare = /gempa|earthquake|tsunami|erupsi|eruption|letusan|ransomware|data_breach|ddos|wabah|outbreak|penembakan|pembunuhan|homicide|longsor|landslide|karhutla|tenggelam|ambruk|collapse|maritime|narkoba|penculikan|perkosaan|rudapaksa/i.test(normalize(a.type));
-    if (anchorStrong && (overlap >= 2 || (overlap >= 1 && jac >= 0.18) || (overlap >= 1 && specific && rare))) return 'strong';
-    if ((anchorStrong || anchorWeak) && overlap >= 1) return 'weak';
-    return null;
-  }
-  // matches() strict: hanya 'strong' DAN anchor exact + overlap minimal —
-  // dipakai grouping sinyal/klaster, jangan dilonggarkan.
-  function matches(a, b) {
-    if (relation(a, b) !== 'strong') return false;
-    const placeA = locationOf(a), placeB = locationOf(b);
-    const targetA = targetOf(a), targetB = targetOf(b);
-    const anchorStrict = (placeA && placeA === placeB) || (targetA && targetA === targetB);
-    if (!anchorStrict) return false;
-    const left = new Set(tokens(a.evidence)), right = new Set(tokens(b.evidence));
-    let overlap = 0;
-    for (const token of left) if (right.has(token)) overlap++;
-    const union = left.size + right.size - overlap;
     const precA = normalize(a.location && a.location.prec), precB = normalize(b.location && b.location.prec);
     const specific = Boolean((placeA && placeA === placeB && /^(poi|desa|kelurahan|kec|kab|kota|kodya|city|district|kecamatan)/.test(precA || precB || '')) ||
       (targetA && targetA === targetB));
     const rare = /gempa|earthquake|tsunami|erupsi|eruption|letusan|ransomware|data_breach|ddos|wabah|outbreak|penembakan|pembunuhan|homicide|longsor|landslide|karhutla|tenggelam|ambruk|collapse|maritime|narkoba|penculikan|perkosaan|rudapaksa/i.test(normalize(a.type));
-    return Boolean((overlap >= 2 && union > 0 && overlap / union >= 0.18) ||
-      (overlap >= 1 && specific && rare && union > 0 && overlap / union >= 0.12));
+    const strong = anchorStrong && union > 0 && ((overlap >= 2 && jac >= 0.18) || (overlap >= 1 && specific && rare && jac >= 0.12));
+    if (strong) return 'strong';
+    if ((anchorStrong || anchorWeak) && overlap >= 1) return 'weak';
+    return null;
+  }
+  // matches() strict: hanya 'strong' (anchor exact + overlap/jaccard minimal) —
+  // dipakai grouping sinyal/klaster, jangan dilonggarkan.
+  function matches(a, b) {
+    return relation(a, b) === 'strong';
   }
 
   function platform(post) { return normalize(post.from); }
@@ -132,11 +123,21 @@
     return platform(post) + '\u0000' + (typeof post.url === 'string' && post.url.trim() || normalize(textOf(post)));
   }
 
+  function dedupeText(value) {
+    if (typeof value !== 'string') return '';
+    return normalize(
+      value
+        .replace(/^\s*(?:rt|repost)\s+@[\p{L}\p{N}_.]+:?\s*/iu, '')
+        .replace(/\b(?:via|sumber|source|cc)\s*[:@]?\s*@?[\p{L}\p{N}_.]+\b/giu, ' ')
+        .replace(/@[\p{L}\p{N}_.]+/gu, ' ')
+    );
+  }
+
   function dedupe(posts, keyOf) {
     const keys = new Set(), texts = new Set(), result = [];
     // Latest copy wins; sorting a copy leaves the caller's input untouched.
     for (const post of posts.slice().sort((a, b) => b.ts - a.ts)) {
-      const key = keyOf(post), text = normalize(textOf(post));
+      const key = keyOf(post), text = dedupeText(textOf(post));
       if (keys.has(key) || (text && texts.has(text))) continue;
       keys.add(key);
       if (text) texts.add(text);
@@ -177,17 +178,25 @@
       }
     }
     for (const group of groups) {
-      const accounts = new Set(), platforms = new Set();
+      const accounts = new Set(), platforms = new Set(), sourceTypes = new Set();
       for (const post of group.posts) {
         const from = platform(post), handle = typeof post.handle === 'string' ?
           post.handle.trim().replace(/^@/, '').normalize('NFKC').toLowerCase() : '';
         if (from && handle) accounts.add(from + '\u0000' + handle);
         if (typeof post.from === 'string' && post.from.trim()) platforms.add(post.from.trim());
+        const st = post.assessment && post.assessment.provenance && post.assessment.provenance.sourceType;
+        if (st) sourceTypes.add(st);
       }
       group.n = group.posts.length;
       group.accounts = accounts.size;
       group.from = Array.from(platforms).join(' + ');
       group.confidence = accounts.size > 1 ? 'multiple_accounts' : 'unverified';
+      group.provenanceSummary = {
+        hasOfficial: sourceTypes.has('official_agency'),
+        hasNews: sourceTypes.has('news_outlet'),
+        hasEyewitness: sourceTypes.has('eyewitness'),
+        sourceTypes: Array.from(sourceTypes),
+      };
     }
     return groups.sort((a, b) => b.latest - a.latest);
   }

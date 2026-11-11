@@ -264,3 +264,45 @@ test('category mismatch cannot merge otherwise identical events', () => {
   assert.equal(signals.matches(event(), event({ category: 'fire' })), false);
   assert.equal(signals.buildGroups([distinct(1), distinct(2, {}, { category: 'fire' })], NOW).length, 2);
 });
+
+test('unrelated same-city fires sharing only generic city or time tokens never merge', () => {
+  const e1 = event({
+    topic: 'kebakaran', category: 'fire', type: 'fire',
+    location: { name: 'Jakarta Selatan' },
+    evidence: 'Kebakaran rumah warga semalam akibat korsleting di Jakarta Selatan'
+  });
+  const e2 = event({
+    topic: 'kebakaran', category: 'fire', type: 'fire',
+    location: { name: 'Jakarta Selatan' },
+    evidence: 'Kebakaran ruko pagi barusan diduga gas bocor di Jakarta Selatan'
+  });
+  assert.notEqual(signals.relation(e1, e2), 'strong');
+  assert.equal(signals.matches(e1, e2), false);
+  const p1 = post({ url: 'https://x.com/u1/status/901', handle: '@u1', text: e1.evidence }, e1);
+  p1.assessment.topics = ['kebakaran']; p1.assessment.events = [e1];
+  const p2 = post({ url: 'https://x.com/u2/status/902', handle: '@u2', text: e2.evidence }, e2);
+  p2.assessment.topics = ['kebakaran']; p2.assessment.events = [e2];
+  assert.equal(signals.buildGroups([p1, p2], NOW).length, 2);
+});
+
+test('matches() and relation() === strong stay strictly aligned across shared evidence', () => {
+  const e1 = event({
+    topic: 'kebakaran', category: 'fire',
+    location: { name: 'Depok' },
+    evidence: 'Kebakaran pabrik tekstil cimanggis malam ini di Depok'
+  });
+  const e2 = event({
+    topic: 'kebakaran', category: 'fire',
+    location: { name: 'Depok' },
+    evidence: 'Api melalap pabrik tekstil cimanggis di Depok'
+  });
+  const e3 = event({
+    topic: 'kebakaran', category: 'fire',
+    location: { name: 'Depok' },
+    evidence: 'Kebakaran gudang kayu sawangan pagi di Depok'
+  });
+  assert.equal(signals.relation(e1, e2), 'strong');
+  assert.equal(signals.matches(e1, e2), true);
+  assert.notEqual(signals.relation(e1, e3), 'strong');
+  assert.equal(signals.matches(e1, e3), false);
+});

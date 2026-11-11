@@ -72,6 +72,12 @@ function mergeEvents(out, prevPins, opts) {
     const pt = new Set(pk.split(' '));
     return new Set(bn(title).split(' ').filter(w => w.length >= 5 && !EV_GENERIC.has(w) && !pt.has(w)));
   };
+  // Fallback discriminator tokens for EID stability when rareU is empty
+  // (e.g. generic nouns like "rumah" vs "pasar" in the same city).
+  const eidDiscriminators = (title, pk) => {
+    const pt = new Set(pk.split(' '));
+    return [...new Set(bn(title).split(' ').filter(w => w.length >= 3 && !TSTOP.has(w) && !pt.has(w)))].sort();
+  };
 
   const prevByKey = new Map();
   for (const pp of (prevPins || [])) {
@@ -96,9 +102,12 @@ function mergeEvents(out, prevPins, opts) {
   }
 
   const merged = [];
+  const used = new Set();   // prev & new eid must stay strictly unique per cluster across the batch
   for (const [key, members0] of groups) {
     const cut = key.indexOf('|');
     const cat = key.slice(0, cut), pk = key.slice(cut + 1);
+    // Deterministic pre-sort by report quality then recency so clustering is order-independent
+    members0.sort((a, b) => repScore(b.p) - repScore(a.p) || (b.p.ts || 0) - (a.p.ts || 0));
     const hz = members0.map(m => hazardOf(m.p.title));
 
     // Document-frequency guard: token yang muncul di >30% judul grup DAN juga
@@ -120,7 +129,7 @@ function mergeEvents(out, prevPins, opts) {
 
     // Satu token langka saja TIDAK cukup — dua insiden berbeda di kota yang sama
     // sering kebetulan berbagi satu nama. Butuh >=2 token langka, atau kekerabatan
-    // bencana (sameHaz). Klaster dibangun terhadap REPRESENTATIVE (anggota pertama),
+    // bencana (sameHaz). Klaster dibangun terhadap REPRESENTATIVE (anggota terbaik/terpilih),
     // bukan union-find: rantai A-B-C tidak lagi menelan A dan C jadi satu pin.
     const cls = [];
     members0.forEach((m, i) => {
@@ -128,23 +137,43 @@ function mergeEvents(out, prevPins, opts) {
       if (cl) cl.members.push(i); else cls.push({ rep: i, members: [i] });
     });
 
-    const used = new Set();   // prev eid hanya boleh diklaim satu cluster
     for (const { members: idxs } of cls) {
       const members = idxs.map(i => members0[i]);
       members.sort((a, b) => repScore(b.p) - repScore(a.p) || (b.p.ts || 0) - (a.p.ts || 0));
       const rep = members[0].p;
+      const hzRep = hazardOf(rep.title);
       const rareU = new Set();
       members.forEach(m => m.rs.forEach(t => rareU.add(t)));
+      const newestTs = Math.max(...members.map(m => m.p.ts || 0));
+      const earliestTs = Math.min(...members.map(m => m.p.ts || newestTs || 0));
       let eid = '';
       for (const pp of (prevByKey.get(key) || [])) {
         if (used.has(pp.eid)) continue;
+        if (newestTs && pp.ts && Math.abs(newestTs - pp.ts) > 24 * 3600e3) continue;
         const pr = new Set(Array.isArray(pp.rt) && pp.rt.length ? pp.rt : [...rare(pp.title, pk)]);
-        if ([...rareU].some(t => pr.has(t))) { eid = pp.eid; used.add(eid); break; }
+        let shared = 0;
+        for (const t of rareU) if (pr.has(t)) shared++;
+        const sameExact = rareU.size === 0 && pr.size === 0 && bn(pp.title) === bn(rep.title);
+        const singleExact = rareU.size === 1 && pr.size === 1 && shared === 1 && (!newestTs || !pp.ts || Math.abs(newestTs - pp.ts) <= 6 * 3600e3);
+        const sameHazPrev = (cat === 'disaster' || cat === 'flood') && hzRep && hzRep === hazardOf(pp.title) &&
+          (!newestTs || !pp.ts || Math.abs(newestTs - pp.ts) <= (hzRep === 'flood' ? 6 : 12) * 3600e3);
+        if (shared >= 2 || singleExact || sameExact || sameHazPrev) {
+          eid = pp.eid; used.add(eid); break;
+        }
       }
-      if (!eid) { eid = 'e' + hash(cat + '|' + pk + '|' + [...rareU].sort().join(',')); used.add(eid); }
-      // ts event = artikel terbaru dalam cluster, bukan ts rep — pin tetap
-      // "panas" untuk fokus walau representative-nya artikel yang lebih tua
-      const item = { ...rep, eid, rt: [...rareU], ts: Math.max(...members.map(m => m.p.ts || 0)) };
+      if (!eid) {
+        const seedTokens = rareU.size
+          ? [...rareU].sort().join(',')
+          : (eidDiscriminators(rep.title, pk).join(',') || bn(rep.title)) + '@' + Math.floor((earliestTs || 0) / (12 * 3600e3));
+        eid = 'e' + hash(cat + '|' + pk + '|' + seedTokens);
+        if (used.has(eid)) {
+          eid = 'e' + hash(cat + '|' + pk + '|' + bn(rep.title) + '|' + used.size);
+        }
+        used.add(eid);
+      }
+      // reportedTs: waktu laporan representatif; lastSeenTs/ts: pembaruan terbaru cluster
+      // Event identity (eid) terpisah sepenuhnya dari UI focus atau prioritas operasional.
+      const item = { ...rep, eid, rt: [...rareU], reportedTs: rep.ts || 0, lastSeenTs: newestTs, ts: newestTs };
       if (members.length > 1) item.n = members.length;
       merged.push(item);
     }

@@ -1,0 +1,586 @@
+'use strict';
+/* CCTV gateway: jalur data fallback (proxy HLS), snapshot, laporan kesehatan, RUM.
+   Prinsip: browser memutar LANGSUNG ke origin (hemat egress + IP user bukan IP
+   datacenter). Proxy ini hanya cadangan, jadi harus murah:
+   - lane sendiri (tidak berbagi semaphore dgn reader/img/probe) + batas per host
+   - playlist di-cache pendek + coalescing (N penonton = 1 fetch upstream)
+   - segmen di-tee ke klien sambil dikumpulkan buat cache (TTFB rendah, bukan buffer-dulu)
+   - rate limit per IP (request + byte) dan budget egress
+   Semua dependensi disuntik supaya modul ini bisa dites tanpa server. */
+const { spawn } = require('child_process');
+const crypto = require('crypto');
+
+/* ---------- primitif ---------- */
+/* Lane: antrean dengan batas total DAN per-host. FIFO, host penuh dilewati. */
+function makeLane(max, perHost) {
+  let n = 0; const per = new Map(); const q = [];
+  const pump = () => {
+    for (let i = 0; i < q.length && n < max;) {
+      const j = q[i];
+      if ((per.get(j.host) || 0) >= perHost) { i++; continue; }
+      q.splice(i, 1); n++; per.set(j.host, (per.get(j.host) || 0) + 1);
+      Promise.resolve().then(j.fn).then(j.res, j.rej).finally(() => {
+        n--; const c = (per.get(j.host) || 1) - 1; if (c) per.set(j.host, c); else per.delete(j.host);
+        pump();
+      });
+    }
+  };
+  return {
+    run: (host, fn) => new Promise((res, rej) => { q.push({ host, fn, res, rej }); pump(); }),
+    stats: () => ({ active: n, queued: q.length, hosts: per.size })
+  };
+}
+/* Token bucket per kunci (IP). rate = token/detik, burst = kapasitas. */
+function makeBucket(rate, burst, now = Date.now) {
+  const m = new Map();
+  const ensure = (k, t) => {
+    let b = m.get(k);
+    if (!b) {
+      b = { v: burst, t };
+      m.set(k, b);
+      if (m.size > 5000) m.delete(m.keys().next().value);
+    }
+    return b;
+  };
+  const take = (k, cost = 1) => {
+    const t = now(); const b = ensure(k, t);
+    b.v = Math.min(burst, b.v + (t - b.t) / 1000 * rate); b.t = t;
+    if (b.v < cost) return false;
+    b.v -= cost; return true;
+  };
+  /* charge: tagih byte setelah dikirim (boleh negatif → request berikut ditolak) */
+  const charge = (k, cost) => {
+    const t = now(); const b = ensure(k, t);
+    b.v = Math.min(burst, b.v + (t - b.t) / 1000 * rate) - cost;
+    b.t = t;
+  };
+  const ok = k => { const b = m.get(k); if (!b) return true; const t = now(); return Math.min(burst, b.v + (t - b.t) / 1000 * rate) > 0; };
+  return { take, charge, ok, size: () => m.size };
+}
+/* LRU berbasis byte dengan TTL per entri. */
+function makeLru(maxBytes, now = Date.now) {
+  const m = new Map(); let bytes = 0;
+  const del = k => { const e = m.get(k); if (e) { bytes -= e.size; m.delete(k); } };
+  return {
+    get(k) { const e = m.get(k); if (!e) return null; if (now() > e.exp) { del(k); return null; } m.delete(k); m.set(k, e); return e.v; },
+    set(k, v, size, ttl) {
+      if (size > maxBytes) return;
+      del(k); m.set(k, { v, size, exp: now() + ttl }); bytes += size;
+      while (bytes > maxBytes && m.size) del(m.keys().next().value);
+    },
+    stats: () => ({ entries: m.size, bytes })
+  };
+}
+
+/* ---------- gateway ---------- */
+function createGateway(d) {
+  const {
+    getRaw,            // (url, ms, headers, hostOK, signal) -> {r, url}; SSRF-safe, tanpa semaphore global
+    hostAllowed,       // (url) -> bool
+    headersFor,        // (url) -> header upstream
+    rewriteUrl,        // async (url) -> url (token molecool segar)
+    px,                // (url) -> url proxy
+    trustProxy = false,
+    allowCors: allowCorsTop,
+    allowPublicCache: allowPublicCacheTop,
+    getClientIp: injectedClientIp,
+    rateKey: injectedRateKey,
+    isKnown = () => true,
+    isKnownHost = () => true,
+  } = d;
+  const O = Object.assign({
+    maxActive: 48, perHost: 8, snapActive: 2,
+    segCacheBytes: 64 << 20, segTtl: 30000, segCacheMax: 16 << 20, segMax: 25 << 20,
+    plMin: 500, plMax: 2500,
+    reqRate: 40, reqBurst: 200, byteRate: 3 << 20, byteBurst: 120 << 20,   // ~25 Mbps rata-rata per IP, burst 120MB
+    globalByteRate: 45 << 20, globalByteBurst: 180 << 20,                 // batas egress global NIC ~360 Mbps agar /hls fallback tidak menjatuhkan VPS
+    snapTtl: 90000, upstreamMs: 25000
+  }, d.options || {});
+  const allowCors = allowCorsTop !== undefined ? Boolean(allowCorsTop) : (O.allowCors !== undefined ? Boolean(O.allowCors) : true);
+  const allowPublicCache = Boolean(allowPublicCacheTop || O.allowPublicCache);
+
+  const lane = makeLane(O.maxActive, O.perHost);
+  const snapLane = makeLane(O.snapActive, O.snapActive);
+  const reqRl = makeBucket(O.reqRate, O.reqBurst);
+  const byteRl = makeBucket(O.byteRate, O.byteBurst);
+  const byteGlobal = makeBucket(O.globalByteRate, O.globalByteBurst);
+  const cache = makeLru(O.segCacheBytes);
+  const inflight = new Map();
+  const m = { req: 0, hit: 0, coalesced: 0, upstream: 0, rl: 0, globalRl: 0, bytesOut: 0, errors: 0, aborted: 0 };
+  const normIp = typeof injectedRateKey === 'function' ? injectedRateKey : (v => v);
+
+  const clientIp = req => {
+    let raw;
+    if (typeof injectedClientIp === 'function') raw = injectedClientIp(req, trustProxy);
+    else if (trustProxy) {
+      const xf = String(req.headers['x-forwarded-for'] || '').split(',').map(s => s.trim()).filter(Boolean);
+      if (xf.length) {
+        const hops = Math.max(1, Number(process.env.SITREP_TRUSTED_HOPS) || 1);
+        raw = xf[Math.max(0, xf.length - hops)];
+      }
+    }
+    return normIp(raw || (req.socket && req.socket.remoteAddress) || 'x');
+  };
+  const chargeBytes = (ip, n) => {
+    m.bytesOut += n;
+    if (ip) byteRl.charge(ip, n);
+    byteGlobal.charge('_', n);
+  };
+  const corsHdr = allowCors ? { 'access-control-allow-origin': '*' } : {};
+  const secHdr = { 'x-content-type-options': 'nosniff', 'content-security-policy': "default-src 'none'; sandbox" };
+  const base = { ...corsHdr, ...secHdr, 'cache-control': 'no-store' };
+  const segCacheHdr = allowCors ? 'public, max-age=60' : 'private, max-age=60';
+  const plCacheHdr = allowCors ? 'public, max-age=1, s-maxage=1' : 'no-store';
+  const deny = (res, code, extra) => {
+    if (res.writableEnded || res.destroyed) return;
+    res.writeHead(code, { ...base, ...(extra || {}) }); res.end();
+  };
+  const rate = (req, res) => {
+    const ip = clientIp(req);
+    const globalOk = byteGlobal.take('_', 0);
+    if (!globalOk || !reqRl.take(ip, 1) || !byteRl.take(ip, 0)) {
+      m.rl++;
+      if (!globalOk) m.globalRl++;
+      deny(res, 429, { 'retry-after': '5' });
+      return null;
+    }
+    return ip;
+  };
+
+  /* Kunci kanonik untuk coalescing & cache: strip nonce/token volatil dari
+     pantaucctv (?t=...) dan molecool (?token=...) supaya banyak penonton
+     mendapatkan cache hit / single-flight yang sama. */
+  function canonicalKey(raw) {
+    try {
+      const u = new URL(raw);
+      if (/(^|\.)pantaucctv\.com$/i.test(u.hostname) && u.searchParams.has('t')) {
+        const t = u.searchParams.get('t') || '';
+        const b64 = t.split('.')[0];
+        if (b64) {
+          try {
+            const payload = JSON.parse(Buffer.from(b64, 'base64url').toString('utf8'));
+            const inner = payload && (payload.u || payload.url || payload.stream);
+            if (typeof inner === 'string') {
+              const iu = new URL(inner);
+              return 'pc:' + iu.host.toLowerCase() + iu.pathname;
+            }
+          } catch {}
+        }
+        u.searchParams.delete('t');
+        return 'pc:' + u.host.toLowerCase() + u.pathname + u.search;
+      }
+      if (/^cctv\.molecool\.id$/i.test(u.hostname)) {
+        return 'mc:' + u.pathname;
+      }
+    } catch {}
+    return raw;
+  }
+
+  function rewritePlaylist(txt, furl) {
+    return txt.split('\n').map(l => {
+      const t = l.trim(); if (!t) return l;
+      if (t[0] === '#') return t.replace(/URI="([^"]+)"/g, (mm, p) => 'URI="' + px(new URL(p, furl).href) + '"');
+      return px(new URL(t, furl).href);
+    }).join('\n');
+  }
+  const plTtl = txt => {
+    if (/#EXT-X-ENDLIST/.test(txt)) return 30000;
+    const td = +((/#EXT-X-TARGETDURATION:(\d+)/.exec(txt) || [])[1] || 4);
+    return Math.max(O.plMin, Math.min(O.plMax, td * 250));
+  };
+  const sendEntry = (res, e, ip) => {
+    if (res.writableEnded || res.destroyed) return;
+    if (e.status !== 200) { res.writeHead(e.status, base); return res.end(); }
+    const buf = e.buf;
+    const cc = e.pl ? plCacheHdr : segCacheHdr;
+    res.writeHead(200, { ...base, 'cache-control': cc, 'content-type': e.ct, 'content-length': buf.length });
+    res.end(buf);
+    chargeBytes(ip, buf.length);
+  };
+  const waitDrain = res => new Promise(ok => {
+    if (!res || res.destroyed || res.writableEnded) return ok();
+    let done = false;
+    const fin = () => {
+      if (done) return;
+      done = true;
+      res.off('drain', fin);
+      res.off('close', fin);
+      res.off('error', fin);
+      ok();
+    };
+    res.once('drain', fin);
+    res.once('close', fin);
+    res.once('error', fin);
+    if (res.destroyed || res.writableEnded) fin();
+  });
+
+  function sanitizeMediaCt(ct) {
+    const low = String(ct || '').split(';')[0].trim().toLowerCase();
+    if (!low) return 'video/mp2t';
+    if (/^(?:text\/html|application\/xhtml|image\/svg|text\/javascript|application\/javascript)/i.test(low)) return 'application/octet-stream';
+    return low;
+  }
+
+  /* Leader/subscriber flight: playlist -> buffer + rewrite.
+     Segmen -> live fan-out ke semua subscriber aktif sambil dikumpulkan buat cache. */
+  function startFlight(key, url, host, keepBackground) {
+    const ac = new AbortController();
+    const fl = {
+      key,
+      ac,
+      subscribers: new Set(), // { res, ip, started, qPromise }
+      bgRef: keepBackground ? 1 : 0,
+      chunks: [],
+      total: 0,
+      collect: true,
+      isPl: null,
+      ct: '',
+      status: 0,
+      aborted: false,
+      promise: null
+    };
+    const maybeAbortUpstream = () => {
+      if (fl.subscribers.size === 0 && fl.bgRef === 0 && !fl.aborted) {
+        fl.aborted = true;
+        m.aborted++;
+        try { fl.ac.abort(); } catch {}
+      }
+    };
+    fl.attach = (res, ip) => {
+      if (!res || res.destroyed || res.writableEnded) return () => {};
+      const sub = { res, ip, headersSent: false, queue: Promise.resolve(), closed: false };
+      fl.subscribers.add(sub);
+      const onClose = () => {
+        sub.closed = true;
+        fl.subscribers.delete(sub);
+        maybeAbortUpstream();
+      };
+      res.once('close', onClose);
+      res.once('error', onClose);
+      // If streaming already started and chunks fit in memory, catch follower up cleanly
+      if (fl.isPl === false && fl.status === 200 && !fl.collect) {
+        // Segment exceeded cache budget before follower arrived -> let caller do direct retry
+        fl.subscribers.delete(sub);
+        res.off('close', onClose);
+        res.off('error', onClose);
+        return null;
+      }
+      if (fl.isPl === false && fl.status === 200) {
+        const backlog = fl.chunks.slice();
+        sub.queue = sub.queue.then(async () => {
+          if (sub.closed || res.destroyed || res.writableEnded) return;
+          res.writeHead(200, { ...base, 'cache-control': segCacheHdr, 'content-type': fl.ct });
+          sub.headersSent = true;
+          for (const prev of backlog) {
+            if (sub.closed || res.destroyed || res.writableEnded) return;
+            chargeBytes(ip, prev.length);
+            if (!res.write(prev)) await waitDrain(res);
+          }
+        }).catch(() => {});
+      }
+      return () => {
+        res.off('close', onClose);
+        res.off('error', onClose);
+        fl.subscribers.delete(sub);
+      };
+    };
+
+    const pushChunk = b => {
+      for (const sub of fl.subscribers) {
+        if (sub.closed || sub.res.destroyed || sub.res.writableEnded) continue;
+        sub.queue = sub.queue.then(async () => {
+          if (sub.closed || sub.res.destroyed || sub.res.writableEnded) return;
+          if (!sub.headersSent) {
+            sub.res.writeHead(200, { ...base, 'cache-control': segCacheHdr, 'content-type': fl.ct });
+            sub.headersSent = true;
+          }
+          chargeBytes(sub.ip, b.length);
+          if (!sub.res.write(b)) await waitDrain(sub.res);
+        }).catch(() => {});
+      }
+    };
+
+    const endSubscribers = async () => {
+      const waits = [];
+      for (const sub of fl.subscribers) {
+        waits.push(sub.queue.then(() => {
+          if (!sub.closed && !sub.res.destroyed && !sub.res.writableEnded) {
+            if (!sub.headersSent && fl.status === 200) {
+              sub.res.writeHead(200, { ...base, 'cache-control': segCacheHdr, 'content-type': fl.ct });
+            }
+            sub.res.end();
+          }
+        }).catch(() => {}));
+      }
+      await Promise.all(waits);
+    };
+
+    fl.promise = lane.run(host, async () => {
+      if (fl.aborted) return { status: 499, noCache: true };
+      m.upstream++;
+      let g;
+      try { g = await getRaw(url, O.upstreamMs, headersFor(url), hostAllowed, fl.ac.signal); }
+      catch (e) { if (!fl.aborted) m.errors++; return { status: fl.aborted ? 499 : 502, noCache: true }; }
+      const r = g.r, furl = g.url, ct = r.headers.get('content-type') || '';
+      if (!r.ok) { try { r.body && r.body.cancel && await r.body.cancel(); } catch (e) {} return { status: r.status, noCache: true }; }
+      const isPl = /mpegurl/i.test(ct) || /\.m3u8(\?|#|$)/i.test(furl);
+      fl.isPl = isPl;
+      fl.ct = isPl ? 'application/vnd.apple.mpegurl' : sanitizeMediaCt(ct);
+      fl.status = 200;
+      const reader = r.body && r.body.getReader ? r.body.getReader() : null;
+      const limit = isPl ? 2 << 20 : O.segMax;
+      try {
+        if (!reader) {
+          const b = Buffer.from(await r.arrayBuffer());
+          if (b.length > limit) return { status: 413, noCache: true };
+          fl.chunks.push(b); fl.total = b.length;
+        } else {
+          for (;;) {
+            if (fl.aborted) { try { await reader.cancel(); } catch {} return { status: 499, noCache: true }; }
+            const { done, value } = await reader.read();
+            if (done) break;
+            fl.total += value.length;
+            if (fl.total > limit) {
+              try { await reader.cancel(); } catch {}
+              for (const sub of fl.subscribers) { if (sub.headersSent && !sub.res.destroyed) sub.res.destroy(); }
+              return { status: 413, noCache: true };
+            }
+            const b = Buffer.from(value);
+            if (fl.collect) {
+              if (fl.total > O.segCacheMax && !isPl) {
+                fl.collect = false;
+                if (fl.bgRef === 0) fl.chunks.length = 0;
+                else {
+                  // Retain at most first ~2MB for ffmpeg prefix snapshot extraction
+                  let kept = 0, cut = 0;
+                  while (cut < fl.chunks.length && kept < (2 << 20)) kept += fl.chunks[cut++].length;
+                  fl.chunks.length = cut;
+                }
+              } else {
+                fl.chunks.push(b);
+              }
+            }
+            if (!isPl) pushChunk(b);
+          }
+        }
+      } catch (e) {
+        if (!fl.aborted) m.errors++;
+        for (const sub of fl.subscribers) { if (sub.headersSent && !sub.res.destroyed) sub.res.destroy(); }
+        return { status: fl.aborted ? 499 : 502, noCache: true };
+      }
+      if (isPl) {
+        let txt = Buffer.concat(fl.chunks).toString('utf8');
+        if (!txt.includes('#EXTM3U')) return { status: 502, noCache: true };
+        try { txt = rewritePlaylist(txt, furl); } catch (e) { return { status: 502, noCache: true }; }
+        const buf = Buffer.from(txt);
+        return { status: 200, ct: 'application/vnd.apple.mpegurl', buf, ttl: plTtl(txt), pl: true };
+      }
+      await endSubscribers();
+      const buf = fl.collect ? Buffer.concat(fl.chunks) : null;
+      return { status: 200, ct: fl.ct, buf, snapPrefix: (!fl.collect && fl.bgRef > 0 && fl.chunks.length) ? Buffer.concat(fl.chunks) : null, ttl: O.segTtl, streamed: true };
+    });
+    return fl;
+  }
+
+  /* Entri point /hls */
+  async function hls(rawUrl, req, res) {
+    m.req++;
+    const ip = rate(req, res); if (!ip) return;
+    if (!rawUrl || !hostAllowed(rawUrl)) return deny(res, 403);
+    let url = rawUrl;
+    try { url = await rewriteUrl(rawUrl); } catch (e) {}
+    let host; try { host = new URL(url).host; } catch (e) { return deny(res, 400); }
+    const key = canonicalKey(url);
+    const hit = cache.get(key);
+    if (hit) { m.hit++; return sendEntry(res, hit, ip); }
+
+    let fl = inflight.get(key);
+    let isLeader = false;
+    if (fl) {
+      m.coalesced++;
+    } else {
+      isLeader = true;
+      fl = startFlight(key, url, host, false);
+      inflight.set(key, fl);
+    }
+
+    const detach = fl.attach(res, ip);
+    if (detach === null) {
+      // Joined after a >segCacheMax segment stopped collecting; fetch dedicated stream
+      const solo = startFlight(key + '#solo', url, host, false);
+      const soloDetach = solo.attach(res, ip);
+      let se;
+      try { se = await solo.promise; } catch { se = { status: 502, noCache: true }; }
+      if (soloDetach) soloDetach();
+      return finish(res, se, ip);
+    }
+
+    let e;
+    try { e = await fl.promise; } catch { e = { status: 502, noCache: true }; }
+    if (isLeader) {
+      inflight.delete(key);
+      if (e.status === 200 && e.buf && !e.noCache) cache.set(key, e, e.buf.length, e.ttl);
+    }
+    if (detach) detach();
+    finish(res, e, ip);
+  }
+  function finish(res, e, ip) {
+    if (!res || res.writableEnded || res.destroyed) return;
+    if (e.streamed && res.headersSent) return res.end();
+    if (res.headersSent) return res.end();
+    if (e.status === 200 && e.buf) return sendEntry(res, e, ip);
+    return sendEntry(res, { status: e.status || 502 }, ip);
+  }
+
+  /* ---------- buffered fetch internal (untuk snapshot) ---------- */
+  async function getBuffered(url) {
+    const key = canonicalKey(url);
+    const hit = cache.get(key); if (hit && hit.buf) return hit;
+    let fl = inflight.get(key);
+    let isLeader = false;
+    if (fl) {
+      fl.bgRef++;
+    } else {
+      isLeader = true;
+      const host = new URL(url).host;
+      fl = startFlight(key, url, host, true);
+      inflight.set(key, fl);
+    }
+    let e;
+    try { e = await fl.promise; }
+    finally {
+      fl.bgRef = Math.max(0, fl.bgRef - 1);
+      if (isLeader) {
+        inflight.delete(key);
+        if (e && e.status === 200 && e.buf && !e.noCache) cache.set(key, e, e.buf.length, e.ttl);
+      }
+    }
+    return e;
+  }
+  const upstreamOf = pxUrl => { try { return new URL(pxUrl, 'http://x').searchParams.get('u') || pxUrl; } catch (e) { return pxUrl; } };
+
+  /* ---------- snapshot (ffmpeg) ---------- */
+  let ffmpegOk = null;
+  const ffbin = d.ffmpeg || process.env.FFMPEG_PATH || 'ffmpeg';
+  function detectFfmpeg() {
+    if (ffmpegOk !== null) return Promise.resolve(ffmpegOk);
+    return new Promise(ok => {
+      try {
+        const c = spawn(ffbin, ['-version'], { stdio: 'ignore' });
+        c.on('error', () => { ffmpegOk = false; ok(false); });
+        c.on('exit', code => { ffmpegOk = code === 0; ok(ffmpegOk); });
+      } catch (e) { ffmpegOk = false; ok(false); }
+    });
+  }
+  const snaps = makeLru(24 << 20), snapIn = new Map(), snapFail = new Map();
+  function jpegFrom(buf) {
+    return new Promise((ok, no) => {
+      const c = spawn(ffbin, ['-loglevel', 'error', '-i', 'pipe:0', '-frames:v', '1', '-vf', 'scale=360:-2', '-q:v', '7', '-f', 'mjpeg', 'pipe:1'], { stdio: ['pipe', 'pipe', 'ignore'] });
+      const out = []; let size = 0;
+      const t = setTimeout(() => { try { c.kill('SIGKILL'); } catch (e) {} no(new Error('ffmpeg timeout')); }, 9000);
+      c.stdout.on('data', x => { size += x.length; if (size > 1 << 20) { try { c.kill('SIGKILL'); } catch (e) {} } else out.push(x); });
+      c.on('error', e => { clearTimeout(t); no(e); });
+      c.on('close', () => { clearTimeout(t); size > 0 && size <= 1 << 20 ? ok(Buffer.concat(out)) : no(new Error('ffmpeg kosong')); });
+      c.stdin.on('error', () => {});
+      c.stdin.end(buf);
+    });
+  }
+  async function snapshotFor(url) {
+    let cur = url;
+    for (let i = 0; i < 4; i++) {
+      const e = await getBuffered(cur);
+      if (e.status !== 200 || !e.buf) throw new Error('playlist ' + e.status);
+      const txt = e.buf.toString('utf8');
+      const lines = txt.split('\n').map(s => s.trim()).filter(s => s && s[0] !== '#');
+      if (!lines.length) throw new Error('playlist kosong');
+      if (/#EXT-X-STREAM-INF/.test(txt)) { cur = upstreamOf(lines[0]); continue; }   // master → varian pertama
+      const seg = upstreamOf(lines[lines.length - 1]);
+      const s = await getBuffered(seg);
+      const segBuf = (s && (s.buf || s.snapPrefix)) || null;
+      if (!s || s.status !== 200 || !segBuf) throw new Error('segmen ' + (s ? s.status : 502));
+      return jpegFrom(segBuf);
+    }
+    throw new Error('terlalu dalam');
+  }
+  async function snap(rawUrl, req, res) {
+    const ip = rate(req, res); if (!ip) return;
+    if (!rawUrl || !hostAllowed(rawUrl)) return deny(res, 403);
+    if (!(await detectFfmpeg())) return deny(res, 501);
+    const jh = { ...corsHdr, ...secHdr, 'content-type': 'image/jpeg', 'cache-control': (allowCors || allowPublicCache) ? 'public, max-age=60, s-maxage=60, stale-while-revalidate=60' : 'private, max-age=60' };
+    const snapKey = canonicalKey(rawUrl);
+    const hit = snaps.get(snapKey);
+    if (hit) { res.writeHead(200, jh); return res.end(hit); }
+    const f = snapFail.get(snapKey); if (f && f > Date.now()) return deny(res, 503, { 'retry-after': '30' });
+    let p = snapIn.get(snapKey);
+    if (!p) {
+      p = snapLane.run('snap', async () => {
+        let u = rawUrl; try { u = await rewriteUrl(rawUrl); } catch (e) {}
+        return snapshotFor(u);
+      });
+      snapIn.set(snapKey, p.catch(() => null));
+      p.finally(() => snapIn.delete(snapKey)).catch(() => {});
+    }
+    let jpg;
+    try { jpg = await p; } catch (e) { snapFail.set(snapKey, Date.now() + 45000); if (snapFail.size > 2000) snapFail.delete(snapFail.keys().next().value); return deny(res, 503, { 'retry-after': '45' }); }
+    snaps.set(snapKey, jpg, jpg.length, O.snapTtl);
+    res.writeHead(200, jh); res.end(jpg); chargeBytes(ip, jpg.length);
+  }
+
+  /* ---------- laporan kesehatan: butuh >=2 pelapor berbeda ---------- */
+  const reports = new Map();   // url -> { fails: Map<ipHash, ts>, okAt }
+  const repRl = makeBucket(1, 30);
+  const DEAD_WINDOW = 1200000;
+  const hashIp = ip => crypto.createHash('sha1').update(String(ip)).digest('hex').slice(0, 12);
+  function report(u, ok, ip) {
+    if (!u || typeof u !== 'string' || u.length > 500) return false;
+    if (!repRl.take(ip || 'x', 1)) return false;
+    if (!isKnown(u)) return false;
+    const now = Date.now();
+    let r = reports.get(u);
+    if (!r) { r = { fails: new Map(), okAt: 0 }; reports.set(u, r); }
+    if (ok) { r.okAt = now; r.fails.clear(); }
+    else r.fails.set(hashIp(ip), now);
+    if (reports.size > 5000) {
+      for (const [k, v] of reports) { const last = Math.max(v.okAt, ...v.fails.values(), 0); if (now - last > 3600000) reports.delete(k); }
+    }
+    return true;
+  }
+  const reportedDead = u => {
+    const r = reports.get(u); if (!r) return false;
+    const now = Date.now(); let n = 0;
+    for (const t of r.fails.values()) if (now - t < DEAD_WINDOW && t > r.okAt) n++;
+    return n >= 2;
+  };
+
+  /* ---------- RUM: time-to-first-frame / stall / gagal per host ---------- */
+  const rum = new Map();   // host -> { ok, fail, stalls, ttff:[] }
+  const rumRl = makeBucket(0.5, 10);
+  const q = (arr, p) => { if (!arr.length) return null; const a = arr.slice().sort((x, y) => x - y); return a[Math.min(a.length - 1, Math.floor(p * a.length))]; };
+  function rumIngest(events, ip) {
+    if (!Array.isArray(events) || !rumRl.take(ip || 'x', 1)) return 0;
+    let n = 0;
+    for (const e of events.slice(0, 100)) {
+      if (!e || typeof e.h !== 'string' || e.h.length > 120 || !/^[a-z0-9.:-]+$/i.test(e.h)) continue;
+      if (!isKnownHost(e.h)) continue;
+      let s = rum.get(e.h);
+      if (!s) { if (rum.size >= 300) continue; s = { ok: 0, fail: 0, stalls: 0, ttff: [] }; rum.set(e.h, s); }
+      if (e.f) s.fail++;
+      else if (Number.isFinite(e.t) && e.t >= 0 && e.t < 300000) { s.ok++; s.ttff.push(Math.round(e.t)); if (s.ttff.length > 300) s.ttff.shift(); }
+      if (Number.isFinite(e.s) && e.s > 0 && e.s < 1000) s.stalls += e.s | 0;
+      n++;
+    }
+    return n;
+  }
+  const rumStats = () => {
+    const hosts = {};
+    for (const [h, s] of rum) hosts[h] = { ok: s.ok, fail: s.fail, stalls: s.stalls, ttff_p50: q(s.ttff, 0.5), ttff_p95: q(s.ttff, 0.95) };
+    return hosts;
+  };
+
+  return {
+    hls, snap, report, reportedDead, rumIngest, rumStats, detectFfmpeg,
+    stats: () => ({ ...m, lane: lane.stats(), cache: cache.stats(), snapCache: snaps.stats(), inflight: inflight.size, reports: reports.size })
+  };
+}
+
+module.exports = { createGateway, makeLane, makeBucket, makeLru };

@@ -58,7 +58,7 @@ test('evmerge preserves shared incident tokens across large single-city cluster'
   const now = 1_700_000_000_000;
   const rows = Array.from({ length: 12 }, (_, i) => ({
     kind: 'kebakaran',
-    place: 'Jakarta Selatan',
+    name: 'Jakarta Selatan',
     prov: 'DKI Jakarta',
     la: -6.26,
     lo: 106.81,
@@ -487,7 +487,7 @@ test('demo detection, geocoding and social orchestration pipeline fixes', () => 
   assert.equal(adResult.events.length, 0, 'Property listing must have 0 events');
 
   // 5. Server: DEFAULT_TH_WATCH restricts to emergency authorities; media blacklist active
-  assert.ok(serverCode.includes("DEFAULT_TH_WATCH = ['infobmkg', 'bnpb_indonesia']"), 'DEFAULT_TH_WATCH must contain only crisis authorities');
+  assert.ok(serverCode.includes("DEFAULT_TH_WATCH = ['infobmkg']"), 'DEFAULT_TH_WATCH must contain only crisis authorities');
   assert.ok(serverCode.includes('TH_MEDIA_BLACKLIST'), 'server.js must define TH_MEDIA_BLACKLIST');
 
   // 6. Server: newsKeywords and synthQueries enforce Compound Crisis Anchoring & negative filters
@@ -607,16 +607,19 @@ test('anti-captcha enforcement and wire description / headline performance', () 
   const res = feedtext.descFrom({ description: captchaText }, 'Sebuah Berita');
   assert.equal(res, '', 'descFrom must completely reject CAPTCHA / challenge warning boilerplate');
 
-  // 2. server.js must guard against CAPTCHA in Jina and mediaDesc
-  assert.ok(serverJs.includes('BOT_CHALLENGE_RE'), 'server.js must define BOT_CHALLENGE_RE');
-  assert.ok(serverJs.includes('BOT_CHALLENGE_RE.test(clean)'), 'rdJinaMd must discard paragraphs matching BOT_CHALLENGE_RE');
+  // 2. server.js and article-extract.js must guard against CAPTCHA in Jina, HTML, and mediaDesc
+  const extractJs = fs.readFileSync(path.join(__dirname, '../article-extract.js'), 'utf8');
+  assert.ok(serverJs.includes('BOT_CHALLENGE_RE'), 'server.js must reference BOT_CHALLENGE_RE');
+  assert.ok(extractJs.includes('BOT_CHALLENGE_RE'), 'article-extract.js must define and enforce BOT_CHALLENGE_RE');
 
   // 3. public/index.html must clean CAPTCHA in cleanDesc
   assert.ok(html.includes('BOT_CHALLENGE_RE'), 'index.html must define BOT_CHALLENGE_RE for cleanDesc');
 
-  // 4. Headline image prioritizes RSS image instead of blocking on /api/thumb
-  assert.ok(html.includes('if (h && h.img && fallbackImgOK(h.img)) imgs.push(h.img)'),
-            'fetchThumbInfo must prioritize h.img from RSS feed before calling /api/thumb');
+  // 4. Headline image requires backend verification when API != null instead of bypassing /api/thumb via fallbackImgOK(h.img)
+  assert.ok(html.includes('if (h && h.imgVerified && h.img)'),
+            'fetchThumbInfo must only accept pre-verified hero images without calling /api/thumb');
+  assert.ok(!html.includes('if (h && h.img && fallbackImgOK(h.img)) imgs.push(h.img)'),
+            'fetchThumbInfo must NOT trust unverified RSS images when API != null');
 
   // 5. descAbort aborts pending fetches on topic change
   assert.ok(html.includes('descAbort') && html.includes('descAbort.abort()'),
@@ -630,12 +633,12 @@ test('wire-reader synchronization and skeleton lifecycle enforcement', () => {
   const html = fs.readFileSync(path.join(__dirname, '../public/index.html'), 'utf8');
 
   // 1. server.js rdRead syncs article description into descRemember
-  assert.ok(serverJs.includes('descRemember([raw, target, url, r.url, r.final].filter(Boolean), ds)'),
+  assert.ok(serverJs.includes('descRemember([raw, target, finCanon, url, r.url, r.final].filter(Boolean), ds)'),
             'server.js rdRead fin must sync article desc to descCache');
 
-  // 2. server.js descForUrl checks reader memo cache and wire RSS memory before network
-  assert.ok(serverJs.includes("cache.get('read:' + testU)"),
-            'server.js descForUrl must check reader memo cache before network request');
+  // 2. server.js descForUrl checks reader cache and wire RSS memory before network
+  assert.ok(serverJs.includes('getReadCache(canon, reqUrl)'),
+            'server.js descForUrl must check reader cache before network request');
   assert.ok(serverJs.includes('rdWireFind(testU)'),
             'server.js descForUrl must check in-memory wire feed items before network request');
 
@@ -709,4 +712,202 @@ test('indonesian disaster metaphor disambiguation and category domain precedence
   assert.ok(serverJs.includes('resolveCategory(ids, t)'), 'catOf in server.js must use resolveCategory');
   assert.ok(html.includes('const resolveCategory = (ids, title) =>'), 'index.html must define resolveCategory disambiguation function');
   assert.ok(html.includes('resolveCategory(hits, t)'), 'catOfTitle in index.html must use resolveCategory');
+});
+
+test('wire lead thumbnail pipeline upgrades small RSS images, prevents hijacks, and enforces canonical media verification', async () => {
+  const fs = require('fs');
+  const path = require('path');
+  const MEDIA = require('../article-media');
+  const serverJs = fs.readFileSync(path.join(__dirname, '../server.js'), 'utf8');
+  const html = fs.readFileSync(path.join(__dirname, '../public/index.html'), 'utf8');
+
+  // 1. Canonical RSS feedImage upgrades Detik/CNN ?w=360 and Antara regional /cache/255x170/ and rejects small hints
+  const detikXml = `<enclosure length="25000" type="image/jpeg" url="https://akcdn.detik.net.id/community/media/visual/2026/11/10/demo_169.jpeg?w=360&amp;q=90"/>`;
+  assert.equal(MEDIA.feedImage(detikXml), 'https://akcdn.detik.net.id/community/media/visual/2026/11/10/demo_169.jpeg?w=1200&q=90');
+
+  const antaraXml = `<description><![CDATA[<img src="https://cdn.antaranews.com/cache/255x170/2026/01/29/app-benih-ikan.jpg" border="0">]]></description>`;
+  assert.equal(MEDIA.feedImage(antaraXml), 'https://cdn.antaranews.com/cache/1200x800/2026/01/29/app-benih-ikan.jpg');
+
+  const singleQuoteXml = `<media:content url='https://cdn.example.com/news/photo-big.jpg' type='image/jpeg'/>`;
+  assert.equal(MEDIA.feedImage(singleQuoteXml), 'https://cdn.example.com/news/photo-big.jpg');
+
+  const tinyXml = `<enclosure type="image/jpeg" url="https://cdn.example.com/100x100/avatar.jpg"/>`;
+  assert.equal(MEDIA.feedImage(tinyXml), '');
+
+  // 2. isHijackedHtml blocks cross-domain gambling/spam redirects but keeps same registrable domain
+  assert.equal(
+    MEDIA.isHijackedHtml(
+      'https://foto.bisnis.com/view/20261110/2020033/polda-metro-kawal-74-aksi-massa-di-jakarta',
+      'https://linkpetir19.com/?refid=hjJMyy',
+      '<html><head><title>LinkPetir19 Situs Slot Gacor</title></head><body></body></html>',
+      false
+    ),
+    true
+  );
+  assert.equal(
+    MEDIA.isHijackedHtml(
+      'https://m.metrotvnews.com/read/b2lCXEGP-pertamina-pastikan-stok-bbm',
+      'https://www.metrotvnews.com/read/b2lCXEGP-pertamina-pastikan-stok-bbm',
+      '<html><head><title>MetroTVNews</title></head><body></body></html>',
+      false
+    ),
+    false
+  );
+
+  // 3. imageSize handles JPEG 0xFF padding before SOF0 marker (>= 24 bytes)
+  const jpegWithFill = Buffer.from([
+    0xFF, 0xD8,
+    0xFF, 0xFF, 0xC0, 0x00, 0x0B, 0x08, 0x03, 0x00, 0x04, 0x00, 0x03, 0x01, 0x11, 0x00,
+    0xFF, 0xDA, 0x00, 0x08, 0x01, 0x01, 0x00, 0x00, 0x3F, 0x00, 0xFF, 0xD9
+  ]);
+  assert.deepEqual(MEDIA.imageSize(jpegWithFill), { w: 1024, h: 768, mime: 'image/jpeg' });
+
+  // 4. Canonical media validation rejects extreme banners/portraits/tiny dimensions and never returns unprobed images
+  assert.ok(!/accept:\s*'image\/avif/.test(serverJs), 'probeImageDirect must not advertise unsupported image/avif');
+  assert.equal(MEDIA.validateImageMetrics({ role: 'hero', dim: { w: 1200, h: 200 }, bytes: 25000, mime: 'image/jpeg' }).ok, false);
+  assert.equal(MEDIA.validateImageMetrics({ role: 'hero', dim: { w: 1200, h: 800 }, bytes: 25000, mime: 'image/jpeg' }).ok, true);
+  assert.ok(serverJs.includes('MEDIA.resolveArticleMedia'), 'server.js must route hero & reader media through canonical resolver');
+
+  // 5. Frontend progressive lead thumbnail hydration, self-heal, backend rejection respect, and canonical reader parity
+  assert.ok(html.includes('function attachLeadImage(url, imageUrl)'), 'index.html must define attachLeadImage for progressive hydration');
+  assert.ok(html.includes('async function resolveLeadImage(h, isStale)'), 'index.html must define resolveLeadImage');
+  assert.ok(html.includes('rdSyncWireDesc(article, h.url);'), 'resolveLeadImage must preserve rdSyncWireDesc call');
+  assert.ok(html.includes('leadImgRejected.has('), 'frontend must respect backend rejection without overriding it');
+  assert.ok(html.includes('!leadNode.querySelector(\'.lead-img\')'), 'sameLead must self-heal missing lead thumbnail');
+  assert.ok(html.includes('const rdImg = (d.img && d.imgVerified !== false) ? d.img'), 'rdSyncWireDesc must only backfill backend-verified hero image onto lead card');
+
+  // 6. WireCore.prepare adopts img from duplicate even when duplicate has shorter desc
+  const WireCore = require('../public/wire-core');
+  const now = 1_700_000_000_000;
+  const dupOut = WireCore.prepare([
+    { title: 'Banjir Besar di Bekasi Utara', url: 'https://news.google.com/1', pub: 'MetroTV', desc: 'Deskripsi panjang dari sumber utama tanpa gambar', ts: now - 5_000 },
+    { title: 'Banjir Besar di Bekasi Utara', url: 'https://detik.com/2', pub: 'Detik', desc: 'Pendek', img: 'https://cdn.example.com/foto.jpg', ts: now - 10_000 },
+  ], now);
+  assert.equal(dupOut.length, 1);
+  assert.equal(dupOut[0].img, 'https://cdn.example.com/foto.jpg');
+  assert.equal(dupOut[0].desc, 'Deskripsi panjang dari sumber utama tanpa gambar');
+});
+
+test('bottom geobar uses Hybrid 04 Globe Head + 02 Spectrum & Index read-only telemetry driven by live globe data', () => {
+  const fs = require('fs');
+  const path = require('path');
+  const html = fs.readFileSync(path.join(__dirname, '../public/index.html'), 'utf8');
+
+  assert.equal(html.includes('Indonesia · demo, kebakaran, banjir, bencana, insiden'), false, 'static category gimmick string must be removed');
+  assert.ok(html.includes('class="geo-globe"') && html.includes('id="geo-telemetry"') && html.includes('id="geo-spec"') && html.includes('id="geo-idx"') && html.includes('id="geo-sensor"') && html.includes('id="geo-shingles"'), 'geobar must render globe head, proportional spectrum bar, sensor pod, and category index');
+  assert.ok(html.includes('.geo-head,.geo-globe,.geo-k,.geo-live,.geo-telemetry,.geo-spec,.geo-seg,.geo-idx,.geo-sensor,.geo-shingles,.geo-item,.geo-pip,.geo-n,.geo-l{pointer-events:none;user-select:none;cursor:default}'), 'geobar telemetry displays must be non-clickable');
+  assert.ok(!/\.geo-(?:sensor|item|spec|seg|idx)[^}]*box-shadow/.test(html), 'geobar telemetry units must not use box-shadow');
+  assert.ok(html.includes('<div class="geo-sensor" id="geo-sensor" aria-label="Sensor geofisika aktif"></div>'), 'initial #geo-sensor HTML must stay empty until telemetry loads');
+  assert.ok(html.includes('function renderGeoTelemetry()') && html.includes('!geoIncLoaded || !geoDisLoaded') && html.includes('legendKeyOf(p)'), 'renderGeoTelemetry must aggregate active globe points and wait until both incidents and disasters load');
+  const geoSection = html.slice(html.indexOf('<div class="geo-telemetry"'), html.indexOf('<span class="geo-c" id="geo-count">'));
+  assert.equal(/<button/i.test(geoSection), false, 'geo-telemetry must not contain clickable button elements');
+});
+
+test('news wire lead renders inline video player when hero photo is absent and extracts Republika shorts YouTube + transcript', () => {
+  const fs = require('fs');
+  const path = require('path');
+  const EXTRACT = require('../article-extract');
+  const html = fs.readFileSync(path.join(__dirname, '../public/index.html'), 'utf8');
+  const serverJs = fs.readFileSync(path.join(__dirname, '../server.js'), 'utf8');
+
+  const url = 'https://republika.co.id/page/shorts/yt-tobss2886393783/kapolri-bakal-selidiki-kericuhan-demonstrasi-di-yogyakarta';
+  const sampleHtml = `<!doctype html><html><head>
+    <meta property="og:title" content="Kapolri Bakal Selidiki Kericuhan Demonstrasi di Yogyakarta">
+    <meta property="og:image" content="https://static.republika.co.id/files/images/favicon-rol.png">
+    <script type="application/ld+json">{"@context":"https://schema.org","@type":"VideoObject","name":"Kapolri Bakal Selidiki Kericuhan Demonstrasi di Yogyakarta","contentUrl":"https://static.republika.co.id/uploads/video/"}</script>
+  </head><body>
+    <script>
+      const VIDEOS = [
+        { id: 1, youtube_id: 'pdgoFsvQ5JY', title: 'Kapolri Bakal Selidiki Kericuhan Demonstrasi di Yogyakarta', news_url: '/yt-tobss2886393783/kapolri-bakal-selidiki-kericuhan-demonstrasi-di-yogyakarta', news_image: 'https://static.republika.co.id/uploads/images/medium_portrait/sample.jpg', content: \`Kapolri meninjau langsung situasi lokasi kericuhan demonstrasi di Gedung DPRD Yogyakarta dini hari tadi.\n\nPihak kepolisian bakal menyelidiki motif serta pelaku kerusuhan demonstrasi yang membawa benda berbahaya di Yogyakarta tersebut.\` },
+        { id: 2, youtube_id: 'OtherId999', title: 'Topik Lain Tidak Relevan', news_url: '/yt-other123/lain', news_image: '', content: \`Teks video lain.\` }
+      ];
+    </script>
+  </body></html>`;
+
+  const extracted = EXTRACT.rdExtract(sampleHtml, url, { expectedTitle: 'Kapolri Bakal Selidiki Kericuhan Demonstrasi di Yogyakarta' });
+  assert.equal(extracted.textSource, 'script_video_transcript');
+  assert.equal(extracted.videos.length, 1);
+  assert.equal(extracted.videos[0].url, 'https://www.youtube.com/embed/pdgoFsvQ5JY');
+  assert.equal(extracted.videos[0].kind, 'iframe');
+  assert.ok(extracted.paras.length >= 2);
+  assert.equal(extracted.videos.some(v => v.url.includes('/uploads/video/')), false, 'directory stub /uploads/video/ must be ignored');
+
+  assert.ok(serverJs.includes('resolvePlayableVideos') && serverJs.includes('hasPlayableVideo'), 'server must surface playable videos on /api/thumb and accept video-only pages in /api/read');
+  assert.ok(html.includes('function leadVidWrapHtml(') && html.includes('async function resolveLeadVideo(') && html.includes('function attachLeadVideo('), 'frontend must support lead inline video player fallback');
+  assert.ok(html.includes("e.target.closest('.lead-vid')"), 'clicking inline lead video player must not hijack card click into reader');
+});
+
+test('in-app reader normalizes raw URL og:site_name such as https://www.metrotvnews.com into friendly publisher label', () => {
+  const fs = require('fs');
+  const path = require('path');
+  const WireCore = require('../public/wire-core');
+  const EXTRACT = require('../article-extract');
+  const html = fs.readFileSync(path.join(__dirname, '../public/index.html'), 'utf8');
+
+  assert.equal(WireCore.cleanSiteName('https://www.metrotvnews.com', ''), 'MetroTV');
+  assert.equal(WireCore.cleanSiteName('', 'https://jabar.tribunnews.com/2026/11/11/abc'), 'Tribunnews');
+  assert.equal(WireCore.cleanSiteName('CNN Indonesia', 'https://www.cnnindonesia.com/x'), 'CNN Indonesia');
+
+  const mtvHtml = `<!doctype html><html><head>
+    <meta property="og:site_name" content="https://www.metrotvnews.com">
+    <meta property="og:title" content="Aksi Unjuk Rasa di Yogyakarta Berakhir Kondusif">
+  </head><body><article><p>Aksi unjuk rasa di Yogyakarta berjalan dan aparat menjaga gedung DPRD DIY.</p><p>Polisi menyelidiki kericuhan unjuk rasa hingga malam hari bersama warga Yogyakarta.</p></article></body></html>`;
+  const res = EXTRACT.rdExtract(mtvHtml, 'https://www.metrotvnews.com/play/abc123');
+  assert.equal(res.site, 'MetroTV');
+  assert.ok(html.includes('WireCore.cleanSiteName(d.site, d.final || url)'), 'rdArticle must normalize cached d.site URLs cleanly');
+});
+
+test('social trending eliminates 0 0 clutter, unifies Swiss canted chips, prevents Threads starvation, and aligns 24h newswire', () => {
+  const fs = require('fs');
+  const path = require('path');
+  const SOC = require('../social');
+  const HISTORY = require('../social-history');
+  const serverJs = fs.readFileSync(path.join(__dirname, '../server.js'), 'utf8');
+  const html = fs.readFileSync(path.join(__dirname, '../public/index.html'), 'utf8');
+  const now = Date.now();
+
+  // 1. social-history retag purges retired adhocPhrases (e.g. yesterday's lazy/adhoc terms)
+  const map = new Map();
+  map.set('p_retired', {
+    url: 'https://x.com/u1/status/1',
+    text: 'Warga melaporkan banjir merendam puluhan rumah di Bekasi Timur pagi ini',
+    ts: now - 3600e3,
+    adhocPhrases: ['malioboro', 'demo ricuh'],
+    assessment: { version: SOC.CLASSIFIER_VERSION, topics: ['banjir', 'malioboro', 'demo ricuh'], feedEligible: true, signalEligible: true },
+  });
+  HISTORY.retag(map, SOC.socKeepX, [], now);
+  assert.equal(map.has('p_retired'), true);
+  assert.deepEqual(map.get('p_retired').topics, ['banjir'], 'Retired adhoc phrases must not resurrect during retag');
+  assert.deepEqual(map.get('p_retired').adhocPhrases, [], 'Retired adhocPhrases must be cleared');
+
+  // 2. socBalance caps per-topic share relative to actual arr.length when arr.length < max
+  const flooded = Array.from({ length: 100 }, (_, i) => ({
+    code: 'D' + i,
+    user: 'user_' + i,
+    topics: ['demo'],
+    assessment: { signalEligible: true, feedEligible: true, reportType: 'reported' },
+  }));
+  const mixed = flooded.concat(Array.from({ length: 40 }, (_, i) => ({
+    code: 'B' + i,
+    user: 'b_user_' + i,
+    topics: ['banjir'],
+    assessment: { signalEligible: true, feedEligible: true, reportType: 'reported' },
+  })));
+  const balanced = SOC.socBalance(mixed, 1200, p => p.user);
+  const demoN = balanced.filter(p => p.topics.includes('demo')).length;
+  assert.ok(demoN <= Math.ceil(mixed.length * 0.22) + 2, `demo should be capped around 22% of arr.length (${demoN}/${mixed.length})`);
+  assert.ok(balanced.filter(p => p.topics.includes('banjir')).length >= 25, 'non-dominant topic must retain representation');
+
+  // 3. Backend 24h newswire scan, non-zero trending gate, Threads fairness, and cache sync
+  assert.ok(serverJs.includes('function collectNews24h('), 'server.js must aggregate all feeds before 24h newswire heat calculation');
+  assert.ok(!serverJs.includes('baseQueries = SOC.SOC_TOPICS'), 'socMeta must not leak 0 0 baseQueries into active chips');
+  assert.ok(serverJs.includes('if (volOf(id) <= 0) return;'), 'buildTrends must never emit 0 0 zero-post topics');
+  assert.ok(serverJs.includes('const restReserve = Math.min(8, rest.length);'), 'threads() must reserve slots for starved rest topics');
+  assert.ok(serverJs.includes('let newsHeatRev = 0;') && serverJs.includes('newsHeatRev +'), 'socialMetaFp must track newsHeatRev');
+
+  // 4. Frontend Swiss Canted Index Register and zero-zero omission
+  assert.ok(!html.includes('.qc-panel{') && !html.includes('.qc-idle{'), 'legacy 58px card panels and idle 0-0 chips must be removed');
+  assert.ok(html.includes('.qchips{') && html.includes('clip-path:polygon(var(--cant) 0, 100% 0, calc(100% - var(--cant)) 100%, 0 100%);'), 'qchips must use interlocking Swiss canted blades');
+  assert.ok(html.includes('function socCountFor(q, kind)') && html.includes('all.filter(q => socCountFor(q, me) > 0)'), 'qchips must filter strictly to active non-zero platform topics');
+  assert.ok(html.includes('function renderAllQchips()'), 'frontend must synchronize X & Threads chip bars together');
 });

@@ -266,7 +266,7 @@ const CHROME_HEAD_RE = new RegExp('^(?:' +
   'iklan\\b|advertisement\\b|advertorial\\b|sumber\\s*:|credit\\s*:|foto\\s*:)', 'i');
 
 // Bot challenge / CAPTCHA boilerplate — buang kandidat teks yang memuat teks proteksi bot/Cloudflare
-const BOT_CHALLENGE_RE = /captcha|recaptcha|lsrecaptcha|cf-chl|challenge-platform|just a moment|attention required|access denied|verify you are|are you a robot|enable javascript and cookies|bot verification|ddos-guard|pardon our interruption|security check|situs ini mungkin memblokir|requiring captcha/i;
+const BOT_CHALLENGE_RE = /captcha|recaptcha|lsrecaptcha|cf-chl|cf-turnstile|challenge-platform|just a moment|attention required|access denied|verify you are|are you a robot|human verification|checking your browser|please wait while we verify|enable javascript and cookies|bot verification|ddos-guard|pardon our interruption|security check|sorry, you have been blocked|situs ini mungkin memblokir|requiring captcha/i;
 
 // First 1-3 sentence-ish segments of prose, skipping leading chrome.
 // Returns '' when nothing usable; callers fall back to the full text.

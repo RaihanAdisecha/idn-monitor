@@ -33,6 +33,8 @@
         if (i === undefined) { idx.set(k, out.length); out.push(h); return; }
         if ((h.desc || '').length > (out[i].desc || '').length) {
           out[i] = { ...out[i], desc: h.desc, img: out[i].img || h.img };
+        } else if (!out[i].img && h.img) {
+          out[i] = { ...out[i], img: h.img };
         }
       });
     return out;
@@ -47,5 +49,79 @@
     return list[0];
   }
 
-  return { prepare, chooseLead, nkey, LEAD_HOLD_MS, FUTURE_SKEW_MS };
+  const SITE_BRANDS = {
+    'metrotvnews.com': 'MetroTV',
+    'detik.com': 'Detik',
+    'kompas.com': 'Kompas',
+    'kompas.id': 'Kompas',
+    'cnnindonesia.com': 'CNN Indonesia',
+    'cnbcindonesia.com': 'CNBC Indonesia',
+    'antaranews.com': 'Antara',
+    'tempo.co': 'Tempo',
+    'liputan6.com': 'Liputan6',
+    'republika.co.id': 'Republika',
+    'tribunnews.com': 'Tribunnews',
+    'kumparan.com': 'Kumparan',
+    'sindonews.com': 'Sindonews',
+    'okezone.com': 'Okezone',
+    'jawapos.com': 'Jawa Pos',
+    'viva.co.id': 'VIVA',
+    'suara.com': 'Suara',
+    'jpnn.com': 'JPNN',
+    'bbc.com': 'BBC Indonesia',
+    'bbci.co.uk': 'BBC Indonesia',
+    'dw.com': 'DW Indonesia',
+    'cna.id': 'CNA Indonesia',
+    'voi.id': 'VOI',
+    'tvonenews.com': 'tvOne',
+    'inews.id': 'iNews',
+    'beritasatu.com': 'BeritaSatu',
+    'merdeka.com': 'Merdeka',
+    'mediaindonesia.com': 'Media Indonesia',
+    'rmol.id': 'RMOL',
+    'bisnis.com': 'Bisnis Indonesia',
+    'kontan.co.id': 'Kontan',
+    'katadata.co.id': 'Katadata',
+    'tirto.id': 'Tirto',
+    'idntimes.com': 'IDN Times',
+    'brilio.net': 'Brilio',
+    'youtube.com': 'YouTube',
+    'youtu.be': 'YouTube',
+  };
+
+  function hostOfSite(v) {
+    const s = String(v || '').trim();
+    if (!s) return '';
+    const looksUrl = /^(?:https?:)?\/\//i.test(s) || /^www\./i.test(s);
+    const looksDom = /^[a-z0-9-]+(?:\.[a-z0-9-]+)+\.[a-z]{2,}(?:[/:?#]|$)/i.test(s);
+    if (!looksUrl && !looksDom) return '';
+    try {
+      const u = new URL(/^https?:\/\//i.test(s) ? s : (/^\/\//.test(s) ? 'https:' + s : 'https://' + s));
+      return u.hostname.toLowerCase().replace(/^(?:www|m)\./, '');
+    } catch {
+      return '';
+    }
+  }
+
+  function brandOfHost(h) {
+    if (!h) return '';
+    if (SITE_BRANDS[h]) return SITE_BRANDS[h];
+    for (const [dom, brand] of Object.entries(SITE_BRANDS)) {
+      if (h.endsWith('.' + dom)) return brand;
+    }
+    return '';
+  }
+
+  function cleanSiteName(rawSite, fallbackUrl) {
+    const s = String(rawSite || '').trim();
+    if (s) {
+      const h = hostOfSite(s);
+      if (h) return brandOfHost(h) || h;
+      return s;
+    }
+    const fh = hostOfSite(fallbackUrl);
+    return brandOfHost(fh) || fh || '';
+  }
+
+  return { prepare, chooseLead, nkey, cleanSiteName, LEAD_HOLD_MS, FUTURE_SKEW_MS };
 });

@@ -45,7 +45,7 @@ const CUE_FROM = new Set(['dari', 'asal', 'warga', 'asal-usul']);
 const DEST_VERB = new Set(['dipulangkan', 'dikirim', 'dibawa', 'dilarikan', 'dirujuk', 'diterbangkan', 'diberangkatkan', 'dikembalikan', 'menuju', 'kembali', 'pulang', 'mudik', 'dipindahkan', 'dievakuasi', 'diangkut']);
 const SEP_OK = new Set(['dan', 'serta', 'hingga', 'sampai', 'maupun', 'atau', 'juga', 'sekitarnya', 'dll', 'lainnya']);
 // frasa yang kelihatan seperti lokasi tapi bukan
-const NOT_PLACE = /\b(polda metro jaya|metro tv|metro jaya|batu bara kalori|harga batu bara|pembangkit batu bara|tambang batu bara|serang(?:an)? (?:balik|udara|siber))\b/gi;
+const NOT_PLACE = /\b(polda metro jaya|polres(?:ta)? metro(?=\s+(?:bekasi|jakarta|tangerang|depok|selatan|timur|barat|utara|pusat))|metro tv|metro jaya|batu bara kalori|harga batu bara|pembangkit batu bara|tambang batu bara|serang(?:an)? (?:balik|udara|siber))\b/gi;
 
 const kabByCode = {}, provByCode = {};
 for (const p of G.prov) provByCode[p.code] = p;
@@ -240,14 +240,18 @@ cpoi('sardjito', 'RSUP Dr Sardjito', -7.7689, 110.3725, 'DI Yogyakarta', ['rsup 
 cpoi('mantrijeron', 'Mantrijeron', -7.8181, 110.3597, 'DI Yogyakarta', ['mantrijeron']);
 cpoi('gondokusuman', 'Gondokusuman', -7.7867, 110.3810, 'DI Yogyakarta', ['gondokusuman']);
 cpoi('umbulharjo', 'Umbulharjo', -7.8144, 110.3874, 'DI Yogyakarta', ['umbulharjo']);
+cpoi('gejayan', 'Gejayan', -7.7712, 110.3905, 'DI Yogyakarta', ['gejayan', 'jalan gejayan']);
+cpoi('kota-gudeg', 'Yogyakarta', -7.7999, 110.3914, 'DI Yogyakarta', ['kota gudeg']);
 cpoi('mlati', 'Mlati', -7.8013, 110.3647, 'DI Yogyakarta', ['mlati'], true);
 cpoi('bandung-kota', 'Bandung Kota', -6.9143, 107.6021, 'Jawa Barat', ['bandung kota']);
 cpoi('dago', 'Dago', -6.8750, 107.6160, 'Jawa Barat', ['dago']);
 cpoi('cihampelas', 'Cihampelas', -6.8989, 107.6043, 'Jawa Barat', ['cihampelas']);
 cpoi('gedung-sate', 'Gedung Sate', -6.9025, 107.6188, 'Jawa Barat', ['gedung sate']);
+cpoi('kota-kembang', 'Bandung', -6.9175, 107.6191, 'Jawa Barat', ['kota kembang']);
 cpoi('wonokromo', 'Wonokromo', -7.3021, 112.7392, 'Jawa Timur', ['wonokromo']);
 cpoi('rungkut', 'Rungkut', -7.3197, 112.7905, 'Jawa Timur', ['rungkut']);
 cpoi('mulyorejo', 'Mulyorejo', -7.2680, 112.7935, 'Jawa Timur', ['mulyorejo']);
+cpoi('kota-pahlawan', 'Surabaya', -7.2575, 112.7521, 'Jawa Timur', ['kota pahlawan']);
 cpoi('gunungsari', 'Gunungsari', -7.2998, 112.7149, 'Jawa Timur', ['gunungsari']);
 cpoi('sukolilo', 'Sukolilo', -7.2930, 112.7864, 'Jawa Timur', ['sukolilo']);
 cpoi('siwalankerto', 'Siwalankerto', -7.3356, 112.7360, 'Jawa Timur', ['siwalankerto']);
