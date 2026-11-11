@@ -364,7 +364,7 @@ test('Detail situasi uses Opsi 01 telemetry deck with Opsi 02 category label, fu
   const html = fs.readFileSync(path.join(__dirname, '../public/index.html'), 'utf8');
 
   // 1. Category icon (.tr-ic) + Opsi 02 category header label (.tr-sev-cat + .tr-loc-tag) inside alertHtml
-  assert.ok(html.includes('<svg class="ic tr-ic ${c.cat}" aria-hidden="true"><use href="${TK_SIG[c.cat] || \'#i-pin\'}"></use></svg>') && html.includes('class="tr-sev-cat ${c.cat}"'), 'alertHtml must use category SVG icon and unified sev-cat label');
+  assert.ok(html.includes('<svg class="ic tr-ic ${esc(c.cat)}" aria-hidden="true"><use href="${TK_SIG[c.cat] || \'#i-pin\'}"></use></svg>') && html.includes('class="tr-sev-cat ${esc(c.cat)}"'), 'alertHtml must use category SVG icon and unified sev-cat label');
   assert.ok(!html.includes('class="tr-dot'), 'alertHtml must not use pulse dot instead of category icon');
   assert.ok(html.includes('<span class="tr-loc-tag">${esc(c.place)}</span>'), 'alertHtml must render location tag in header');
 
@@ -1195,4 +1195,37 @@ test('open-proxy hardening: shared-CDN suffixes need catalog membership, config.
 
   // M1: copernicus tiles use the heavy rate bucket
   assert.ok(serverJs.includes("u.pathname.startsWith('/api/copernicus/tile/')"), 'copernicus tiles must be rate-limited as heavy');
+});
+
+test('DOM-XSS hardening: all URL sinks use escUrl/safeUrl and category attributes are escaped', () => {
+  const fs = require('fs');
+  const path = require('path');
+  const vm = require('vm');
+  const html = fs.readFileSync(path.join(__dirname, '../public/index.html'), 'utf8');
+
+  assert.ok(html.includes('const safeUrl = u =>') && html.includes('const escUrl = u => esc(safeUrl(u));'), 'safeUrl/escUrl helpers must exist');
+
+  // Behavior: safeUrl allows http(s)/relative, rejects javascript:/data:/vbscript:
+  const esc = s => String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  const ctx = { location: { href: 'https://sitrep.local/' }, URL, esc };
+  const fnSrc = html.slice(html.indexOf('const safeUrl = u =>'), html.indexOf('const escUrl = u =>'));
+  vm.runInNewContext(fnSrc + '; this.__r = u => safeUrl(u);', ctx);
+  const su = ctx.__r;
+  assert.equal(su('https://berita.id/a'), 'https://berita.id/a');
+  assert.equal(su('http://berita.id/a'), 'http://berita.id/a');
+  assert.equal(su('/api/img?u=x'), '/api/img?u=x');
+  assert.equal(su('javascript:alert(1)'), '#');
+  assert.equal(su('JaVaScRiPt:alert(1)'), '#');
+  assert.equal(su('data:text/html,<script>alert(1)</script>'), '#');
+  assert.equal(su('vbscript:msgbox(1)'), '#');
+  assert.equal(su(''), '#');
+  assert.equal(su(null), '#');
+
+  // Contract: no href/src/data-src/poster interpolation may use bare esc() on a URL
+  const bare = html.match(/(?:href|src|data-src|poster)="\$\{esc\(/g) || [];
+  assert.equal(bare.length, 0, 'bare esc() in URL attributes must be zero, got: ' + bare.slice(0, 3).join(','));
+
+  // Contract: category interpolated into attributes/classes must be escaped
+  assert.ok(!/data-cat="\$\{(?!esc\()[^}]+\}"/.test(html), 'data-cat must use esc()');
+  assert.ok(!/class="[^"]*\$\{(?!esc\()[^}]*cat[^}]*\}[^"]*"/.test(html), 'cat in class attributes must use esc()');
 });

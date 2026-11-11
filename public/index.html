@@ -3131,6 +3131,17 @@ const $  = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
 const esc = s => String(s == null ? '' : s)
   .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+// URL dari data eksternal (RSS/X/Threads/CDN) wajib http(s) — javascript:/data:/
+// scheme lain di-render jadi '#' supaya tidak pernah jadi klik-XSS atau iframe abuse.
+const safeUrl = u => {
+  try {
+    const t = String(u == null ? '' : u).trim();
+    if (!t) return '#';
+    const p = new URL(t, location.href).protocol;
+    return (p === 'https:' || p === 'http:') ? t : '#';
+  } catch (e) { return '#'; }
+};
+const escUrl = u => esc(safeUrl(u));
 /* Buang emoji/pictograph dari teks yang dirender. Ikon UI pakai sprite SVG, bukan glyph. */
 const EMOJI_RE = /[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\u{2B00}-\u{2BFF}\u{FE0F}\u{1F1E6}-\u{1F1FF}\u{203C}\u{2049}\u{2190}-\u{21FF}\u{2934}\u{2935}]/gu;
 const deEmoji = s => String(s == null ? '' : s).replace(EMOJI_RE, '').replace(/[ \t]{2,}/g, ' ').trim();
@@ -4379,7 +4390,7 @@ function renderMapLegend(st){
   $('#sit-map-legend').innerHTML =
     `<button class="smlg-btn" type="button" aria-expanded="${wasOpen ? 'true' : 'false'}">Filter <span class="cm">${on}/${total}</span><i class="cr"></i></button>` +
     `<div class="smlg-menu${wasOpen ? ' open' : ''}">` + cats.map(c =>
-      `<button class="smlg-it" type="button" data-cat="${c}" aria-pressed="${legendOn[c] ? 'true' : 'false'}"><i style="background:${CAT_COLOR[c]}"></i>${CAT_LABEL[c]}<b>${st[c] || 0}</b></button>`).join('') +
+      `<button class="smlg-it" type="button" data-cat="${esc(c)}" aria-pressed="${legendOn[c] ? 'true' : 'false'}"><i style="background:${CAT_COLOR[c]}"></i>${CAT_LABEL[c]}<b>${st[c] || 0}</b></button>`).join('') +
     `</div>`;
   const mLeg = $('#map-leg-items');
   if (mLeg) {
@@ -4473,8 +4484,8 @@ function clusterHtml(g, i){
   const pips = wMax >= 0.6 ? 3 : wMax >= 0.35 ? 2 : 1;
   const lines = g.items.slice(0, 6).map(x =>
     `<div class="cl-line"><time>${esc(x.ts ? wibTime(x.ts) : '')}</time>
-      <span><a href="${esc(x.url)}" target="_blank" rel="noopener">${esc(cleanTitle(deEmoji(x.title || ''), x.pub || x.src))}</a><span class="cl-s">${esc(cleanSrc(x.src, x.pub))}</span></span></div>`).join('');
-  return `<div class="cl" data-cat="${g.cat}" data-id="${esc(g.id)}">
+      <span><a href="${escUrl(x.url)}" target="_blank" rel="noopener">${esc(cleanTitle(deEmoji(x.title || ''), x.pub || x.src))}</a><span class="cl-s">${esc(cleanSrc(x.src, x.pub))}</span></span></div>`).join('');
+  return `<div class="cl" data-cat="${esc(g.cat)}" data-id="${esc(g.id)}">
     <div class="cl-main">
       <div class="cl-hd"><i class="cl-dot" aria-hidden="true"></i>
         <span class="cl-cat">${esc(lead.label || CAT_LABEL[g.cat])}</span>
@@ -5332,12 +5343,12 @@ const SEV_ICON = { kritis: '▲', waspada: '●', info: '○' };
 function socLine(p){
   const who = p.from + (p.handle ? ' · ' + p.handle : '');
   const tx = esc(deEmoji(String(p.text || '').replace(/^@\w+\s*/, ''))).slice(0, 150);
-  const inner = p.url ? `<a href="${esc(p.url)}" target="_blank" rel="noopener">${tx}</a>` : tx;
+  const inner = p.url ? `<a href="${escUrl(p.url)}" target="_blank" rel="noopener">${tx}</a>` : tx;
   return `<div class="cl-line"><time>${esc(p.ts ? wibTime(p.ts) : '')}</time><span>${inner}<span class="cl-s">${ic(p.from === 'X' ? 'x' : 'threads')} ${esc(who)}</span></span></div>`;
 }
 function newsLine(x){
   return `<div class="cl-line"><time>${esc(x.ts ? wibTime(x.ts) : '')}</time>
-    <span><a href="${esc(x.url)}" target="_blank" rel="noopener">${esc(deEmoji(x.title))}</a><span class="cl-s">${ic('news')} ${esc(cleanSrc(x.src, x.pub))}</span></span></div>`;
+    <span><a href="${escUrl(x.url)}" target="_blank" rel="noopener">${esc(deEmoji(x.title))}</a><span class="cl-s">${ic('news')} ${esc(cleanSrc(x.src, x.pub))}</span></span></div>`;
 }
 // Stale feeds remain visible but are not promoted to live signals.
 let xSignalCurrent = false, tSignalCurrent = false;
@@ -5538,8 +5549,8 @@ function alertHtml(c){
   return `<div class="tr${open ? ' is-open' : ''}" data-sev="${c.sev}">
     <div class="tr-m">
       <div class="tr-hd">
-        <svg class="ic tr-ic ${c.cat}" aria-hidden="true"><use href="${TK_SIG[c.cat] || '#i-pin'}"></use></svg>
-        <span class="tr-sev-cat ${c.cat}">${SEV_LABEL[c.sev]} · ${esc(CAT_LABEL[c.cat] || c.cat)}</span>
+        <svg class="ic tr-ic ${esc(c.cat)}" aria-hidden="true"><use href="${TK_SIG[c.cat] || '#i-pin'}"></use></svg>
+        <span class="tr-sev-cat ${esc(c.cat)}">${SEV_LABEL[c.sev]} · ${esc(CAT_LABEL[c.cat] || c.cat)}</span>
         <span class="tr-loc-tag">${esc(c.place)}</span>
         ${c.rel ? `<span class="tr-rel ${c.rel === 'dikonfirmasi' ? 'ok' : 'maybe'}" title="${esc(c.note || '')}">${esc(c.rel)}</span>` : ''}
         ${time ? `<time class="tr-time">${esc(time)}</time>` : ''}
@@ -5629,7 +5640,7 @@ function avatar(p){
   const name = deEmoji(String(p.name || p.handle || '?')).replace(/^@/,'');
   const ini = esc(name.slice(0,1).toUpperCase() || '?');
   const img = p.avatar
-    ? `<img src="${esc(p.avatar)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">`
+    ? `<img src="${escUrl(p.avatar)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">`
     : '';
   return `<span class="av" style="--h:${hue(p.handle || name)}">${ini}${img}</span>`;
 }
@@ -5661,13 +5672,13 @@ function tweetCard(p){
         <span class="tw-n">${esc(deEmoji(p.name || p.handle || ''))}</span>${p.verified ? VF : ''}
         <span class="tw-u">${esc(p.handle || '')}</span>
         <span class="tw-t" title="${esc(title)}">· ${esc(t)}</span>
-        ${p.url ? `<a class="tw-o" href="${esc(p.url)}" target="_blank" rel="noopener noreferrer" title="Buka di X">${ic('out')}</a>` : ''}
+        ${p.url ? `<a class="tw-o" href="${escUrl(p.url)}" target="_blank" rel="noopener noreferrer" title="Buka di X">${ic('out')}</a>` : ''}
       </div>
       <div class="tw-t tw-assess">${esc(assessmentLabel(p))}</div>
       <div class="tw-txt">${linkify(p.text || '') || '<span style="color:#555">tautan</span>'}</div>
       ${(p.urls || []).slice(0, 2).map(u => {
         let host = ''; try { host = new URL(u).hostname.replace(/^www\./, ''); } catch (e) {}
-        return `<a class="th-link" href="${esc(u)}" target="_blank" rel="noopener noreferrer">${ic('out')}${esc(host || 'tautan')}</a>`;
+        return `<a class="th-link" href="${escUrl(u)}" target="_blank" rel="noopener noreferrer">${ic('out')}${esc(host || 'tautan')}</a>`;
       }).join('')}
       <div class="tw-a">
         <span class="tw-reply">${I.reply}${p.replies ? num(p.replies) : ''}</span>
@@ -5894,7 +5905,7 @@ function threadCard(p){
   const av = p.avatar ? (API != null ? tokQ(API + '/img?u=' + encodeURIComponent(p.avatar)) : p.avatar)
     : (user ? (API != null ? tokQ(API + '/img?u=' + encodeURIComponent(`https://unavatar.io/threads/${user}`)) : `https://unavatar.io/threads/${encodeURIComponent(user)}`) : '');
   const img = av
-    ? `<img src="${esc(av)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">` : '';
+    ? `<img src="${escUrl(av)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">` : '';
   const ts = p.created_at ? Date.parse(p.created_at) : 0;
   const link = (p.links || [])[0];
   let host = '';
@@ -5907,12 +5918,12 @@ function threadCard(p){
         ${p.is_verified ? `<span class="th-vf">${ic('thcheck')}</span>` : ''}
         <span class="th-u">@${esc(user)}</span>
         <span class="th-t">· ${esc(ts ? rel(ts) : '')}</span>
-        <a class="th-o" href="${esc(p.url || '#')}" target="_blank" rel="noopener noreferrer" title="Buka di Threads">${ic('out')}</a>
+        <a class="th-o" href="${escUrl(p.url || '#')}" target="_blank" rel="noopener noreferrer" title="Buka di Threads">${ic('out')}</a>
       </div>
       ${p.is_reply && p.reply_to_username ? `<div class="th-rp">${ic('reply')}balasan untuk @${esc(deEmoji(p.reply_to_username))}</div>` : ''}
       <div class="tw-t tw-assess">${esc(assessmentLabel(p))}</div>
       <div class="th-txt">${linkifyThreads(p.text || '')}</div>
-      ${link ? `<a class="th-link" href="${esc(link)}" target="_blank" rel="noopener noreferrer">${ic('out')}${esc(host || 'tautan')}</a>` : ''}
+      ${link ? `<a class="th-link" href="${escUrl(link)}" target="_blank" rel="noopener noreferrer">${ic('out')}${esc(host || 'tautan')}</a>` : ''}
       <div class="th-a">
         <span class="th-like">${ic('heart')}${num(p.like_count)}</span>
         <span>${ic('comment')}${num(p.reply_count)}</span>
@@ -6048,7 +6059,7 @@ const topicOK = h => !!newsCatOf(h);
 function renderCatbar(){
   const ids = ['semua', ...CAT_ORDER];
   $('#catbar').innerHTML = ids.map(c =>
-    `<button class="cchip" type="button" data-cat="${c}" aria-pressed="${c === catFilter ? 'true' : 'false'}">${c === 'semua' ? 'Semua' : CAT_LABEL[c]}</button>`).join('');
+    `<button class="cchip" type="button" data-cat="${esc(c)}" aria-pressed="${c === catFilter ? 'true' : 'false'}">${c === 'semua' ? 'Semua' : CAT_LABEL[c]}</button>`).join('');
 }
 $('#catbar').addEventListener('click', e => {
   const b = e.target.closest('.cchip'); if (!b) return;
@@ -6130,12 +6141,12 @@ function mediaVidHtml(v){
   if (v.kind === 'video') {
     const src = API != null ? tokQ(API + '/vhs?u=' + encodeURIComponent(v.url)) : v.url;
     const hlsFlag = /\.m3u8(\?|#|$)/i.test(v.url) ? ' data-hls="1"' : '';
-    return `<video class="rd-vid" controls playsinline preload="metadata" src="${esc(src)}"${hlsFlag}${v.poster ? ` poster="${esc(v.poster)}"` : ''}></video>`;
+    return `<video class="rd-vid" controls playsinline preload="metadata" src="${escUrl(src)}"${hlsFlag}${v.poster ? ` poster="${escUrl(v.poster)}"` : ''}></video>`;
   }
   if (v.kind !== 'iframe') return '';
   const yid = (String(v.url).match(/embed\/([\w-]{6,15})/i) || [])[1];
-  if (!yid) return `<div class="rd-vid"><iframe src="${esc(v.url)}" title="Video" loading="lazy" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe></div>`;
-  return `<button class="rd-vid rd-facade" type="button" data-src="${esc(v.url)}">
+  if (!yid) return `<div class="rd-vid"><iframe src="${escUrl(v.url)}" title="Video" loading="lazy" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe></div>`;
+  return `<button class="rd-vid rd-facade" type="button" data-src="${escUrl(v.url)}">
     <img src="https://i.ytimg.com/vi/${yid}/hqdefault.jpg" alt="Video YouTube" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">
     <span class="rd-play"><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg></span>
   </button>`;
@@ -6163,9 +6174,9 @@ function leadHtml(h, imageUrl = '', isLatest = true, video = null){
   const rawDesc = descForItem(h) || h.desc || '';
   const desc = rawDesc && rawDesc.length > 200 ? rawDesc.slice(0, 200).replace(/\s+\S*$/, '') + '…' : rawDesc;
   const mediaHtml = imageUrl
-    ? `<div class="lead-img"><img src="${esc(imageUrl)}" data-orig="${esc(imageUrl)}" alt="" loading="eager" decoding="async" referrerpolicy="no-referrer" onerror="rdLeadImgFb(this)"></div>`
+    ? `<div class="lead-img"><img src="${escUrl(imageUrl)}" data-orig="${esc(imageUrl)}" alt="" loading="eager" decoding="async" referrerpolicy="no-referrer" onerror="rdLeadImgFb(this)"></div>`
     : (video ? leadVidWrapHtml(video, h && h.url) : '');
-  return `<a class="lead" data-cat="${cat}" href="${esc(h.url)}" target="_blank" rel="noopener">
+  return `<a class="lead" data-cat="${esc(cat)}" href="${escUrl(h.url)}" target="_blank" rel="noopener">
     ${mediaHtml}
     <div class="lead-t">${cat ? `<span class="lead-cat">${CAT_LABEL[cat]}</span>` : ''}${h.foreign ? '<span class="lead-cat glob">Global</span>' : ''}<span class="lead-live">${isLatest ? 'Terbaru' : 'Sorotan'}</span><span class="lead-meta-r"><span class="lead-by">${esc(cleanSrc(h.src, h.pub))}</span><time>${esc(h.ts ? wibTime(h.ts) : '')} WIB</time></span></div>
     <h3>${esc(deEmoji(h.title))}</h3>
@@ -6226,7 +6237,7 @@ function attachLeadImage(url, imageUrl){
   const staleVid = el.querySelector('.lead-vid');
   if (staleVid) staleVid.remove();
   el.insertAdjacentHTML('afterbegin',
-    `<div class="lead-img nw-reveal"><img src="${esc(imageUrl)}" data-orig="${esc(imageUrl)}" alt="" loading="eager" decoding="async" referrerpolicy="no-referrer" onerror="rdLeadImgFb(this)"></div>`);
+    `<div class="lead-img nw-reveal"><img src="${escUrl(imageUrl)}" data-orig="${esc(imageUrl)}" alt="" loading="eager" decoding="async" referrerpolicy="no-referrer" onerror="rdLeadImgFb(this)"></div>`);
 }
 function attachLeadVideo(url, video){
   if (!video || !video.url || leadRenderURL !== url) return;
@@ -6455,7 +6466,7 @@ function newsHtml(h, full){
   const ext = descForItem(h) || (h.desc && h.desc.length > 25 ? h.desc : '');
   // kartu list tanpa thumbnail — gambar hanya untuk lead hero.
   // Headline-first: tidak memasang skeleton di kartu list permanen — transitional reveal hanya saat descPending dengan auto-decay agar kartu tidak kosong melompong.
-  return `<a class="nw${full ? ' nw-full' : ''}" data-cat="${cat}" href="${esc(h.url)}" target="_blank" rel="noopener">
+  return `<a class="nw${full ? ' nw-full' : ''}" data-cat="${esc(cat)}" href="${escUrl(h.url)}" target="_blank" rel="noopener">
     <div class="nw-top">${cat ? `<span class="nw-cat">${CAT_LABEL[cat]}</span>` : ''}${h.foreign ? '<span class="nw-cat glob">Global</span>' : ''}<time>${esc(h.ts ? wibTime(h.ts) : '')}</time></div>
     <div class="nw-src">${esc(cleanSrc(h.src, h.pub))}${isNew ? '<span class="new">Baru</span>' : ''}${h.n > 1 ? `<span class="dup-n" title="${esc([...h.srcs].map(s => cleanSrc(s)).filter(Boolean).join(', '))}">×${h.n} artikel</span>` : ''}</div>
     <h3>${esc(deEmoji(h.title))}</h3>
@@ -7187,7 +7198,7 @@ let breakPrev = new Set(), breakSeeded = false;   // poll pertama: seed diam-dia
 let tkFreshTimer = 0;
 const renderTk = (h, isNew) => {
   const cat = newsCat(h);
-  return `<a class="tk${isNew ? ' tk-new' : ''}" data-cat="${cat}" href="${esc(h.url)}" target="_blank" rel="noopener" title="${esc(h.label || CAT_LABEL[cat] || '')}">` +
+  return `<a class="tk${isNew ? ' tk-new' : ''}" data-cat="${esc(cat)}" href="${escUrl(h.url)}" target="_blank" rel="noopener" title="${esc(h.label || CAT_LABEL[cat] || '')}">` +
     `<span class="tk-mk"><svg class="ic tk-sig" aria-hidden="true"><use href="${TK_SIG[cat] || '#i-pin'}"></use></svg></span>` +
     `<span class="tk-time">${esc(h.ts ? wibTime(h.ts) : '')}</span>` +
     `<span class="tk-t">${esc(cleanTitle(deEmoji(h.title || ''), h.pub || h.src))}</span>` +
@@ -8075,7 +8086,7 @@ function mapPopup(it){
 function camPopup(c){
   return `<div class="mp-k">Kamera CCTV · ${esc(c.c || 'Jakarta')}</div>
     <div class="mp-t">${esc(deEmoji(c.n))}</div>
-    ${c.e ? `<a class="mp-src" href="${esc(c.e)}" target="_blank" rel="noopener">Buka player${ic('out')}</a>` : ''}`;
+    ${c.e ? `<a class="mp-src" href="${escUrl(c.e)}" target="_blank" rel="noopener">Buka player${ic('out')}</a>` : ''}`;
 }
 function ttIncPopup(inc){
   const col = ttSevCol(inc);
@@ -9873,7 +9884,7 @@ async function pullAlerts(){
           ${meta('Effective:', capDate(a.effective))}${meta('Expires:', capDate(a.expires))}${meta('Area:', a.areaDesc || a.area)}
         </div>
         ${a.description ? `<div class="mp-m" style="text-transform:none;letter-spacing:.01em">${esc(a.description).slice(0,400)}</div>` : ''}
-        ${a.web ? `<div class="mp-m"><a href="${esc(a.web)}" target="_blank" rel="noopener">info BMKG</a></div>` : ''}`;
+        ${a.web ? `<div class="mp-m"><a href="${escUrl(a.web)}" target="_blank" rel="noopener">info BMKG</a></div>` : ''}`;
     };
     if (!warnRenderer) {
       // pane khusus z-300: di atas basemap, di bawah overlayPane (canvas vector).
@@ -10673,7 +10684,7 @@ function rdArticle(d, url) {
   for (const b of (d.blocks || [])) if (b.k === 'v' && b.v && b.v.poster && b.v.kind !== 'probe') posters.add(b.v.poster);
   const hero = (d.img && d.imgVerified !== false && !posters.has(d.img)) ? d.img : '';
   const heroSrc = hero ? rdMediaImgSrc(hero, d.imgProxy) : '';
-  const img = heroSrc ? `<img class="rd-hero" src="${esc(heroSrc)}" data-orig="${esc(hero)}" alt="" loading="eager" referrerpolicy="no-referrer" onerror="rdHeroFb(this)">` : '';
+  const img = heroSrc ? `<img class="rd-hero" src="${escUrl(heroSrc)}" data-orig="${esc(hero)}" alt="" loading="eager" referrerpolicy="no-referrer" onerror="rdHeroFb(this)">` : '';
   const rdVidHtml = v => mediaVidHtml(v);
   const emptyFb = (d.wireFallback || d.textSource === 'none') && !(d.paras && d.paras.length);
   const note = d.videoPage
@@ -10695,7 +10706,7 @@ function rdArticle(d, url) {
       if (b.k === 'i') {
         if (b.img && b.img.url) {
           const figSrc = rdMediaImgSrc(b.img.url, b.img.proxy);
-          chunks.push(`<figure class="rd-fig"><img src="${esc(figSrc)}" data-orig="${esc(b.img.url)}" alt="${esc(b.img.cap || '')}" loading="lazy" referrerpolicy="no-referrer" onerror="rdFigFb(this)">${b.img.cap ? `<figcaption>${esc(b.img.cap)}</figcaption>` : ''}</figure>`);
+          chunks.push(`<figure class="rd-fig"><img src="${escUrl(figSrc)}" data-orig="${esc(b.img.url)}" alt="${esc(b.img.cap || '')}" loading="lazy" referrerpolicy="no-referrer" onerror="rdFigFb(this)">${b.img.cap ? `<figcaption>${esc(b.img.cap)}</figcaption>` : ''}</figure>`);
         }
         continue;
       }
@@ -10762,7 +10773,7 @@ function mountVidFacade(f, autoplay = false) {
   const box = document.createElement('div'); box.className = 'rd-vid';
   // getAttribute() mengembalikan nilai yang sudah di-decode; escape ulang sebelum
   // masuk innerHTML, kalau tidak kutip di URL bisa breakout atribut (DOM XSS).
-  box.innerHTML = `<iframe src="${esc(src)}" title="Video" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe>`;
+  box.innerHTML = `<iframe src="${escUrl(src)}" title="Video" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe>`;
   f.replaceWith(box);
 }
 $('#rd-body').addEventListener('click', e => {
@@ -10792,7 +10803,7 @@ function rdReplyNode(r, kind, depth) {
   const likes = isX ? r.likes : r.like_count;
   const nrep = isX ? r.replies : r.reply_count;
   return `<article class="rd-r">
-    <span class="rd-ra" style="--h:${hue(handle || name)}">${esc((name || '?').slice(0, 1).toUpperCase())}${avSrc ? `<img src="${esc(avSrc)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">` : ''}</span>
+    <span class="rd-ra" style="--h:${hue(handle || name)}">${esc((name || '?').slice(0, 1).toUpperCase())}${avSrc ? `<img src="${escUrl(avSrc)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">` : ''}</span>
     <div class="rd-rb">
       <div class="rd-rn"><span>${esc(name)}</span>${vf}</div>
       <div class="rd-rm">${esc(handle)}${ts ? ' · ' + esc(wibFull(ts)) + ' WIB' : ''}</div>
@@ -10999,7 +11010,7 @@ function rdPost(kind, p, trigger, push = true) {
   const avSrc = isX ? (p.avatar || '')
     : (p.avatar ? (API != null ? tokQ(API + '/img?u=' + encodeURIComponent(p.avatar)) : p.avatar) : '');
   const ini = esc(name.slice(0, 1).toUpperCase() || '?');
-  const av = `<span class="rd-pa" style="--h:${hue(handle || name)}">${ini}${avSrc ? `<img src="${esc(avSrc)}" alt="" referrerpolicy="no-referrer" onerror="this.remove()">` : ''}</span>`;
+  const av = `<span class="rd-pa" style="--h:${hue(handle || name)}">${ini}${avSrc ? `<img src="${escUrl(avSrc)}" alt="" referrerpolicy="no-referrer" onerror="this.remove()">` : ''}</span>`;
   const vf = isX ? (p.verified ? `<span class="vf">${ic('verified')}</span>` : '')
     : (p.is_verified ? `<span class="vf">${ic('thcheck')}</span>` : '');
   const text = isX ? linkify(p.text || '') : linkifyThreads(p.text || '');
@@ -11011,9 +11022,9 @@ function rdPost(kind, p, trigger, push = true) {
     const list = p.media.slice(0, 4);
     const mCount = Math.min(list.length, 4);
     media = `<div class="rd-media rd-m-${mCount}">` + list.map(m => {
-      if (m.type === 'video') return `<video controls playsinline preload="metadata" src="${esc(m.url)}"></video>`;
+      if (m.type === 'video') return `<video controls playsinline preload="metadata" src="${escUrl(m.url)}"></video>`;
       const src = (!isX && API != null) ? tokQ(API + '/img?u=' + encodeURIComponent(m.url)) : m.url;
-      return `<img src="${esc(src)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">`;
+      return `<img src="${escUrl(src)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">`;
     }).join('') + '</div>';
   }
   rdStopMedia();   // post sebelumnya bisa punya video — matikan sebelum ditimpa

@@ -22,7 +22,6 @@ __pycache__/
 
 # os & workspace junk
 .DS_Store
-About*
 .workbuddy-ai/
 
 # deps

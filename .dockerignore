@@ -13,6 +13,5 @@ config.local.json
 *.log
 sitrep.out
 .DS_Store
-About*
 tests/
 scripts/audit-output.json
