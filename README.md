@@ -6,14 +6,14 @@ Real-time situation dashboard for Indonesia: incident news, social signals, disa
 
 ## Features
 
-- **News wire** — aggregated RSS feeds with dedup, classification, and a reader that punches through paywalls and bot walls (direct → bot-UA → AMP → proxy → Jina → Firecrawl fallbacks)
-- **Social monitor** — X and Threads ingestion with query chips, per-topic lazy fetch, author-diversity caps, and signal clustering
-- **Incident map** — Leaflet detail view: BMKG earthquakes, volcano alerts, weather warnings, air quality, wildfire hotspots (NASA FIRMS), and TomTom traffic
-
-  ![Map layers: weather, air quality, wildfire hotspots](docs/map-conditions.jpg)
+- **News wire** — aggregated RSS feeds with dedup and classification, plus a built-in reader that strips ads/trackers and extracts clean article text + media. The reader punches through paywalls and bot walls (direct → bot-UA → AMP → proxy → Jina → Firecrawl fallbacks)
+- **Social monitor** — X and Threads ingestion with query chips, per-topic lazy fetch, author-diversity caps, signal clustering, and in-app reading: posts open in a clean reader pane (thread context for X, full post + replies for Threads) without leaving the console
 - **Globe** — 3D view of geolocated incidents from the last 24h, each point linked back to its news/social source
 
   ![3D globe with 24h incident points](docs/globe.jpg)
+- **Incident map** — Leaflet detail view: BMKG earthquakes, volcano alerts, weather warnings, air quality, wildfire hotspots (NASA FIRMS), and TomTom traffic
+
+  ![Map layers: weather, air quality, wildfire hotspots](docs/map-conditions.jpg)
 - **Satellite** — Copernicus Sentinel-2 L2A tile proxy (CDSE) with quota caps and disk cache
 
   ![Sentinel-2 true-color overlay via Copernicus](docs/map-copernicus.jpg)
