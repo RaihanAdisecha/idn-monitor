@@ -10,6 +10,7 @@ ENV NODE_OPTIONS="--max-old-space-size=1536"
 COPY package.json package-lock.json requirements.txt ./
 RUN npm ci --omit=dev
 COPY *.js config.json start.sh ./
+COPY src/ ./src/
 COPY geo/ ./geo/
 COPY public/ ./public/
 COPY vendor/ ./vendor/

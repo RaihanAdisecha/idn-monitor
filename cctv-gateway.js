@@ -1,17 +1,8 @@
 'use strict';
-/* CCTV gateway: jalur data fallback (proxy HLS), snapshot, laporan kesehatan, RUM.
-   Prinsip: browser memutar LANGSUNG ke origin (hemat egress + IP user bukan IP
-   datacenter). Proxy ini hanya cadangan, jadi harus murah:
-   - lane sendiri (tidak berbagi semaphore dgn reader/img/probe) + batas per host
-   - playlist di-cache pendek + coalescing (N penonton = 1 fetch upstream)
-   - segmen di-tee ke klien sambil dikumpulkan buat cache (TTFB rendah, bukan buffer-dulu)
-   - rate limit per IP (request + byte) dan budget egress
-   Semua dependensi disuntik supaya modul ini bisa dites tanpa server. */
+
 const { spawn } = require('child_process');
 const crypto = require('crypto');
 
-/* ---------- primitif ---------- */
-/* Lane: antrean dengan batas total, per-host, DAN maxQueue + pembatalan AbortSignal. */
 function makeLane(max, perHost, maxQueue = Infinity) {
   let n = 0, cancelled = 0; const per = new Map(); const q = [];
   const pump = () => {
@@ -69,7 +60,7 @@ function makeLane(max, perHost, maxQueue = Infinity) {
     stats: () => ({ active: n, queued: q.length, maxQueue: Number.isFinite(maxQueue) ? maxQueue : null, hosts: per.size, cancelled })
   };
 }
-/* Token bucket per kunci (IP). rate = token/detik, burst = kapasitas. */
+
 function makeBucket(rate, burst, now = Date.now) {
   const m = new Map();
   const ensure = (k, t) => {
@@ -87,7 +78,7 @@ function makeBucket(rate, burst, now = Date.now) {
     if (b.v < cost) return false;
     b.v -= cost; return true;
   };
-  /* charge: tagih byte setelah dikirim (boleh negatif → request berikut ditolak) */
+
   const charge = (k, cost) => {
     const t = now(); const b = ensure(k, t);
     b.v = Math.min(burst, b.v + (t - b.t) / 1000 * rate) - cost;
@@ -96,7 +87,7 @@ function makeBucket(rate, burst, now = Date.now) {
   const ok = k => { const b = m.get(k); if (!b) return true; const t = now(); return Math.min(burst, b.v + (t - b.t) / 1000 * rate) > 0; };
   return { take, charge, ok, size: () => m.size };
 }
-/* LRU berbasis byte dengan TTL per entri. */
+
 function makeLru(maxBytes, now = Date.now) {
   const m = new Map(); let bytes = 0;
   const del = k => { const e = m.get(k); if (e) { bytes -= e.size; m.delete(k); } };
@@ -111,14 +102,13 @@ function makeLru(maxBytes, now = Date.now) {
   };
 }
 
-/* ---------- gateway ---------- */
 function createGateway(d) {
   const {
-    getRaw,            // (url, ms, headers, hostOK, signal) -> {r, url}; SSRF-safe, tanpa semaphore global
-    hostAllowed,       // (url) -> bool
-    headersFor,        // (url) -> header upstream
-    rewriteUrl,        // async (url) -> url (token molecool segar)
-    px,                // (url) -> url proxy
+    getRaw,
+    hostAllowed,
+    headersFor,
+    rewriteUrl,
+    px,
     trustProxy = false,
     allowCors: allowCorsTop,
     allowPublicCache: allowPublicCacheTop,
@@ -131,8 +121,8 @@ function createGateway(d) {
     maxActive: 48, perHost: 8, maxQueue: 64, snapActive: 2, snapMaxQueue: 16,
     segCacheBytes: 64 << 20, segTtl: 30000, segCacheMax: 16 << 20, segMax: 25 << 20,
     plMin: 500, plMax: 2500,
-    reqRate: 40, reqBurst: 200, byteRate: 3 << 20, byteBurst: 120 << 20,   // ~25 Mbps rata-rata per IP, burst 120MB
-    globalByteRate: 45 << 20, globalByteBurst: 180 << 20,                 // batas egress global NIC ~360 Mbps (override via env untuk Mac)
+    reqRate: 40, reqBurst: 200, byteRate: 3 << 20, byteBurst: 120 << 20,
+    globalByteRate: 45 << 20, globalByteBurst: 180 << 20,
     snapTtl: 90000, upstreamMs: 25000
   }, d.options || {});
   const allowCors = allowCorsTop !== undefined ? Boolean(allowCorsTop) : (O.allowCors !== undefined ? Boolean(O.allowCors) : true);
@@ -186,9 +176,6 @@ function createGateway(d) {
     return ip;
   };
 
-  /* Kunci kanonik untuk coalescing & cache: strip nonce/token volatil dari
-     pantaucctv (?t=...) dan molecool (?token=...) supaya banyak penonton
-     mendapatkan cache hit / single-flight yang sama. */
   function canonicalKey(raw) {
     try {
       const u = new URL(raw);
@@ -211,8 +198,30 @@ function createGateway(d) {
       if (/^cctv\.molecool\.id$/i.test(u.hostname)) {
         return 'mc:' + u.pathname;
       }
+      if (/(^|\.)dpuprkotang\.info$/i.test(u.hostname)) {
+        const src = (u.searchParams.get('src') || '').toLowerCase();
+        return 'kt:' + u.pathname.toLowerCase() + ':' + src;
+      }
     } catch {}
     return raw;
+  }
+
+  function resolveDirectSnapUrl(raw) {
+    try {
+      const u = new URL(raw);
+      if (/(^|\.)dpuprkotang\.info$/i.test(u.hostname)) {
+        u.pathname = '/api/frame.jpeg';
+        u.searchParams.delete('t');
+        u.searchParams.delete('v');
+        return u.href;
+      }
+      if (/\/api\/frame\.jpe?g|\/preview\.jpe?g|\.(?:jpe?g|png|webp)(?:\?|#|$)/i.test(u.pathname)) {
+        u.searchParams.delete('t');
+        u.searchParams.delete('v');
+        return u.href;
+      }
+    } catch {}
+    return null;
   }
 
   function rewritePlaylist(txt, furl) {
@@ -267,14 +276,12 @@ function createGateway(d) {
     return low;
   }
 
-  /* Leader/subscriber flight: playlist -> buffer + rewrite.
-     Segmen -> live fan-out ke semua subscriber aktif sambil dikumpulkan buat cache. */
   function startFlight(key, url, host, keepBackground) {
     const ac = new AbortController();
     const fl = {
       key,
       ac,
-      subscribers: new Set(), // { res, ip, started, qPromise }
+      subscribers: new Set(),
       bgRef: keepBackground ? 1 : 0,
       chunks: [],
       total: 0,
@@ -303,9 +310,9 @@ function createGateway(d) {
       };
       res.once('close', onClose);
       res.once('error', onClose);
-      // If streaming already started and chunks fit in memory, catch follower up cleanly
+
       if (fl.isPl === false && fl.status === 200 && !fl.collect) {
-        // Segment exceeded cache budget before follower arrived -> let caller do direct retry
+
         fl.subscribers.delete(sub);
         res.off('close', onClose);
         res.off('error', onClose);
@@ -397,7 +404,7 @@ function createGateway(d) {
                 fl.collect = false;
                 if (fl.bgRef === 0) fl.chunks.length = 0;
                 else {
-                  // Retain at most first ~2MB for ffmpeg prefix snapshot extraction
+
                   let kept = 0, cut = 0;
                   while (cut < fl.chunks.length && kept < (2 << 20)) kept += fl.chunks[cut++].length;
                   fl.chunks.length = cut;
@@ -428,7 +435,6 @@ function createGateway(d) {
     return fl;
   }
 
-  /* Entri point /hls */
   async function hls(rawUrl, req, res) {
     m.req++;
     if (req.destroyed || res.destroyed) return;
@@ -454,7 +460,7 @@ function createGateway(d) {
 
     const detach = fl.attach(res, ip);
     if (detach === null) {
-      // Joined after a >segCacheMax segment stopped collecting; fetch dedicated stream
+
       const solo = startFlight(key + '#solo', url, host, false);
       const soloDetach = solo.attach(res, ip);
       let se;
@@ -480,7 +486,6 @@ function createGateway(d) {
     return sendEntry(res, { status: e.status || 502 }, ip);
   }
 
-  /* ---------- buffered fetch internal (untuk snapshot) ---------- */
   async function getBuffered(url) {
     const key = canonicalKey(url);
     const hit = cache.get(key); if (hit && hit.buf) return hit;
@@ -507,7 +512,6 @@ function createGateway(d) {
   }
   const upstreamOf = pxUrl => { try { return new URL(pxUrl, 'http://x').searchParams.get('u') || pxUrl; } catch (e) { return pxUrl; } };
 
-  /* ---------- snapshot (ffmpeg) ---------- */
   let ffmpegOk = null;
   const ffbin = d.ffmpeg || process.env.FFMPEG_PATH || 'ffmpeg';
   function detectFfmpeg() {
@@ -533,7 +537,24 @@ function createGateway(d) {
       c.stdin.end(buf);
     });
   }
-  async function snapshotFor(url) {
+  async function snapshotFor(url, signal) {
+    const directUrl = resolveDirectSnapUrl(url);
+    if (directUrl) {
+      m.upstream++;
+      const g = await getRaw(directUrl, O.upstreamMs, headersFor(directUrl), hostAllowed, signal);
+      const r = g.r;
+      if (!r.ok) {
+        try { r.body && r.body.cancel && await r.body.cancel(); } catch (e) {}
+        throw new Error('snap ' + r.status);
+      }
+      const ct = String(r.headers.get('content-type') || '').toLowerCase();
+      const buf = Buffer.from(await r.arrayBuffer());
+      if (buf.length < 128 || buf.length > (4 << 20)) throw new Error('snap kosong');
+      const isJpeg = buf[0] === 0xff && buf[1] === 0xd8;
+      const isPng = buf[0] === 0x89 && buf[1] === 0x50;
+      if (!ct.startsWith('image/') && !isJpeg && !isPng) throw new Error('snap bukan gambar');
+      return buf;
+    }
     let cur = url;
     for (let i = 0; i < 4; i++) {
       const e = await getBuffered(cur);
@@ -541,7 +562,7 @@ function createGateway(d) {
       const txt = e.buf.toString('utf8');
       const lines = txt.split('\n').map(s => s.trim()).filter(s => s && s[0] !== '#');
       if (!lines.length) throw new Error('playlist kosong');
-      if (/#EXT-X-STREAM-INF/.test(txt)) { cur = upstreamOf(lines[0]); continue; }   // master → varian pertama
+      if (/#EXT-X-STREAM-INF/.test(txt)) { cur = upstreamOf(lines[0]); continue; }
       const seg = upstreamOf(lines[lines.length - 1]);
       const s = await getBuffered(seg);
       const segBuf = (s && (s.buf || s.snapPrefix)) || null;
@@ -554,9 +575,11 @@ function createGateway(d) {
     if (req.destroyed || res.destroyed) return;
     const ip = rate(req, res); if (!ip) return;
     if (!rawUrl || !hostAllowed(rawUrl)) return deny(res, 403);
-    if (!(await detectFfmpeg())) return deny(res, 501);
-    const jh = { ...corsHdr, ...secHdr, 'content-type': 'image/jpeg', 'cache-control': (allowCors || allowPublicCache) ? 'public, max-age=60, stale-while-revalidate=60' : 'private, max-age=60' };
-    const snapKey = canonicalKey(rawUrl);
+    const directUrl = resolveDirectSnapUrl(rawUrl);
+    if (!directUrl && !(await detectFfmpeg())) return deny(res, 501);
+    const maxAge = directUrl ? 15 : 60;
+    const jh = { ...corsHdr, ...secHdr, 'content-type': 'image/jpeg', 'cache-control': (allowCors || allowPublicCache) ? `public, max-age=${maxAge}, stale-while-revalidate=${maxAge}` : `private, max-age=${maxAge}` };
+    const snapKey = canonicalKey(directUrl || rawUrl);
     const hit = snaps.get(snapKey);
     if (hit) { res.writeHead(200, jh); return res.end(hit); }
     const f = snapFail.get(snapKey); if (f && f > Date.now()) return deny(res, 503, { 'retry-after': '30' });
@@ -567,8 +590,8 @@ function createGateway(d) {
         ac,
         waiters: 0,
         promise: snapLane.run('snap', async () => {
-          let u = rawUrl; try { u = await rewriteUrl(rawUrl); } catch (e) {}
-          return snapshotFor(u);
+          let u = directUrl || rawUrl; try { u = await rewriteUrl(u); } catch (e) {}
+          return snapshotFor(u, ac.signal);
         }, ac.signal),
       };
       flight.promise.finally(() => snapIn.delete(snapKey)).catch(() => {});
@@ -587,19 +610,18 @@ function createGateway(d) {
     } catch (e) {
       req.off('close', onClose);
       if (!e || (e.status !== 503 && e.status !== 499)) {
-        snapFail.set(snapKey, Date.now() + 45000);
+        snapFail.set(snapKey, Date.now() + (directUrl ? 15000 : 45000));
         if (snapFail.size > 2000) snapFail.delete(snapFail.keys().next().value);
       }
-      return deny(res, 503, { 'retry-after': e && e.status === 503 ? '5' : '45' });
+      return deny(res, 503, { 'retry-after': e && e.status === 503 ? '5' : (directUrl ? '15' : '45') });
     }
     req.off('close', onClose);
     if (!jpg || res.destroyed || res.writableEnded) return;
-    snaps.set(snapKey, jpg, jpg.length, O.snapTtl);
+    snaps.set(snapKey, jpg, jpg.length, directUrl ? Math.min(O.snapTtl, 15000) : O.snapTtl);
     res.writeHead(200, jh); res.end(jpg); chargeBytes(ip, jpg.length);
   }
 
-  /* ---------- laporan kesehatan: butuh >=2 pelapor berbeda ---------- */
-  const reports = new Map();   // url -> { fails: Map<ipHash, ts>, okAt }
+  const reports = new Map();
   const repRl = makeBucket(1, 30);
   const DEAD_WINDOW = 1200000;
   const hashIp = ip => crypto.createHash('sha1').update(String(ip)).digest('hex').slice(0, 12);
@@ -624,8 +646,7 @@ function createGateway(d) {
     return n >= 2;
   };
 
-  /* ---------- RUM: time-to-first-frame / stall / gagal per host ---------- */
-  const rum = new Map();   // host -> { ok, fail, stalls, ttff:[] }
+  const rum = new Map();
   const rumRl = makeBucket(0.5, 10);
   const q = (arr, p) => { if (!arr.length) return null; const a = arr.slice().sort((x, y) => x - y); return a[Math.min(a.length - 1, Math.floor(p * a.length))]; };
   function rumIngest(events, ip) {

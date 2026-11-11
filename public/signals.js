@@ -5,8 +5,6 @@
 }(typeof globalThis !== 'undefined' ? globalThis : this, function () {
   'use strict';
 
-  // Default bawaan client. Boleh diadopsi ulang dari classifierVersion snapshot
-  // terbaru di reconcile() — server berhak bump versi classifier kapan saja.
   let VERSION = '2026-11-07.3';
   const SIGNAL_WINDOW = 90 * 60 * 1000;
   const RETENTION_WINDOW = 24 * 60 * 60 * 1000;
@@ -76,10 +74,6 @@
     return target && !GENERIC_TARGETS.has(target) ? target : '';
   }
 
-  // Relasi bertingkat: null = anchor konflik/tidak ada jangkar (bukan "unrelated" —
-  // ketiadaan pasangan bukan bukti ketidakcocokan), 'weak' = kandidat longgar untuk
-  // "kemungkinan terkait", 'strong' = anchor + evidence cukup untuk konfirmasi.
-  // matches() tetap strict: hanya 'strong' yang boleh dipakai grouping/korelasi final.
   function relation(a, b) {
     if (!a || !b || a.category !== b.category) return null;
     const typeA = normalize(a.type), typeB = normalize(b.type);
@@ -88,7 +82,7 @@
     const rawTargetA = normalize(a.target), rawTargetB = normalize(b.target);
     if (placeA && placeB && placeA !== placeB) return null;
     if (rawTargetA && rawTargetB && rawTargetA !== rawTargetB) return null;
-    // A same-named place in different provinces is still a conflicting location.
+
     const provA = normalize(a.location && a.location.prov);
     const provB = normalize(b.location && b.location.prov);
     if (provA && provB && provA !== provB) return null;
@@ -111,8 +105,7 @@
     if ((anchorStrong || anchorWeak) && overlap >= 1) return 'weak';
     return null;
   }
-  // matches() strict: hanya 'strong' (anchor exact + overlap/jaccard minimal) —
-  // dipakai grouping sinyal/klaster, jangan dilonggarkan.
+
   function matches(a, b) {
     return relation(a, b) === 'strong';
   }
@@ -135,7 +128,7 @@
 
   function dedupe(posts, keyOf) {
     const keys = new Set(), texts = new Set(), result = [];
-    // Latest copy wins; sorting a copy leaves the caller's input untouched.
+
     for (const post of posts.slice().sort((a, b) => b.ts - a.ts)) {
       const key = keyOf(post), text = dedupeText(textOf(post));
       if (keys.has(key) || (text && texts.has(text))) continue;
@@ -219,10 +212,7 @@
     if (!payload || payload.snapshot !== true || payload.ok !== true ||
       !Array.isArray(payload.posts) || typeof payload.snapshotAt !== 'number' || !Number.isFinite(payload.snapshotAt) ||
       !Number.isFinite(now) || (Number.isFinite(currentMap._snapshotAt) && payload.snapshotAt < currentMap._snapshotAt)) return previous();
-    // Jangan hard-gate classifierVersion: versi server boleh naik. Adopsi versi
-    // payload selama ada post yang membuktikannya (assessment.version sama —
-    // classifierVersion dan assessment.version satu sumber di server). Versi asing
-    // tanpa bukti = incompatible, map lama dipertahankan.
+
     if (typeof payload.classifierVersion !== 'string' || !payload.classifierVersion) return previous();
     if (payload.classifierVersion !== VERSION) {
       const proven = payload.posts.some(p => p && p.assessment && p.assessment.version === payload.classifierVersion);
@@ -235,7 +225,7 @@
     const keyOf = options.keyOf || defaultKey;
     const posts = dedupe(payload.posts.filter(post => post && typeof post === 'object' &&
       validTime(post.ts, now, RETENTION_WINDOW) && currentAssessment(post)), keyOf).slice(0, Math.floor(max));
-    // Prepare all keys before mutation, so a faulty caller key function cannot half-clear the map.
+
     const entries = posts.map(post => [keyOf(post), post]);
     currentMap.clear();
     for (const [key, post] of entries) currentMap.set(key, post);
@@ -243,8 +233,6 @@
     return { accepted: true, posts: Array.from(currentMap.values()) };
   }
 
-  // Adopsi langsung dari payload same-origin yang dipercaya (mis. /api/situation)
-  // tanpa perlu snapshot + proof posts seperti reconcile().
   function adoptClassifierVersion(v) {
     if (typeof v === 'string' && v && v !== VERSION) VERSION = v;
   }

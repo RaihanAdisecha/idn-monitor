@@ -1,15 +1,4 @@
 'use strict';
-/**
- * Optional Modular External NLP / Semantic Disambiguation Adapter.
- *
- * Pure classifier functions (assess / socAssess) NEVER make network calls.
- * This adapter is strictly opt-in, configured exclusively via environment
- * variables (never credentials in source code), runs asynchronously only in
- * ingestion pipelines for borderline/ambiguous candidates, strips PII before
- * any outbound request, enforces strict timeouts + bounded retries, and
- * falls back deterministically to the local hybrid classifier without ever
- * turning an unavailable model into accepted incident signals.
- */
 
 const crypto = require('crypto');
 
@@ -93,10 +82,6 @@ function createNlpAdapter(opts = {}) {
     throw lastErr;
   }
 
-  /**
-   * Disambiguate a borderline candidate asynchronously.
-   * Never promotes an error/unavailable check to an incident signal.
-   */
   async function disambiguate(rawText, localAssessment) {
     const cfg = getConfig(env);
     if (!cfg.enabled || !fetchFn) {
@@ -108,7 +93,7 @@ function createNlpAdapter(opts = {}) {
       stats.fallbacks++;
       return { usedExternal: false, reason: 'circuit_open_fallback', assessment: localAssessment };
     }
-    // Only evaluate ambiguous / discovery / low-confidence candidates, never already-rejected spam/ads
+
     if (localAssessment && (localAssessment.feedLane === 'incident_signals' || localAssessment.feedLane === 'rejected')) {
       return { usedExternal: false, reason: 'not_borderline', assessment: localAssessment };
     }
@@ -140,7 +125,7 @@ function createNlpAdapter(opts = {}) {
       if (consecutiveFailures >= 3) {
         circuitOpenUntil = Date.now() + 60000;
       }
-      // Critical invariant: unavailable model NEVER flips post into accepted signal
+
       return {
         usedExternal: false,
         reason: 'error_deterministic_fallback',

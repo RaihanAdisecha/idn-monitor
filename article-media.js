@@ -1,6 +1,4 @@
 'use strict';
-// article-media.js — Canonical Article Media Resolver & Strict Image Validator.
-// Single source of truth for RSS, /api/thumb, and /api/read hero + body images.
 
 const crypto = require('crypto');
 const EXTRACT = require('./article-extract');
@@ -118,7 +116,6 @@ function rdSmallHint(u) {
   return false;
 }
 
-// URL & attribute junk heuristics (never sole validator — always combined with MIME/dim/AR probe)
 const RD_IMG_JUNK = /logo|logotype|wordmark|brandmark|favicon|apple-touch-icon|android-chrome|mstile|sprite|avatar|badge|placeholder|blank|pixel|spacer|advert|\/ads?\/|[-_/.]ads?[-_/.]|banner|emoji|emoticon|button|share|loading|lazy\.|default[-_]|no[-_]?image|not[-_]?found|gravatar|pravatar|thumb(?:nail)?s?\/small|image[-_]?404|404[-_]?image/i;
 const RD_JUNK_URL = /appstore|playstore|googleplay|gettheapp|framebarasset|asset-template|(?:^|\/)slide[-_]|assets_frontend\/images|\/assets\/(?:medsos|img|images|icons?)\/(?:ui|icons?|buttons?|social|medsos)?|share[-_ ]?preview|social[-_ ]?(?:share|card|icon)|og[-_]?(?:default|image)\b|partials\/|widgets-nocache|analytics_page_request|inpicture_widget|wartawan|scorecard|criteo|doubleclick|googlesyndication|googleadservices|adservice|hotjar|facebook\.net|img\.youtube\.com|(^|\/)ic_[a-z0-9]|en-flag|id-flag|(?:^|\/)thumb_(?:small|mini|tiny|xs|sm|default|placeholder|icon|avatar|\d{1,4}\.)|\/mini\/|\/small\/|\/img\/site\/|foot[-_ ]?network|foto[-_/]bank(?!\/originals)|fotobank|\/(?:tautan|lampiran)\/|image[-_]?404|404[-_]?image|ai[-_ ]?image[-_ ]?generator|\/avatars?\/|\/authors?\/|\/penulis\/|\/icons?\/|\/logos?\//i;
 const RD_JUNK_BASE = /^(?:google|gnews|googlenews|telegram|threads|bluesky|pinterest|line|ig|fb|twitter|x|tiktok|instagram|youtube|wa|whatsapp|linkedin|googleplay|appstore|playstore|en-flag|id-flag|favicon|logo|icon|avatar|placeholder|blank|spacer|pixel|spinner|loading|default)([-_. ]|$)/i;
@@ -174,7 +171,6 @@ function classifyCandidateAttrs(attrs = {}) {
   return { ok: true };
 }
 
-// Parse ISOBMFF (AVIF/HEIF) ispe box for width/height
 function parseIsobmffSize(buf) {
   const idx = buf.indexOf(Buffer.from('ispe'));
   if (idx >= 4 && idx + 16 <= buf.length) {
@@ -318,8 +314,8 @@ function validateImageMetrics({ role = 'hero', source = 'og', dim, bytes = 0, mi
 
 class AssetReuseTracker {
   constructor() {
-    this.byHost = new Map(); // regDomain -> Map<key, Set<canonicalArticleUrl>>
-    this.feedReuse = new Set(); // keys seen repeated across >=2 items inside one RSS feed
+    this.byHost = new Map();
+    this.feedReuse = new Set();
   }
 
   markFeedReused(imgUrl) {
@@ -339,8 +335,7 @@ class AssetReuseTracker {
     for (const checkKey of [k, fingerprint ? 'fp:' + fingerprint : ''].filter(Boolean)) {
       const s = m.get(checkKey);
       if (!s) continue;
-      // Allow 2 breaking/follow-up articles on the same host to share an archival editorial portrait/photo;
-      // flag reuse as a site-wide boilerplate asset once >= 3 distinct articles share it.
+
       if (s.has(artKey)) { if (s.size >= 3) return true; }
       else if (s.size >= 2) return true;
     }
@@ -387,7 +382,7 @@ function ldArticleImages(html, baseUrl) {
   for (const n of EXTRACT.rdLd(html)) {
     const t = String(n['@type'] || '');
     if (/person|organization/i.test(t)) continue;
-    // Prefer article-like nodes or WebPage primaryImageOfPage; skip BreadcrumbList / SiteNavigationElement
+
     if (/breadcrumb|navigation|searchaction/i.test(t)) continue;
     const urls = [];
     collect(n.image || n.thumbnailUrl || n.primaryImageOfPage, urls);
@@ -414,12 +409,10 @@ function extractHtmlImageCandidates(html, baseUrl) {
     arr.push({ url: u, source, attrs, ...extra });
   };
 
-  // 1. Body lead & inline images from cleaned semantic containers (strictly excluding related/author/nav/ads/card-links)
   const cleanBodyHtml = EXTRACT.stripCardLinks(EXTRACT.stripJunkContainers(sHtml), baseUrl);
   const { bodyContainers, leadMediaContainers } = EXTRACT.extractContainers(cleanBodyHtml);
   const bodySeen = new Set();
 
-  // Dedicated lead media boxes inside the article wrapper (e.g., .detail__media, .photo__wrap)
   for (const lmHtml of leadMediaContainers) {
     let cleanLm = EXTRACT.stripJunkContainers(lmHtml);
     cleanLm = EXTRACT.stripCardLinks(cleanLm, baseUrl);
@@ -450,7 +443,6 @@ function extractHtmlImageCandidates(html, baseUrl) {
     }
   }
 
-  // Main article body container blocks (preserving original order + paragraph position)
   const mainBodyCand = bodyContainers.find(c => c.kind === 'selector') ||
     bodyContainers.find(c => c.kind === 'article') ||
     bodyContainers.find(c => c.kind === 'main') ||
@@ -463,7 +455,7 @@ function extractHtmlImageCandidates(html, baseUrl) {
       if (b.k === 'i' && b.img && b.img.url) {
         if (bodySeen.has(b.img.url)) continue;
         bodySeen.add(b.img.url);
-        // Lead image if it appears before/at paragraph 1; otherwise mid/late inline body image
+
         const source = pCount <= 1 ? 'body_lead' : 'body';
         pushCand(bodyCands, b.img.url, source, b.img.attrs || { alt: b.img.alt }, {
           cap: b.img.cap || '',
@@ -474,7 +466,6 @@ function extractHtmlImageCandidates(html, baseUrl) {
     }
   }
 
-  // 2. Meta tags: og:image, twitter:image, thumbnailUrl, image_src, video poster, JSON-LD
   for (const m of sHtml.matchAll(/<meta\b[^>]*>/gi)) {
     const a = EXTRACT.parseAttrs(m[0]);
     const k = (a.property || a.name || a.itemprop || '').toLowerCase();
@@ -603,11 +594,6 @@ async function runBounded(items, limit, fn) {
   return results;
 }
 
-/**
- * Canonical Article Media Resolver.
- * Evaluates candidates across article body, og, twitter, json-ld, meta, and RSS
- * using strict MIME/magic-byte/dimension/aspect-ratio/context validation.
- */
 async function resolveArticleMedia({
   requestedUrl,
   canonicalUrl,
@@ -615,7 +601,7 @@ async function resolveArticleMedia({
   jinaMarkdown = null,
   rssImgs = [],
   rssImg = '',
-  mode = 'hero', // 'hero' | 'full'
+  mode = 'hero',
   method = 'html',
   wireTitle = '',
   probeFn,
@@ -647,7 +633,6 @@ async function resolveArticleMedia({
     if (resolved) rawCands.push({ url: resolved, source: 'rss', attrs: {} });
   }
 
-  // Deduplicate candidates across tiers by upgraded URL while tracking highest-priority source
   const tierRank = s => { const idx = PRIORITY_TIERS.indexOf(s); return idx >= 0 ? idx : 99; };
   const byUrl = new Map();
   for (const c of rawCands) {
@@ -679,7 +664,6 @@ async function resolveArticleMedia({
     preValidated.push(c);
   }
 
-  // Order for probing with per-tier slot reservations so numerous body_lead cards never starve og/twitter/ld/rss
   const attrArea = c => {
     const rawW = String((c.attrs && c.attrs.width) || '').trim();
     const rawH = String((c.attrs && c.attrs.height) || '').trim();
@@ -755,7 +739,6 @@ async function resolveArticleMedia({
     return null;
   };
 
-  // Probe bounded concurrently; in 'hero' mode probe Tier 1+2 first if present so we can short-circuit quickly
   let probed = [];
   if (mode === 'hero' && toProbe.length > 4) {
     const fastBatch = toProbe.slice(0, 4);
@@ -780,7 +763,7 @@ async function resolveArticleMedia({
   const verifiedPool = [];
   for (const r of probed) {
     if (!r) continue;
-    // Check finalUrl after redirects against junk patterns & reuse!
+
     const finalCheck = classifyCandidateUrl(r.url, { role: 'any' });
     if (!finalCheck.ok) {
       rejected.push({ url: r.url, source: r.cand.source, reason: finalCheck.reason + '_after_redirect' });
@@ -794,7 +777,6 @@ async function resolveArticleMedia({
     verifiedPool.push(r);
   }
 
-  // Select canonical hero strictly by priority tiers (1. body_lead -> 2. og -> 3. twitter -> 4. ld -> 5. meta -> 6. body -> 7. rss)
   let selectedHero = null;
   const heroEligible = [];
   for (const r of verifiedPool) {
@@ -818,7 +800,6 @@ async function resolveArticleMedia({
     heroEligible.push({ ...r, aspectRatio: mv.aspectRatio });
   }
 
-  // If body_lead is portrait while a valid landscape og exists, prefer landscape og as hero
   for (const tier of PRIORITY_TIERS) {
     const tierItems = heroEligible.filter(x => x.cand.source === tier);
     if (!tierItems.length) continue;
@@ -828,13 +809,12 @@ async function resolveArticleMedia({
       const hasLandscapeOg = heroEligible.some(x => (x.cand.source === 'og' || x.cand.source === 'twitter') && x.aspectRatio >= 1.15);
       if (hasLandscapeOg) continue;
     }
-    // Within the same tier, prefer higher-resolution editorial landscape photo
+
     tierItems.sort((a, b) => ((b.probe.w >= 600 ? 1 : 0) - (a.probe.w >= 600 ? 1 : 0)) || (b.probe.w - a.probe.w));
     selectedHero = tierItems[0];
     break;
   }
 
-  // If selectedHero shares key/fingerprint with a higher-res verified version in another tier (e.g. og=1200w vs body=640w), prefer the higher-res URL of the same photo
   if (selectedHero) {
     const hk = imageKey(selectedHero.url);
     const hfp = selectedHero.probe.fingerprint;
@@ -851,7 +831,6 @@ async function resolveArticleMedia({
     }
   }
 
-  // Build validated bodyImages in original document order, deduplicated vs hero and each other
   const bodyImages = [];
   if (mode === 'full') {
     const seenBodyUrl = new Set();

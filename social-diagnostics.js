@@ -1,11 +1,4 @@
 'use strict';
-/**
- * Operational Observability & Offline Classifier Evaluation Harness.
- *
- * Exposes bounded aggregate counters (without unbounded logs or secrets)
- * and a clean offline corpus evaluation scorer (precision, recall, FPR, FNR,
- * per-class metrics, feed-routing accuracy).
- */
 
 function makeBucket() {
   return {
@@ -166,10 +159,6 @@ function createDiagnostics() {
   return { recordRetrieved, recordClassification, recordCache, snapshot, reset };
 }
 
-/**
- * Evaluate classifier over a curated test corpus.
- * Each fixture: { id?, text, expectedIntent, expectedLane, expectedSignalEligible, expectedGeo?, expectedReaderGeo?, category? }
- */
 function evaluateCorpus(corpus, classifyFn) {
   let tp = 0, fp = 0, tn = 0, fn = 0;
   let laneCorrect = 0;

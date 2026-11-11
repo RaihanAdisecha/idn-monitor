@@ -15,6 +15,18 @@ const FEEDTEXT = require('../feedtext');
 const SEC = require('../security');
 const SRV = require('../server');
 
+function readBackendSrc() {
+  const root = path.join(__dirname, '..');
+  const srcDir = path.join(root, 'src');
+  const parts = [fs.readFileSync(path.join(root, 'server.js'), 'utf8')];
+  if (fs.existsSync(srcDir)) {
+    for (const f of fs.readdirSync(srcDir).sort()) {
+      if (f.endsWith('.js')) parts.push(fs.readFileSync(path.join(srcDir, f), 'utf8'));
+    }
+  }
+  return parts.join('\n');
+}
+
 // ---------------------------------------------------------------------------
 // Synthetic Binary Image Fixtures (PNG / JPEG / WebP / GIF / SVG / ICO)
 // ---------------------------------------------------------------------------
@@ -646,7 +658,7 @@ test('16. Article extraction returns only metadata description -> Identify fallb
   assert.equal(ext.paras.length, 1);
 
   // Also ensure server.js wire-fallback never injects fake boilerplate article text
-  const serverJs = fs.readFileSync(path.join(__dirname, '../server.js'), 'utf8');
+  const serverJs = readBackendSrc();
   assert.ok(!serverJs.includes('Laporan lengkap berada di situs sumber. Akses server dibatasi oleh proteksi bot penerbit.'),
     'wire-fallback must not fabricate synthetic Indonesian prose inside article paragraphs');
 
@@ -916,7 +928,7 @@ test('24. Rolling 24h news history retains rotated RSS tail items, keeps 01 Glob
   const kesEntry = SRV.NEWS.find(([id]) => id === 'GNEWS · KESEHATAN');
   assert.ok(cnaEntry && !/category=3321/.test(cnaEntry[1]), 'CNA INDONESIA feed must use active main endpoint without stale category=3321');
   assert.ok(kesEntry && kesEntry[1].split('OR').length <= 15, 'GNEWS · KESEHATAN query must stay compact so Google News respects when:2d');
-  const serverSrc = fs.readFileSync(path.join(__dirname, '../server.js'), 'utf8');
+  const serverSrc = readBackendSrc();
   assert.ok(serverSrc.includes("if (id === 'VOI')") && serverSrc.includes('site:voi.id when:2d'), 'VOI feed must fall back fast to Google News site:voi.id when direct RSS is Cloudflare 403');
 
   // B) Rolling 24h mergeNewsHist preserves older <24h events pushed off short RSS tails while pruning >24h and deduping rotating GNews links

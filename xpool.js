@@ -1,12 +1,5 @@
 'use strict';
 
-/**
- * Parse one or more X (Twitter) cookie pairs from env vars and optional config.
- * Supports:
- * - X_AUTH_TOKEN / X_CT0 (single value or comma-separated pairs)
- * - X_AUTH_TOKEN_2..10 / X_CT0_2..10
- * - cfgX.accounts array ([{ auth_token, ct0 }]) or legacy cfgX.auth_token / cfgX.ct0
- */
 function buildXAccounts(env = process.env, cfgX = {}) {
   const candidates = [];
   const pushPair = (tok, ct0) => {
@@ -52,9 +45,6 @@ function buildXAccounts(env = process.env, cfgX = {}) {
   return out;
 }
 
-/**
- * Round-robin X account pool with per-account 429 cooldown and auth failover.
- */
 function createXPool(accounts = []) {
   const list = Array.isArray(accounts) ? accounts : [];
   let cursor = 0;
@@ -121,9 +111,6 @@ function createXPool(accounts = []) {
   };
 }
 
-/**
- * Format an epoch millisecond timestamp deterministically in WIB (UTC+7).
- */
 function formatWibTime(ms) {
   const d = new Date((Number(ms) || Date.now()) + 7 * 3600e3);
   return String(d.getUTCHours()).padStart(2, '0') + ':' + String(d.getUTCMinutes()).padStart(2, '0');

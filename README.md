@@ -88,7 +88,9 @@ Full model, SSRF/DNS-pinning details, and reporting policy: [`SECURITY.md`](SECU
 ## Project layout
 
 ```text
-server.js              API + scraping + proxies + WS + auth guard
+server.js              API surface, auth guard, boot + service wiring
+src/                   domain services — news, reader, social, market,
+                       geo sensors, CCTV catalog, TomTom, metrics
 security.js            SSRF guard, DNS-pinned HTTP/TLS, RBAC, rate-limit
 copernicus.js          Sentinel-2 tile proxy + quota + disk cache
 cctv-gateway.js        /hls & /vhs gateway, segment cache, coalescing

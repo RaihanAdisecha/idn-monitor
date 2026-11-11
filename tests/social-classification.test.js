@@ -601,3 +601,79 @@ test('9. HTTP integration: server.js purges legacy ad-hoc noise on load and serv
     assert.equal(r.status, 403);
   });
 });
+
+test('10. Foreign cognate leak defense vs. Jaksel Indo-English code-switching preservation', () => {
+  const now = Date.now();
+  const foreignAndNoise = [
+    'Me habrá dado covid?',
+    'Is het kabinet nog niet gevallen?',
+    'Gaat het kabinet vallen?',
+    'Het #kabinet staat op vallen hè..? #VVD',
+    'Kan het ook zo zijn dat morgen voor het belasting wordt gestemd en de VVD dan na die stemming uit het kabinet stapt , de wet toch door gaat ? En misschien de VVD ook wel ?',
+    `Dus als vanavond door toedoen van de Brutus-aanval op de VVD door CDA en D66 het kabinet valt, dan komen er geen nieuwe verkiezingen maar gaan ze 'tussenformeren'. 
+
+Mijn conclusie: we hebben vorig jaar verkiezingen gehad, dan mag de grootste partij de formatie oppakken. Nu dat kabinet lijkt te vallen, zou de één na grootste partij, de PVV, dus het voortouw mogen nemen. 
+
+Maar die conclusie trekt men in Den Haag natuurlijk niet! De regerende partijen minus VVD (zo lijkt het) gaan op zoek naar één of twee nieuwe kandidaat-coalitieleden. 
+
+Met andere woorden: uit de verkiezingsuitslag van vorig jaar bleek dat er een meerderheid op rechts lag, maar na dit debacle-kabinet gaan we een links kabinet krijgen. Dus: de kiezer stemt in meerderheid rechts maar we slaan linksaf. 
+
+Hoezo democratie?`,
+    'Wann zerbricht die Koalition im Bundestag und wann tritt das Kabinett von Scholz endlich zurück?',
+    'Est-ce que le cabinet de Macron va annoncer la dissolution de l’Assemblée nationale ce soir ?',
+    'L’INFIDÉLITÉ : un nouveau Covid ?',
+    'Nouveau variant du COVID @grok ?',
+    'o covid assusta o povo, né?',
+    'Varian Baharu COVID-19 PJ.2.1 Dikesan Di Beberapa Negara, Sejauh Mana Bahayanya?',
+    'Nationwide blackout?',
+    'So apparently there’s gonna be a blackout?',
+    'What happens if tsunami comes ?',
+    'Dawg a use a hotspot from him fone?',
+    'friend is using a hotspot to download GTA VI???',
+    'Who Runs the Ransomware Group Qilin?',
+    'COVID :Cancer?',
+    'ada yg masih bgn??',
+    'MBG DISBAND???',
+    'beneran banjir konten plsssss',
+    'IHSG Kebakaran +0,21%',
+    'Kangen suasana jaman covid dulu jalanan sepi banget',
+  ];
+
+  for (const text of foreignAndNoise) {
+    const a = SOC.socAssess(text);
+    assert.equal(a.signalEligible, false, `Expected "${text}" signalEligible=false, got true`);
+    assert.equal(a.feedEligible, false, `Expected "${text}" feedEligible=false, got true (lane=${a.feedLane}, topics=${JSON.stringify(a.topics)})`);
+    const post = { text, ts: now - 60000, created_at: new Date(now - 60000).toISOString(), handle: '@testuser' };
+    assert.equal(HISTORY.tag(post, [], now), false, `Expected HISTORY.tag to reject "${text}"`);
+  }
+
+  const jakselAndLocal = [
+    {
+      text: 'Jujurly agak parno covid lagi naik ya di Jaksel, ada yg ngerasa badan meriang juga ga sih guys?',
+      expectFeed: true,
+    },
+    {
+      text: 'Literally di Kemang blackout parah bgt udah 2 jam, PLN ada info kapan nyala ga sih?',
+      expectFeed: true,
+    },
+    {
+      text: 'Guys ada yg ngerasa gempa barusan di Jakarta Selatan ga sih? Lumayan berasa di kantor gue',
+      expectFeed: true,
+    },
+    {
+      text: 'PIM MATI LAMPU?????',
+      expectFeed: true,
+    },
+    {
+      text: 'Katanya di Bekasi tanggul kali ada yang jebol lagi ya barusan?',
+      expectFeed: true,
+    },
+  ];
+
+  for (const item of jakselAndLocal) {
+    const a = SOC.socAssess(item.text);
+    assert.equal(a.feedEligible, item.expectFeed, `Expected Jaksel/local post "${item.text}" feedEligible=${item.expectFeed}, got ${a.feedEligible} (lane=${a.feedLane}, rejected=${JSON.stringify(a.rejectedReasons)})`);
+    const post = { text: item.text, ts: now - 60000, created_at: new Date(now - 60000).toISOString(), handle: '@anakjaksel' };
+    assert.equal(HISTORY.tag(post, [], now), true, `Expected HISTORY.tag to keep Jaksel/local post "${item.text}"`);
+  }
+});

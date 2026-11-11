@@ -373,3 +373,194 @@ test('pickLiveKeys: sel yang bagian atasnya sudah tertutup scroll area dilarang 
   assert.deepEqual(picked, ['clean1', 'clean2']);
   assert.equal(picked.includes('topClipped'), false, 'kartu terpotong di atas tidak boleh mendapat slot Live');
 });
+
+test('pickLiveKeys: saat user scroll ke dasar (atBottom), kartu terbawah diprioritaskan mendapat slot LIVE', () => {
+  const mkRow = (rowIdx, top, colCount = 2) => {
+    const out = [];
+    for (let c = 0; c < colCount; c++) {
+      const idx = rowIdx * colCount + c;
+      const rect = { top, bottom: top + 122, left: c * 188, width: 187, height: 122 };
+      const frameRect = { top, bottom: top + 104, left: c * 188, width: 187, height: 104 };
+      out.push({ key: 'c' + idx, idx, rect, frameRect, bad: false });
+    }
+    return out;
+  };
+  // 5 rows = 10 cells (c0..c9). Container vr=[300..800]. Cap = 6.
+  const vrBottom = { top: 300, bot: 800, atBottom: true };
+  const cells = [
+    ...mkRow(0, 320),
+    ...mkRow(1, 440),
+    ...mkRow(2, 560),
+    ...mkRow(3, 680),
+    ...mkRow(4, 740),
+  ];
+  // Saat atBottom=true, kartu terbawah (row 4, row 3, row 2) harus dipilih duluan, bukan row 0 dan row 1!
+  const picked = C.pickLiveKeys(cells, vrBottom, 6);
+  assert.equal(picked.includes('c8'), true, 'kartu c8 di baris terbawah harus dapat slot LIVE');
+  assert.equal(picked.includes('c9'), true, 'kartu c9 di baris terbawah harus dapat slot LIVE');
+  assert.equal(picked.includes('c6'), true, 'kartu c6 harus dapat slot LIVE');
+  assert.equal(picked.includes('c7'), true, 'kartu c7 harus dapat slot LIVE');
+});
+
+test('pickLiveKeys: skenario Serpong Balaraja 3-kolom saat scroll mentok bawah tetap memprioritaskan baris terbawah meski bad=true atau span 2', () => {
+  const vrBottom = { top: 316, bot: 860, atBottom: true, scrollDir: 'down' };
+  const mk = (key, idx, top, h, fH, left, bad = false, w = 165) => ({
+    key,
+    idx,
+    bad,
+    rect: { top, bottom: top + h, left, width: w, height: h },
+    frameRect: { top, bottom: top + fH, left, width: w, height: fH },
+  });
+  const cells = [
+    // Row 1: terpotong di atas (top=250 < vr.top=316, topClip=66)
+    mk('16+650 A', 0, 250, 110, 93, 0, false),
+    mk('16+650 B', 1, 250, 110, 93, 166, false),
+    mk('17+150 A', 2, 250, 110, 93, 332, false),
+    // Row 2: utuh, bad=false
+    mk('18+150 A', 3, 341, 110, 93, 0, false),
+    mk('18+150 B', 4, 341, 110, 93, 166, false),
+    mk('19+600 A', 5, 341, 110, 93, 332, false),
+    // Row 3: utuh, bad=false
+    mk('19+600 B', 6, 452, 110, 93, 0, false),
+    mk('GT BSD Barat 1', 7, 452, 110, 93, 166, false),
+    mk('GT BSD Timur 1', 8, 452, 110, 93, 332, false),
+    // Row 4: di-sink ke bawah oleh orderCams (bad=true), utuh di layar
+    mk('Jalan Akses On Ramp BSD Timur', 9, 563, 110, 93, 0, true),
+    mk('17+150 B', 10, 563, 110, 93, 166, true),
+    mk('17+700 B', 11, 563, 110, 93, 332, true),
+    // Row 5 (paling bawah): 18+700 A span 2 kolom (tinggi 204px, botClip=12px) & 18+700 B (1 kolom)
+    mk('18+700 A', 12, 674, 204, 187, 0, true, 331),
+    mk('18+700 B', 13, 674, 204, 93, 332, true, 165),
+  ];
+
+  // Bahkan dengan cap=6 sekalipun, Row 5 dan Row 4 WAJIB menang di urutan 1..5
+  const top6 = C.pickLiveKeys(cells, vrBottom, 6);
+  assert.deepEqual(top6.slice(0, 5), [
+    '18+700 A',
+    '18+700 B',
+    'Jalan Akses On Ramp BSD Timur',
+    '17+150 B',
+    '17+700 B',
+  ]);
+
+  // Dengan LIVE_CAP=12, seluruh 11 kamera utuh (Row 5, 4, 3, 2) masuk LIVE dan Row 1 yang terpotong di atas ditolak
+  const top12 = C.pickLiveKeys(cells, vrBottom, 12);
+  assert.equal(top12.length, 11);
+  assert.equal(top12.includes('16+650 A'), false);
+  assert.equal(top12.includes('18+700 A'), true);
+  assert.equal(top12.includes('18+700 B'), true);
+});
+
+test('River and flood monitoring cameras: Kali Ciliwung, BKB, Cengkareng Drain & Cisadane are defined and proxy-allowed', () => {
+  const fs = require('fs');
+  const html = fs.readFileSync('public/index.html', 'utf8');
+  const m = html.match(/<script type="application\/json" id="cam-data">([\s\S]*?)<\/script>/);
+  assert.ok(m, 'cam-data script tag must exist');
+  const cams = JSON.parse(m[1]);
+
+  const riverCams = cams.filter(c => c.c === 'Pantau Banjir & Kali');
+  assert.ok(riverCams.length >= 20, 'Must have at least 20 flood / river monitoring cameras');
+
+  // Verify critical Ciliwung Bidara Cina points exist in flood category
+  const ciliwung = riverCams.find(c => c.n.includes('Bidara Cina'));
+  assert.ok(ciliwung, 'Bidara Cina (Kali Ciliwung) must exist');
+  assert.ok(ciliwung.s.includes('jakcctv.jakarta.go.id'), 'Must use active JakCCTV stream');
+  assert.ok(Number.isFinite(ciliwung.la) && Number.isFinite(ciliwung.lo), 'Coordinates must be valid');
+
+  // Verify SiPantau Kota Tangerang river & sluice gate cameras exist in flood category
+  const sarakan = riverCams.find(c => c.n.includes('Sarakan'));
+  assert.ok(sarakan, 'Pintu Air Sarakan (Cirarab) must exist in flood category');
+  assert.ok(sarakan.s.includes('dpuprkotang.info'), 'Must stream from dpuprkotang.info');
+  assert.ok(sarakan.snap && sarakan.snap.includes('dpuprkotang.info'), 'Must have direct snapshot URL');
+
+  const sabi = riverCams.find(c => c.n.includes('Kali Sabi') || c.n.includes('Pondok Arum'));
+  assert.ok(sabi, 'Kali Sabi / Pondok Arum must exist in flood category');
+
+  const alamanda = riverCams.find(c => c.n.includes('Alamanda'));
+  assert.ok(alamanda, 'Jembatan Alamanda (Kali Ledug) must exist in flood category');
+
+  // Relocated street cameras are preserved in regional categories
+  const bkb = cams.find(c => c.n.includes('Bendungan Hilir') && c.c === 'Jakarta Pusat');
+  assert.ok(bkb, 'Bendungan Hilir relocated to Jakarta Pusat');
+
+  const drain = cams.find(c => c.n.includes('Cengkareng Barat') && c.c === 'Jakarta Barat');
+  assert.ok(drain, 'Cengkareng Barat relocated to Jakarta Barat');
+
+  const cisadane = cams.find(c => c.n.includes('Jembatan Cisadane') && c.c === 'Tangerang');
+  assert.ok(cisadane, 'Jembatan Cisadane relocated to Tangerang');
+
+  const cikoko = cams.find(c => c.n.includes('Jembatan MT Haryono / Cikoko') && c.c === 'Jakarta Selatan');
+  assert.ok(cikoko, 'Cikoko / MT Haryono relocated to Jakarta Selatan');
+
+  assert.notEqual(C.streamKey(sarakan.s), C.streamKey(sabi.s), 'dpuprkotang.info cameras must have distinct streamKey per ?src=');
+  const kotangCams = riverCams.filter(c => c.s.includes('dpuprkotang.info'));
+  assert.equal(C.dedupe(kotangCams).length, kotangCams.length, 'dedupe must not collapse dpuprkotang.info cameras');
+
+  const mp4Steps = C.playSteps(sarakan, u => '/hls?u=' + encodeURIComponent(u));
+  assert.deepEqual(mp4Steps, [{ url: sarakan.s, via: 'direct' }], 'progressive .mp4 stream must not route through /hls proxy or .m3u8 variants');
+
+  assert.equal(html.includes('onclick="openLightbox('), false, 'camPopup must not use inline onclick attribute');
+  assert.ok(html.includes('data-cam-open="${esc(c.s)}"'), 'camPopup must use data-cam-open delegation');
+  assert.ok(html.includes('id="glb-snap"'), 'lightbox must include #glb-snap fallback image element');
+  assert.ok(html.includes('p.snapProxy = true'), 'showSnap must fall back to backend /api/cctv/snap proxy when direct snapshot fails');
+  assert.ok(html.includes('Live Snap'), 'kill(cell) must preserve Live Snap mode when camera has working c.snap');
+});
+
+test('gateway snap: serves direct JPEG snapshots for dpuprkotang.info without requiring ffmpeg and isolates cache per src', async () => {
+  const { EventEmitter } = require('events');
+  const calls = [];
+  const fakeJpegA = Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0]), Buffer.alloc(256, 0x41)]);
+  const fakeJpegB = Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0]), Buffer.alloc(256, 0x42)]);
+  const gw = createGateway({
+    ffmpeg: '/nonexistent/ffmpeg-binary',
+    hostAllowed: u => /(^|\.)dpuprkotang\.info$/i.test(new URL(u).hostname),
+    headersFor: () => ({ 'user-agent': 'test' }),
+    rewriteUrl: async u => u,
+    px: u => '/hls?u=' + encodeURIComponent(u),
+    getRaw: async u => {
+      calls.push(u);
+      const src = new URL(u).searchParams.get('src');
+      const payload = src === 'Sarakan' ? fakeJpegA : fakeJpegB;
+      return {
+        url: u,
+        r: {
+          ok: true,
+          status: 200,
+          headers: new Map([['content-type', 'image/jpeg']]),
+          arrayBuffer: async () => payload,
+        },
+      };
+    },
+  });
+
+  const runSnap = url => new Promise(resolve => {
+    const req = new EventEmitter();
+    req.headers = {};
+    req.socket = { remoteAddress: '127.0.0.1' };
+    const chunks = [];
+    const res = new EventEmitter();
+    res.status = 0;
+    res.hdrs = {};
+    res.writeHead = (code, h) => { res.status = code; res.hdrs = h || {}; };
+    res.write = b => { chunks.push(Buffer.from(b)); return true; };
+    res.end = b => { if (b) chunks.push(Buffer.from(b)); res.writableEnded = true; resolve({ status: res.status, hdrs: res.hdrs, body: Buffer.concat(chunks) }); };
+    gw.snap(url, req, res);
+  });
+
+  const r1 = await runSnap('https://cctv.dpuprkotang.info/api/frame.jpeg?src=Sarakan&t=100');
+  assert.equal(r1.status, 200);
+  assert.equal(r1.hdrs['content-type'], 'image/jpeg');
+  assert.deepEqual(r1.body, fakeJpegA);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0], 'https://cctv.dpuprkotang.info/api/frame.jpeg?src=Sarakan');
+
+  const r2 = await runSnap('https://cctv.dpuprkotang.info/api/stream.mp4?src=Sarakan&t=101');
+  assert.equal(r2.status, 200);
+  assert.deepEqual(r2.body, fakeJpegA);
+  assert.equal(calls.length, 1, 'cache-buster t= and stream.mp4 rewrite for same src=Sarakan must hit snapshot cache');
+
+  const r3 = await runSnap('https://cctv.dpuprkotang.info/api/frame.jpeg?src=Alamanda&t=101');
+  assert.equal(r3.status, 200);
+  assert.deepEqual(r3.body, fakeJpegB);
+  assert.equal(calls.length, 2, 'different src=Alamanda must not collide with src=Sarakan');
+});

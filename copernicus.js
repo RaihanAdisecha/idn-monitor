@@ -12,9 +12,6 @@ const MAX_ZOOM = 12;
 const TILE_PX = 512;
 const ID_BOUNDS = { minLon: 94.5, minLat: -11.5, maxLon: 141.5, maxLat: 6.5 };
 
-// 3 input bands (B02, B03, B04) keeps PU cost at 1.0 per 512x512 tile while
-// outputting 4 RGBA channels so zero-data swath edges stay transparent.
-// Mild gamma compression (0.8) softens scene-to-scene brightness seams across Indonesia.
 const TRUE_COLOR_EVALSCRIPT = [
   '//VERSION=3',
   'function setup() {',

@@ -39,7 +39,7 @@ jobs:
 
       - name: Check JS & Python syntax
         run: |
-          for f in *.js scripts/*.js; do
+          for f in *.js scripts/*.js src/*.js; do
             node --check "$f"
           done
           python -m py_compile vendor/*.py

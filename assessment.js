@@ -1,10 +1,9 @@
 'use strict';
-// Conservative, auditable hybrid rules + Indonesian NLP pipeline.
-// Topic relevance is NEVER incident confirmation. Zero I/O, pure offline classifier.
+
 const GEO = require('./geocode');
 const NLP = require('./indonesian-nlp');
 
-const VERSION = '2026-11-11.5';
+const VERSION = '2026-11-12.1';
 
 const CATEGORY = {
   demo: 'demo',
@@ -31,7 +30,7 @@ const CATEGORY = {
   insiden: 'insiden',
   kriminal: 'kriminal',
   kesehatan: 'kesehatan',
-  // Feed-only topics: eligible for social feed curation, NEVER signalEligible.
+
   mbg: 'kesehatan',
   bbm: 'ekonomi',
   pangan: 'ekonomi',
@@ -43,7 +42,6 @@ const CATEGORY = {
 
 const FEED_ONLY = new Set(['mbg', 'bbm', 'pangan', 'bansos', 'hukum', 'transport', 'pendidikan']);
 
-// Legacy regex compatibility exports & helper constants
 const FOREIGN = NLP.FOREIGN_MARKER_RE;
 const LOCAL_ORG = NLP.LOCAL_ORG_RE;
 const LOCAL_MACRO = NLP.LOCAL_MACRO_RE;
@@ -53,7 +51,7 @@ const DENIED = /\b(tidak|tak|nggak|gak|ga|kagak|kaga|bukan|belum|no|not|never)\s
 const DENIED_ANY = /\b(?:hoaks?|kabar palsu|false claim|misinformation|disinformasi|berita palsu|isu hoax)\b/i;
 const EDUCATION = /\b(apa itu|pengertian|tutorial|cara (?:mencegah|mengatasi|menghapus|menghindari)|tips|edukasi|simulasi|latihan|mitigasi|kesiapsiagaan|tas bencana|go[- ]?bag|potensi|risiko|rawan|prediksi|diprediksi|andaikan|seandainya|bagaimana jika|what is|how to|exercise|simulation)\b/i;
 const AID = /\b(salurkan|menyalurkan|penyaluran|donasi|rekonstruksi|rehabilitasi|kirim bantuan|pusdalops|rakor|seminar|webinar)\b/i;
-const HISTORICAL = /\b(dulu|jaman dulu|zaman dulu|tempo dulu|sejarah|mengenang|kilas balik|tahun lalu|bulan lalu|pekan lalu|kemarin|last (?:year|month|week)|historical|anniversary|orde baru|orba|soeharto|suharto|perang dunia|world war|penjajahan|kolonial)\b/i;
+const HISTORICAL = /\b(dulu|jaman dulu|zaman dulu|tempo dulu|sejarah|mengenang|kilas balik|tahun lalu|bulan lalu|pekan lalu|kemarin|last (?:year|month|week)|historical|anniversary|orde baru|orba|soeharto|suharto|perang dunia|world war|penjajahan|kolonial|(?:jaman|zaman|waktu|pas|saat|era|awal)\s+(?:covid(?:-?19)?|pandemi|lockdown|korona|corona)|(?:2019|2020|2021|2022)\b[^.!?\n]{0,40}\b(?:covid|pandemi|lockdown))\b/i;
 const HISTORICAL_YEAR = /\b(?:tahun|pada|sejak|era)\s+((?:19|20)\d{2})\b/i;
 
 function isHistorical(span, year = new Date().getFullYear()) {
@@ -169,7 +167,7 @@ function isReport(topic, span, location, target, nlpClause) {
     case 'pemilu': return identity && /ricuh|bentrok|ditunda|dibatalkan|pemungutan suara ulang/i.test(span);
     case 'politik': return identity && /\b(?:resmi\s+dilantik|dilantik|dipecat|mengundurkan\s+diri|divonis|reshuffle|impeachment|dimakzulkan)\b/i.test(span) && !/\b(?:usul|wacana|menurut|angkat\s+bicara|komentar|opini)\b/i.test(span);
     case 'konflik': return identity && !/\b(?:upacara|tabur\s+bunga|hari\s+pahlawan|dirgahayu|ziarah|hut\s+tni|museum\s+militer)\b/i.test(span) && !/perang\s+(?:antar\s+)?(?:fandom|fans?|warganet|netizen|cuitan|bocil)/i.test(span) && !/drone\s+(?:fpv|rakitan|mainan|kamera|balap)/i.test(span) && /\b(?:baku\s+tembak|kontak\s+senjata|serangan\s+udara|serangan\s+rudal|invasi|kudeta|gencatan\s+senjata|darurat\s+militer|pertempuran|penyanderaan|kkb\s+papua|separatis)\b/i.test(span);
-    default: return false; // ad-hoc topics are NEVER event evidence by themselves.
+    default: return false;
   }
 }
 
@@ -244,7 +242,7 @@ function assess(text, registry, options = {}) {
         const proseText = proseSpan.trim();
         const normProseText = cr.clause.normProse || '';
         const hasProseEvent = cr.events.length > 0;
-        // Match topic regex against raw prose / normalized prose FIRST; only allow bare hashtags if prose doesn't already assert another topic/event
+
         const matchedProse = (proseText && tp.pos.test(proseText)) || (!tp.adhoc && normProseText && tp.pos.test(normProseText));
         const allowTagFallback = !hasProseEvent || cr.events.some(e => e.topic === tp.id);
         const matchedTags = !matchedProse && allowTagFallback && tp.pos.test(span);
@@ -273,7 +271,6 @@ function assess(text, registry, options = {}) {
         const feedOnly = FEED_ONLY.has(tp.id);
         const isAdhoc = !!tp.adhoc;
 
-        // Ad-hoc topics NEVER establish location scope or concrete targets
         const target = isAdhoc ? null : concreteTarget(span, category);
         let scope = isAdhoc ? 'unknown' : cr.geo.scope;
         let location = isAdhoc ? null : (cr.geo.location ? {
@@ -288,7 +285,6 @@ function assess(text, registry, options = {}) {
           ...(cr.geo.location.code ? { code: cr.geo.location.code } : {}),
         } : null);
 
-        // Safe geo fallback for non-adhoc topics when clause geo is still unknown (e.g., multiline Threads captions)
         if (!isAdhoc && !location && scope === 'unknown' && !anyForeignClause) {
           for (const adj of [idx - 1, idx + 1]) {
             if (adj < 0 || adj >= nlp.clauses.length) continue;
@@ -378,9 +374,6 @@ function assess(text, registry, options = {}) {
     }
   }
 
-  // Synthesize topic + finding when Indonesian NLP detected a genuine informal/code-switched
-  // eyewitness flood/warning/disaster event whose topic was in `registry` even if `tp.pos`
-  // didn't literally match (e.g., "Air udah masuk rumah gue di Bekasi" or "hujan ekstrem").
   if (!hardNonIncident && nlp.extractedEvents.length > 0) {
     for (const ev of nlp.extractedEvents) {
       if (ev.minorWaterlogging) continue;
@@ -424,7 +417,6 @@ function assess(text, registry, options = {}) {
     }
   }
 
-  // Record explicit rejection / diagnostic reasons from Layer 2-6
   if (spamFlag) { reasons.add('spam'); rejectedReasons.add(NLP.REJECT_REASONS.SPAM_OR_ENGAGEMENT_BAIT); }
   if (listingFlag && !nlp.flags.hasActionableEvent) rejectedReasons.add(NLP.REJECT_REASONS.COMMERCIAL_LISTING);
   if (adFlag && !nlp.flags.hasActionableEvent) rejectedReasons.add(NLP.REJECT_REASONS.ADVERTISEMENT);
@@ -447,7 +439,6 @@ function assess(text, registry, options = {}) {
   const events = findings.filter(f => f.signalEligible);
   const eligible = events.length > 0;
 
-  // Scope derivation
   const nonAdhocFindings = findings.filter(f => !f.adhoc);
   const scope = eligible
     ? 'Indonesia'
@@ -461,12 +452,6 @@ function assess(text, registry, options = {}) {
     ? (events.every(f => f.reportType === 'warning') ? 'warning' : 'reported')
     : nonAdhocFindings[0]?.reportType || findings[0]?.reportType || (nlp.intent === 'denial_or_debunk' ? 'denied' : nlp.intent === 'historical' ? 'historical' : nlp.intent === 'educational' ? 'educational' : nlp.intent === 'question' ? 'unverified_question' : 'irrelevant');
 
-  // Feed Lane Routing (Layer 4 Routing Decision)
-  // - incident_signals: actionable verified incident or official warning in Indonesia
-  // - situational_context: useful local questions, rumors, satire/commentary on active crisis,
-  //   secondhand reader experience of Indonesian crisis, minor waterlogging correction, or valid FEED_ONLY local updates
-  // - discovery_candidates: ambiguous / low-confidence candidates awaiting evaluation
-  // - rejected: commercial, ads, spam, vents, pure opinions, metaphors, historical, educational, denials, foreign, unrelated
   const hasPermanentTopic = [...topics].some(tid => !reg.find(r => r.id === tid)?.adhoc);
   const hasSituationalIntent = ['question', 'rumor', 'discussion', 'personal_experience', 'satire'].includes(nlp.intent)
     || nlp.flags.anyMinorWaterlogging
@@ -475,27 +460,27 @@ function assess(text, registry, options = {}) {
   const hasCrisisContext = nlp.clauses.some(c => c.flags.hasHazardCue || c.flags.hasHazardQuestion)
     || nonAdhocFindings.some(f => !f.adhoc && f.scope === 'Indonesia' && !['denied', 'historical', 'educational'].includes(f.reportType));
 
-  // Pure English prose with zero Indonesian context and unresolved Indonesian geo scope
-  // must never enter Indonesian OSINT feed lanes via acronym/topic collisions.
-  const ENG_FN_RE = /\b(?:the|and|with|for|that|this|what|you|your|his|her|they|their|we|our|are|was|were|have|has|had|will|would|could|should|do|did|does|done|been|being|become|became|about|from|into|of|by|as|or|too|than|then|talking|everything|mean|just|not|who|which|where|when|why|how|many|much|more|most|few|less|cuz|alone|trying|home|reported|occurred|expect(?:ed)?|anticipated|hope|recovering|wondering|to|in|on|at|it|i'm|me|my|so|but|if|up|out|all|any|anyone|someone|everyone|nobody|very|really|super|good|bad|great|play|playing|surf|surfing|idc|want|going|let|make|get|got|can|like|love|hate|feel|think|know|need|see|look|here|there|now|together|guys|today|night|needlessly|people|person|die|died|dying|death|deaths|killed|cases?|after|before|during|since|between|through|under|over|against|without|because|while|though|although|still|even|only|also|never|always|every|each|other|another|same|different|say|says|said|ask|asked|tell|told|believe|thought|americans?|american|country|countries|nation|state|states|world|government|president|minister|public|health|hospital|patients?|virus|vaccine|vaccines|pandemic|covid)\b/gi;
-  const ID_PROSE_RE = /\b(?:yang|dan|di|ke|dari|ini|itu|untuk|dengan|atau|pada|akan|sudah|udah|belum|tidak|bukan|ga|gak|nggak|enggak|warga|korban|mahasiswa|polisi|aparat|pemerintah|kawan|orang|rumah|jalan|hari|ada|karena|kalau|bisa|saat|terjadi|melanda|banget|sama|gue|gw|aku|kami|kita|nih|sih|dong|kok)\b/gi;
+  const ID_PROSE_RE = /\b(?:yang|yg|di|ke|dari|ini|itu|untuk|utk|dengan|dgn|atau|pada|akan|sudah|udah|udh|belum|blm|tidak|tak|bukan|ga|gak|nggak|enggak|engga|kagak|kaga|jangan|jgn|warga|korban|mahasiswa|polisi|aparat|pemerintah|kawan|orang|org|rumah|rmh|jalan|jln|kota|daerah|wilayah|tempat|kantor|sekolah|kampus|pasar|mall|stasiun|bandara|tol|sungai|kali|tanggul|hujan|ujan|angin|api|asap|listrik|air|lampu|mati\s+lampu|mati\s+listrik|listrik\s+padam|byarpet|banjir|kebanjiran|longsor|kebakaran|terbakar|damkar|karhutla|gempa|erupsi|puting\s+beliung|kecelakaan|tabrakan|penembakan|ditembak|pencurian|curanmor|begal|jambret|dirampok|maling|penangkapan|ditangkap|diamankan|tersangka|korupsi|suap|ott|unjuk\s+rasa|demonstrasi|aksi\s+massa|bentrok|ricuh|mogok|keracunan|wabah|demam\s+berdarah|puskesmas|sembako|minyak\s+goreng|pertalite|pertamax|spbu|bansos|pemilu|pilkada|pilpres|caleg|menteri|presiden|gubernur|bupati|prabowo|gibran|jokowi|ihsg|rupiah|diretas|dibobol|peretasan|kebocoran\s+data|bocor|hari|pagi|siang|sore|malam|malem|jam|tahun|bulan|minggu|tadi|barusan|kemarin|kmrn|besok|sekarang|skrg|ada|adakah|apakah|apa|siapa|kapan|dimana|dmn|kemana|gimana|gmn|bagaimana|kenapa|knp|mengapa|berapa|karena|krn|karna|kalau|kalo|klo|jika|bila|tapi|tp|tetapi|terus|trs|jadi|jd|masih|msh|lagi|lg|baru|abis|habis|mau|pengen|pingin|bisa|bs|sama|sm|buat|bikin|pakai|pake|cuma|cm|cuman|hanya|banyak|semua|para|tiap|setiap|saat|waktu|pas|terjadi|melanda|merendam|terendam|mengungsi|evakuasi|tewas|meninggal|luka|rusak|ambruk|roboh|runtuh|jebol|meluap|padam|naik|turun|parah|banget|bgt|sekali|bener|benar|beneran|katanya|kabarnya|kayak|kyk|seperti|kaya|malah|padahal|memang|emang|emg|pasti|mungkin|kayaknya|agak|lumayan|cukup|kurang|lebih|paling|makin|tambah|udah|sih|dong|deh|nih|tuh|kok|lah|kah|mah|pun|kek|yak|yaa|yah|yuk|mari|ayo|tolong|plis|jir|anjir|njir|bjir|anjay|astaga|waduh|buset|parno|hectic|jujurly|literally\s+(?:di|udah|lagi|bikin|parah|gue|gw|aku|ada|ga|gak)|gue|gw|gua|aku|saya|lo|lu|kamu|kalian|kami|kita|mereka|dia|beliau|pak|bu|bang|bg|mas|mbak|mba|kak|om|tante|nder|min|mimin|bro|sis|guys\s+(?:ada|di|yg|ini|itu|kok|udah|lagi)|wkwk\w*|haha\w*|hehe\w*|cok|cuk|rek|lur|gan|bray|wes|wis|ora|nek|neng|ning|ndek|iki|iku|koe|koen|ngopo|gawe|ketok|enek|ana|teu|geus|ayeuna|atuh|euy|punten|sampurasun|wargi|caah|lindhu|udan|banyu|cai)\b/i;
+  const FOREIGN_NON_ID_SCRIPT_OR_WORD_RE = /[¿¡ñÑçÇßãõÃÕåøæÅØÆłńśźżŁŃŚŹŻčřšžČŘŠŽğışĞİŞ]|\b(?:habra|habrá|dado|povo|assusta|infidelite|infidélité|nouveau|nouvelle|is\s+het|gaat\s+het|hebben\s+we|het\s+kabinet|uit\s+het|staat\s+op\s+vallen|gevallen|klappen|gestapt|vvd|cda|d66|pvv|fvd|nsc|tweede\s+kamer|eerste\s+kamer|den\s+haag|nederland|nederlands|verkiezingen|tussenformeren|belasting|gestemd|stemming|conclusie|hoezo|democratie|formatie|regerende\s+partijen|coalitieleden|verkiezingsuitslag|debacle-kabinet|links\s+kabinet|varian\s+baharu|baharu|dikesan|sejauh\s+mana\s+bahayanya)\b/i;
   const proseClean = raw.replace(/https?:\/\/\S+|[@#]\S+/g, ' ');
-  const idTokens = proseClean.match(ID_PROSE_RE);
-  const engTokens = (!idTokens || idTokens.length === 0) ? proseClean.match(ENG_FN_RE) : null;
-  const isNonLocalEnglish = scope !== 'Indonesia' && !!engTokens && new Set(engTokens.map(w => w.toLowerCase())).size >= 3;
+  const isForeignLanguage = nlp.flags.anyForeign || (nlp.layerTrace && nlp.layerTrace.isForeignLanguage);
+  const hasIndonesianGrounding = !isForeignLanguage && (scope === 'Indonesia' || ID_PROSE_RE.test(proseClean) || LOCAL_ORG.test(proseClean) || LOCAL_MACRO.test(proseClean));
+  const isUnanchoredForeign = isForeignLanguage || (!hasIndonesianGrounding && (scope === 'foreign' || FOREIGN_NON_ID_SCRIPT_OR_WORD_RE.test(proseClean) || proseClean.trim().length > 0));
 
   let feedLane = NLP.FEED_LANES.REJECTED;
-  if (isNonLocalEnglish) {
+  if (isUnanchoredForeign) {
     feedLane = NLP.FEED_LANES.REJECTED;
     rejectedReasons.add(NLP.REJECT_REASONS.FOREIGN_SCOPE);
   } else if (eligible) {
     feedLane = NLP.FEED_LANES.INCIDENT_SIGNALS;
   } else if (
     !hardNonIncident &&
+    !isForeignLanguage &&
     topics.size > 0 &&
     !['denied', 'historical', 'educational'].includes(reportType) &&
     !['historical', 'educational', 'denial_or_debunk', 'unrelated', 'unknown'].includes(nlp.intent) &&
     scope !== 'foreign' &&
+    hasIndonesianGrounding &&
     (hasPermanentTopic || hasCrisisContext) &&
     (hasSituationalIntent || nonAdhocFindings.some(f => f.feedOnly && f.scope === 'Indonesia'))
   ) {
@@ -519,11 +504,9 @@ function assess(text, registry, options = {}) {
     }
   }
 
-  // If rejected or discovery-only due to adhoc/noise, do NOT expose misleading topics
   const finalTopics = (feedLane === NLP.FEED_LANES.REJECTED && hardNonIncident) ? [] : [...topics];
   const feedEligible = feedLane === NLP.FEED_LANES.INCIDENT_SIGNALS || feedLane === NLP.FEED_LANES.SITUATIONAL_CONTEXT;
 
-  // Determine final intent label aligned with lane
   let finalIntent = nlp.intent;
   if (eligible && !['incident_report', 'eyewitness_report', 'official_warning', 'official_update'].includes(finalIntent)) {
     finalIntent = reportType === 'warning' ? 'official_warning' : (nlp.flags.anyEyewitness ? 'eyewitness_report' : 'incident_report');

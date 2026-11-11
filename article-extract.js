@@ -1,8 +1,4 @@
 'use strict';
-// article-extract.js — Pure HTML/Markdown article text & media block extractor.
-// Balanced tag stripping (nested div/article safe), multi-source extraction
-// (semantic containers, JSON-LD NewsArticle.articleBody, Jina markdown),
-// quality scoring, and anti-challenge / anti-noise filtering.
 
 const FEEDTEXT = require('./feedtext');
 const WireCore = require('./public/wire-core');
@@ -76,7 +72,6 @@ function rdAbs(u, base) {
   }
 }
 
-// Bot challenge, CAPTCHA, and explicit error-page detectors
 const BOT_CHALLENGE_RE = /captcha|recaptcha|lsrecaptcha|cf-chl|cf-turnstile|challenge-platform|just a moment|attention required|access denied|verify you are|are you a robot|human verification|checking your browser|please wait while we verify|enable javascript and cookies|bot verification|ddos-guard|pardon our interruption|security check|sorry, you have been blocked|situs ini mungkin memblokir|requiring captcha/i;
 const ERROR_PAGE_RE = /^(?:404\s*(?:not\s*found|error)?|page\s*not\s*found|error\s*40[34]|403\s*forbidden|50[0234]\s*(?:bad gateway|service unavailable|gateway time-?out)?|halaman\s+tidak\s+ditemukan|artikel\s+tidak\s+ditemukan|maaf,?\s+halaman\s+yang\s+anda\s+cari\s+tidak\s+ditemukan|oops!?\s*that\s+page\s+can'?t\s+be\s+found)$/i;
 
@@ -123,7 +118,6 @@ function rdName(v) {
   return '';
 }
 
-// Balanced HTML tag scanner
 function findMatchingClose(html, openEndIdx, tagName) {
   const re = new RegExp('<(\\/?)' + tagName + '(?=[\\s/>])([^>]*)>', 'gi');
   re.lastIndex = openEndIdx;
@@ -143,7 +137,7 @@ function findMatchingClose(html, openEndIdx, tagName) {
 
 function stripElementsByTag(html, tags, opts = {}) {
   let s = String(html || '');
-  // Preserve <noscript> wrapping an <img> when inside body if requested
+
   if (opts.unwrapNoscriptImages) {
     s = s.replace(/<noscript\b[^>]*>([\s\S]*?)<\/noscript\s*>/gi, (m, inner) =>
       /<(?:img|amp-img)\b/i.test(inner) ? inner : ' '
@@ -166,7 +160,7 @@ function stripElementsByTag(html, tags, opts = {}) {
     }
     const close = findMatchingClose(s, openEnd, tag);
     if (!close) continue;
-    // Preserve <header> if it directly encloses an article <h1> + <figure>/<img>
+
     if (tag === 'header' && opts.preserveHeaderFigures) {
       const inner = s.slice(openEnd, close.innerEnd);
       if (/<h1\b/i.test(inner) && /<(?:figure|img|amp-img)\b/i.test(inner) && !/<nav\b/i.test(inner)) {
@@ -181,7 +175,6 @@ function stripElementsByTag(html, tags, opts = {}) {
   return out;
 }
 
-// Article body container tokens that must NOT be accidentally stripped by junk matcher
 const ARTICLE_BODY_KEEP_RE = /(?:detail-desc|article-content|article-body|content-detail|detail-content|post-content|entry-content|berita-content|field-name-body|txt-berita|detail_body|news-content|content-body|post-body|article__body|detail__body-text|itp_bodycontent|detail__body|txt-article|detail-text|article-content-body|read__content|read__article|story-body|artikel-isi|isi-berita)/i;
 
 const JUNK_BOX_TOKEN_RE = /(?:^|[\s_-])(?:reactions?|rating|emoticons?|emoji|votes?|polls?|like-box|dislike|social-share|article-tools|post-tools|share-tools|share-box|share-bar|share-buttons?|follow-us|komentar|comments?(?:-box|-list|-section|-area)?|disqus|author-(?:box|card|img|image|photo|profile|info|bio|wrap|detail)|wartawan|penulis|byline|redaksi|editor-box|profile-(?:box|img|image)|related(?:-(?:news|articles?|posts?|stories|box|wrap|list|section))?|baca-juga|baca_juga|bacajuga|berita-terkait|artikel-terkait|linksisip|sisip|recommend(?:ed|ations?)?|most-read|most-popular|injected|widget|latest-(?:news|post|stories)|popular(?:-(?:news|post|box))?|trending|berita-lain|more-(?:news|stories)|also-read|you-may|jnews_|td-related|jeg_(?:block|sidebar)|advert(?:isement|orial)?|iklan|ad-(?:slot|box|unit|banner|container|wrap)|ads-(?:box|slot|wrap|container)|sponsor(?:ed)?|stripbanner|ticker|breaking-news|see-also|summary-article|read-page--summary|inbetween|banner_article_slide|newsletter|subscribe(?:-box|-form)?|cookie(?:-banner|-notice|-consent|-popup)?|gdpr|breadcrumb|pagination|page-nav|tag-list|tags-box|topik-terkait|sr-only|visually-hidden|screen-reader|assistive)(?:$|[\s_-])/i;
@@ -225,7 +218,7 @@ function stripJunkContainers(html) {
       }
       const close = findMatchingClose(s, openEnd, tag);
       if (!close) continue;
-      // Guard against malformed unclosed tag wiping >75% of the HTML
+
       if ((close.outerEnd - start) > s.length * 0.75) continue;
       out += s.slice(last, start) + ' ';
       last = close.outerEnd;
@@ -315,7 +308,7 @@ function extractContainers(html) {
   for (const m of leadImgScanHtml.matchAll(RD_LEAD_IMG_TAG_RE)) {
     leadMediaContainers.push(m[0]);
   }
-  // Fallback: full stripped HTML if no specific container yielded content
+
   const cleanedFull = stripElementsByTag(s, ['script', 'style', 'svg', 'form', 'nav', 'aside', 'footer', 'header', 'button', 'select', 'textarea', 'template', 'dialog', 'menu'], { unwrapNoscriptImages: true });
   bodyContainers.push({ kind: 'full', html: cleanedFull, index: 0 });
 
@@ -362,7 +355,6 @@ function rdExtractScriptVideos(html, finalURL, title = '', onTopicFn = null) {
   } catch {}
   const ytSlug = slugTokens.find(p => /^yt-/i.test(p)) || slugTokens[slugTokens.length - 1] || '';
 
-  // 1. JS video/shorts payload objects (misal Republika: const VIDEOS = [{ youtube_id: '...', news_url: '...', content: `...` }])
   const ytEntries = [];
   for (const m of sHtml.matchAll(/["']?youtube_id["']?\s*:\s*["']([A-Za-z0-9_-]{6,15})["']/gi)) {
     const start = Math.max(0, sHtml.lastIndexOf('{', m.index));
@@ -400,7 +392,6 @@ function rdExtractScriptVideos(html, finalURL, title = '', onTopicFn = null) {
     }
   }
 
-  // 2. Meta itemprop="embedURL" atau JSON "embedUrl" yang sah
   for (const m of sHtml.matchAll(/<meta[^>]+itemprop\s*=\s*["']embedURL["'][^>]+content\s*=\s*["']([^"']+)["']/gi)) {
     const u = rdAbs(m[1], finalURL);
     if (u && (rdYT(u) || VID_IFRAME.test(u))) vids.push({ url: rdYT(u) || u, kind: 'iframe', poster: '' });
@@ -462,7 +453,6 @@ function rdVideos(html, finalURL, dom = true, title = '', onTopicFn = null) {
   return out.slice(0, 4);
 }
 
-// Boilerplate, captions, noise, end-markers
 const RD_SKIP = /^(?:baca juga|simak juga|lihat juga|berita terkait|artikel terkait|advertisement|iklan|scroll(?:\s+untuk|\s+to)?|lanjutkan(?:\s+membaca)?|ikuti(?:\s+kami|\s+saluran|\s+channel|\s+whatsapp)?|bagikan|komentar|rekomendasi|topik(?:\s+terkait)?|tags?|sumber|foto|video|infografis|follow|newsletter|subscribe|langganan|whatsapp\s+channel|halaman\s+selanjutnya|artikel\s+selanjutnya)\b/i;
 const RD_CREDIT = /\b(?:foto|istimewa|dok\.?|ilustrasi)\s*:/i;
 const RD_BOILER = /baca berita terkini|berita terkini dan terpercaya|dapatkan (?:berita|update|info)|untuk mendapatkan berita|follow (?:channel|akun|kami)|ikuti (?:kami|saluran|channel|akun)|gabung (?:di )?(?:channel|grup|saluran)|lorem ipsum|all rights reserved|hak cipta|download aplikasi|unduh aplikasi|informasi seputar .{0,60}(?:bisa|dapat) diakses|bergabunglah|klik (?:di sini|link)|whatsapp channel|google news|dilarang (?:keras )?(?:mengambil|menyalin|mengutip|mengcopy)|crawling|pengindeksan otomatis|download sekarang|menyajikan berita terhangat|tinggalkan komentar|^©|^copyright|unduh .{0,30}app|install aplikasi|dapatkan notifikasi|aktifkan notifikasi|laporkan (?:iklan|konten)|unblock notifications|real[- ]time updates|know more|sign up for|subscribe to|berlangganan (?:untuk|newsletter|pos|email)|sponsored|advertisement|sumber (?:utama|pilihan|terpercaya) di google|preferred source|tambahkan .{0,40}sumber|tas darurat.{0,3}ada apa|isi komentar|tanggung jawab (?:pengguna|penulis komentar)|promo rp|jajan pakai|diskon hingga|beli sekarang|daftar sekarang|^(?:sumber|source)\s*:|^(?:editor|penulis|reporter|redaktur|kontributor|pewarta|fotografer)\s*:|(?:window|modal|dialog|jendela|log)\s*(?:ini|log)?[^.\n]{0,50}(?:ditutup|close)|(?:tekan|press|aktifkan|activate)[^.\n]{0,40}(?:escape|\besc\b|tombol tutup|close button|tombol close)|dapat ditutup dengan|situs ini menggunakan cookie|we use cookies|cookie policy|kebijakan privasi|terima semua cookie|accept all cookies/i;
@@ -544,7 +534,6 @@ function pruneBlocks(blocks, title, wireTitlesSet) {
     out.push(b);
   }
 
-  // Drop truncated pull-quotes later appearing in full
   const ps = out.filter(x => x.k === 'p' || x.k === 'q').map(x => x.t);
   out = out.filter(b => {
     if ((b.k !== 'p' && b.k !== 'q') || !/(?:…|\.\.\.)$/.test(b.t)) return true;
@@ -556,7 +545,6 @@ function pruneBlocks(blocks, title, wireTitlesSet) {
     return true;
   });
 
-  // Consecutive headline-like short segments (>=2) = related article list
   const keep = new Array(out.length).fill(true);
   for (let i = 0; i < out.length;) {
     if (out[i].k === 'p' && rdHeadlineish(out[i].t)) {
@@ -579,7 +567,6 @@ function pruneBlocks(blocks, title, wireTitlesSet) {
   };
 }
 
-// Parse srcset safely even when URLs contain commas (e.g. Cloudinary/Kumparan transforms)
 function pickBestSrcset(srcsetRaw, base) {
   if (!srcsetRaw) return '';
   const parts = String(srcsetRaw)
@@ -599,7 +586,7 @@ function pickBestSrcset(srcsetRaw, base) {
     candidates.push({ url, score, val, unit });
   }
   if (!candidates.length) return '';
-  // Prefer sensible editorial widths (800-1800) if 'w' descriptors exist, otherwise largest
+
   const wGood = candidates.filter(c => c.unit === 'w' && c.val >= 700 && c.val <= 1800);
   if (wGood.length) {
     wGood.sort((a, b) => b.val - a.val);
@@ -643,7 +630,6 @@ function extractTagImage(tag, finalURL) {
   return { url, alt, attrs: a };
 }
 
-// Parse HTML fragment into ordered semantic blocks: p, h, q, li, i (images), v (videos)
 function rdBlocks(html, finalURL) {
   const blocks = [], paras = [], vids = [], vseen = new Set(), pseen = new Set();
   let s = String(html || '').replace(/<!--[\s\S]*?-->/g, ' ');
@@ -652,7 +638,7 @@ function rdBlocks(html, finalURL) {
     ['script', 'style', 'svg', 'form', 'nav', 'header', 'footer', 'aside', 'button', 'select', 'textarea', 'template', 'dialog', 'menu'],
     { unwrapNoscriptImages: true, preserveHeaderFigures: true }
   );
-  // Keep only the first <article> if multiple sibling <article> cards exist (gallery/listing pages)
+
   {
     const openRe = /<article\b([^>]*)>/gi;
     let first = true;
@@ -702,7 +688,6 @@ function rdBlocks(html, finalURL) {
   });
   s = s.replace(/<(?:img|amp-img)\b[^>]*>/gi, m => addImg(m, '', false));
 
-  // Preserve semantic markers for headings, blockquotes, and list items
   s = s.replace(/<(h[2-4])\b[^>]*>([\s\S]*?)<\/\1\s*>/gi, (_, tag, inner) => '\n@@RDH@@' + inner + '\n');
   s = s.replace(/<blockquote\b[^>]*>([\s\S]*?)<\/blockquote\s*>/gi, (_, inner) => '\n@@RDQ@@' + inner + '\n');
   s = s.replace(/<li\b[^>]*>([\s\S]*?)<\/li\s*>/gi, (_, inner) => '\n@@RDL@@' + inner + '\n');
@@ -762,7 +747,7 @@ function splitArticleBodyText(body) {
     raw = decodeEntities(raw).replace(/\r\n/g, '\n');
   }
   let parts = raw.split(/\n+/).map(x => x.replace(/\s+/g, ' ').trim()).filter(Boolean);
-  // Single large wall of text without paragraph breaks: chunk into natural 2-3 sentence paragraphs
+
   if (parts.length <= 1 && raw.length > 420) {
     const sents = raw.replace(/\s+/g, ' ').trim().split(/(?<=[.!?])\s+(?=[A-Z"“])/);
     const grouped = [];
@@ -801,7 +786,6 @@ function computeTextQuality({ title, expectedTitle, url, desc, blocks, boilerpla
     headlineRelevance = 0;
   }
 
-  // Check both fetched headline vs expected wire title/slug AND body vs fetched headline
   let expectedMatch = true;
   if (expectedTitle && title) {
     const expToks = [...new Set(topicTokens(expectedTitle))];
@@ -881,7 +865,6 @@ function rdExtract(html, finalURL, opts = {}) {
   const byline = meta.author || meta['article:author'] || rdName(art.author) || '';
   const time = meta['article:published_time'] || meta['datepublished'] || art.datePublished || '';
 
-  // Challenge / error check early on title+desc OR small HTML shell (avoids false positives on 100KB+ pages with comment reCAPTCHA)
   if (BOT_CHALLENGE_RE.test(title + ' ' + rawDesc) || (sHtml.length < 45000 && BOT_CHALLENGE_RE.test(sHtml))) {
     return {
       ok: false, url: finalURL, final: finalURL, title: title || rdHost(finalURL), site,
@@ -917,7 +900,6 @@ function rdExtract(html, finalURL, opts = {}) {
     if (cand.kind !== 'full' && q.isFullArticle && q.paragraphCount >= 4 && q.totalChars >= 700) break;
   }
 
-  // Evaluate JSON-LD articleBody and script-embedded video transcript as competing candidates
   const scriptVid = rdExtractScriptVideos(sHtml, finalURL, title, rdOnTopic);
   for (const [mName, bodyText] of [
     ['jsonld_articleBody', art.articleBody],
@@ -949,7 +931,7 @@ function rdExtract(html, finalURL, opts = {}) {
   let isFallback = !winner || !winner.quality.isFullArticle;
 
   if (!winner || !winner.quality.isFullArticle) {
-    // Check if there is a clean metadata description fallback
+
     const cleanedMetaDesc = FEEDTEXT.descFrom({ description: rdInline(rawDesc) }, title);
     if (!winner && cleanedMetaDesc && !BOT_CHALLENGE_RE.test(cleanedMetaDesc)) {
       const fbBlocks = [{ k: 'p', t: cleanedMetaDesc }];
@@ -965,11 +947,9 @@ function rdExtract(html, finalURL, opts = {}) {
   const finalBlocksRaw = winner ? winner.blocks : [];
   const finalQuality = winner ? winner.quality : computeTextQuality({ title, expectedTitle: opts.expectedTitle, url: finalURL, desc: rawDesc, blocks: [] });
 
-  // Strip repeated headline paragraph
   const tnorm = rdInline(title).toLowerCase();
   const filteredBlocks = finalBlocksRaw.filter(b => !(b.k === 'p' && tnorm && b.t.toLowerCase() === tnorm));
 
-  // Cap total character count to 18000 while keeping media slots
   const finBlocks = [];
   const joined = [];
   let total = 0;
@@ -1005,7 +985,7 @@ function rdExtract(html, finalURL, opts = {}) {
     site,
     byline,
     time: time ? String(time) : '',
-    img: '', // Populated strictly by canonical media resolver
+    img: '',
     desc: cleanDesc,
     paras: joined,
     thin: !finalQuality.isFullArticle,
@@ -1106,7 +1086,7 @@ function rdJinaMd(text, url, opts = {}) {
     const lt = t.replace(IMG_MD, (_, a1, u1, link1, a2, u2, off) => {
       const iu = rdAbs(u1 || u2, url);
       const ia = a1 != null ? a1 : (a2 || '');
-      // Linked thumbnail pointing to a DIFFERENT article webpage = related story card
+
       if (link1) {
         try {
           const lx = new URL(link1, url);

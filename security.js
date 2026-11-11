@@ -1,8 +1,5 @@
 'use strict';
 
-// Security, DNS-pinned outbound HTTP/TLS, authentication, RBAC, rate limiting,
-// and runtime fault-isolation primitives for SITREP. Built solely on Node core.
-
 const crypto = require('crypto');
 const dns = require('dns').promises;
 const fs = require('fs');
@@ -17,10 +14,6 @@ const DEFAULT_UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/
 const INCOMPLETE_CHAIN_ERR = /UNABLE_TO_VERIFY_LEAF_SIGNATURE|UNABLE_TO_GET_ISSUER_CERT_LOCALLY/i;
 const PRIVATE_HOST = /^(localhost|127\.\d+\.\d+\.\d+|0\.0\.0\.0|10\.\d+\.\d+\.\d+|172\.(1[6-9]|2\d|3[01])\.\d+\.\d+|192\.168\.\d+\.\d+|169\.254\.\d+\.\d+|100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\.\d+\.\d+|\[?(::1|fe80:.*|fc00:.*|fd[0-9a-f]{2}:.*|::ffff:(127\.|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|169\.254\.|0\.0\.0\.0))\]?)$/i;
 
-// ---------------------------------------------------------------------------
-// SSRF: IPv4 / IPv6 normalization and private-range detection
-// ---------------------------------------------------------------------------
-
 function rdIPv4Bytes(ip) {
   const m = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(String(ip || '').trim());
   if (!m) return null;
@@ -31,18 +24,18 @@ function rdIPv4Bytes(ip) {
 function rdPrivateBytes(b) {
   if (!b) return true;
   const [a, x, y] = b;
-  if (a === 0) return true;                                  // 0.0.0.0/8 "this network"
-  if (a === 10) return true;                                 // 10.0.0.0/8 RFC1918
-  if (a === 100 && x >= 64 && x <= 127) return true;         // 100.64.0.0/10 CGNAT
-  if (a === 127) return true;                                // 127.0.0.0/8 loopback
-  if (a === 169 && x === 254) return true;                   // 169.254.0.0/16 link-local / metadata
-  if (a === 172 && x >= 16 && x <= 31) return true;          // 172.16.0.0/12 RFC1918
-  if (a === 192 && x === 0 && (y === 0 || y === 2)) return true; // IETF protocol / TEST-NET-1
-  if (a === 192 && x === 168) return true;                   // 192.168.0.0/16 RFC1918
-  if (a === 198 && (x === 18 || x === 19)) return true;      // 198.18.0.0/15 benchmarking
-  if (a === 198 && x === 51 && y === 100) return true;       // TEST-NET-2
-  if (a === 203 && x === 0 && y === 113) return true;        // TEST-NET-3
-  if (a >= 224) return true;                                 // multicast + 240.0.0.0/4 reserved + broadcast
+  if (a === 0) return true;
+  if (a === 10) return true;
+  if (a === 100 && x >= 64 && x <= 127) return true;
+  if (a === 127) return true;
+  if (a === 169 && x === 254) return true;
+  if (a === 172 && x >= 16 && x <= 31) return true;
+  if (a === 192 && x === 0 && (y === 0 || y === 2)) return true;
+  if (a === 192 && x === 168) return true;
+  if (a === 198 && (x === 18 || x === 19)) return true;
+  if (a === 198 && x === 51 && y === 100) return true;
+  if (a === 203 && x === 0 && y === 113) return true;
+  if (a >= 224) return true;
   return false;
 }
 
@@ -50,7 +43,6 @@ function expandIPv6(rawIp) {
   const s = String(rawIp || '').trim().toLowerCase().replace(/^\[|\]$/g, '').split('%')[0];
   if (!s || net.isIP(s) !== 6) return null;
 
-  // Handle embedded IPv4 suffix such as ::ffff:127.0.0.1
   let work = s;
   const lastColon = work.lastIndexOf(':');
   if (lastColon >= 0 && work.slice(lastColon + 1).includes('.')) {
@@ -82,40 +74,40 @@ function rdPrivateIP(ip) {
   if (!s) return true;
   const v4 = rdIPv4Bytes(s);
   if (v4) return rdPrivateBytes(v4);
-  if (net.isIP(s) !== 6) return true; // Fail closed on unparseable/non-IP string
+  if (net.isIP(s) !== 6) return true;
 
   const h = expandIPv6(s);
   if (!h || h.some(Number.isNaN)) return true;
 
   const isZeroPrefix5 = h[0] === 0 && h[1] === 0 && h[2] === 0 && h[3] === 0 && h[4] === 0;
-  // Unspecified :: and loopback ::1
+
   if (isZeroPrefix5 && h[5] === 0 && h[6] === 0 && (h[7] === 0 || h[7] === 1)) return true;
-  // IPv4-mapped ::ffff:0:0/96 or IPv4-compatible ::/96
+
   if (isZeroPrefix5 && (h[5] === 0xffff || h[5] === 0)) {
     return rdPrivateBytes([h[6] >> 8, h[6] & 0xff, h[7] >> 8, h[7] & 0xff]);
   }
-  // IPv4-translated ::ffff:0:0:0/96
+
   if (h[0] === 0 && h[1] === 0 && h[2] === 0 && h[3] === 0xffff && h[4] === 0 && h[5] === 0) {
     return rdPrivateBytes([h[6] >> 8, h[6] & 0xff, h[7] >> 8, h[7] & 0xff]);
   }
-  // NAT64 well-known 64:ff9b::/96 and local 64:ff9b:1::/48
+
   if (h[0] === 0x0064 && h[1] === 0xff9b) {
     if (h[2] === 1) return true;
     if (h[2] === 0 && h[3] === 0 && h[4] === 0 && h[5] === 0) {
       return rdPrivateBytes([h[6] >> 8, h[6] & 0xff, h[7] >> 8, h[7] & 0xff]);
     }
   }
-  // 6to4 2002::/16 (embeds IPv4 in h[1], h[2])
+
   if (h[0] === 0x2002) {
     return rdPrivateBytes([h[1] >> 8, h[1] & 0xff, h[2] >> 8, h[2] & 0xff]);
   }
-  if (h[0] === 0x2001 && h[1] === 0x0000) return true; // Teredo
-  if (h[0] === 0x2001 && h[1] === 0x0db8) return true; // Documentation
-  if (h[0] === 0x0100 && h[1] === 0 && h[2] === 0 && h[3] === 0) return true; // Discard 100::/64
-  if ((h[0] & 0xfe00) === 0xfc00) return true; // ULA fc00::/7
-  if ((h[0] & 0xffc0) === 0xfe80) return true; // Link-local fe80::/10
-  if ((h[0] & 0xffc0) === 0xfec0) return true; // Deprecated site-local fec0::/10
-  if ((h[0] & 0xff00) === 0xff00) return true; // Multicast ff00::/8
+  if (h[0] === 0x2001 && h[1] === 0x0000) return true;
+  if (h[0] === 0x2001 && h[1] === 0x0db8) return true;
+  if (h[0] === 0x0100 && h[1] === 0 && h[2] === 0 && h[3] === 0) return true;
+  if ((h[0] & 0xfe00) === 0xfc00) return true;
+  if ((h[0] & 0xffc0) === 0xfe80) return true;
+  if ((h[0] & 0xffc0) === 0xfec0) return true;
+  if ((h[0] & 0xff00) === 0xff00) return true;
   return false;
 }
 
@@ -135,10 +127,6 @@ function publicURL(raw) {
     return null;
   }
 }
-
-// ---------------------------------------------------------------------------
-// TLS Trusted Roots & Pure Stream/Header Helpers (Fix 02: no unverified fallback)
-// ---------------------------------------------------------------------------
 
 function extractPemCerts(pemText) {
   const matches = String(pemText || '').match(/-----BEGIN CERTIFICATE-----[\s\S]*?-----END CERTIFICATE-----/g);
@@ -314,7 +302,7 @@ function wrapWebStream(nodeStream, cleanupFn, maxBytes, rawRes) {
           return;
         }
         controller.enqueue(new Uint8Array(buf.buffer, buf.byteOffset, buf.byteLength));
-        // Apply backpressure to avoid buffering giant responses ahead of consumer
+
         if (controller.desiredSize !== null && controller.desiredSize <= 0) {
           nodeStream.pause();
         }
@@ -390,18 +378,14 @@ function buildFetchResponse(res, finalUrl, method, cleanupFn, maxBytes) {
   };
 }
 
-// ---------------------------------------------------------------------------
-// Outbound HTTP/HTTPS Client Factory (DNS Pinning + Strict TLS + AIA Repair)
-// ---------------------------------------------------------------------------
-
 function createHttpClient(clientOpts = {}) {
   const customPrivateCheck = typeof clientOpts.isPrivateIpFn === 'function';
   const isPrivateIp = customPrivateCheck ? clientOpts.isPrivateIpFn : rdPrivateIP;
   const defaultRoots = clientOpts.trustedRoots || DEFAULT_TRUSTED_ROOTS;
-  const rdDnsCache = new Map(); // host -> { addrs, at }
-  const aiaRepairCache = new Map(); // leafFingerprint256 -> { pems, at }
-  const secureCtxCache = new Map(); // caKey -> tls.SecureContext
-  const agentPool = new Map(); // protocol|host|port|addrsKey|caKey -> http(s).Agent
+  const rdDnsCache = new Map();
+  const aiaRepairCache = new Map();
+  const secureCtxCache = new Map();
+  const agentPool = new Map();
 
   function getSecureContext(trustedRoots, extraCaPems) {
     if ((!extraCaPems || !extraCaPems.length) && trustedRoots && trustedRoots.secureContext) {
@@ -564,14 +548,6 @@ function createHttpClient(clientOpts = {}) {
     };
   }
 
-  // SECURITY NOTE (not an application HTTP bypass):
-  // probePeerChain() opens a short-lived TLS handshake purely to read peer certificate
-  // metadata (leaf + incomplete chain + AIA CA Issuers URI) when an upstream server omits
-  // an intermediate certificate. Zero HTTP/application bytes are sent on this socket.
-  // All fetched AIA intermediates and the leaf certificate are then strictly validated
-  // against DEFAULT_TRUSTED_ROOTS (hostname, validity window, signature, CA constraints)
-  // in repairCertChain(), and the actual HTTP request in singlePinnedRequest() always
-  // enforces `rejectUnauthorized = true`.
   function probePeerChain(resolved, port, servername, ms = 6000) {
     return new Promise((resolve, reject) => {
       let settled = false;
@@ -580,7 +556,7 @@ function createHttpClient(clientOpts = {}) {
         port: port || 443,
         servername: net.isIP(resolved.host) ? undefined : (servername || resolved.host),
         lookup: makePinnedLookup(resolved.host, resolved.addrs),
-        rejectUnauthorized: false, // metadata-only TLS handshake; verified in repairCertChain() before any HTTP request
+        rejectUnauthorized: false,
         checkServerIdentity: () => undefined,
         ALPNProtocols: ['http/1.1']
       });
@@ -748,7 +724,6 @@ function createHttpClient(clientOpts = {}) {
         }
       };
 
-      // Always keep persistent error handler attached before abort/timeout can destroy req
       req.on('error', fail);
 
       const onAbort = () => {
@@ -891,10 +866,6 @@ const {
   closeAllAgents
 } = defaultClient;
 
-// ---------------------------------------------------------------------------
-// Authentication, Session Cookies, RBAC & Rate Limiting (Fix 03)
-// ---------------------------------------------------------------------------
-
 const ROLE_RANK = { viewer: 1, operator: 2, admin: 3 };
 
 function scryptHashAsync(password, saltHex) {
@@ -989,9 +960,7 @@ function getClientIp(req, trustProxy = false, trustedHops = Number(process.env.S
   if (trustProxy && req && req.headers) {
     const cfRaw = String(req.headers['cf-connecting-ip'] || '').trim().replace(/^\[|\]$/g, '');
     const cfValid = cfRaw && net.isIP(cfRaw) !== 0 ? cfRaw : '';
-    // SITREP_TRUST_CF=1 memaksa prioritas CF. Tanpa env itu, header CF tetap dipakai
-    // bila request benar-benar datang lewat Cloudflare (CF-Ray ada) — cloudflared
-    // selalu menyuntik CF-Ray, dan klien biasa tidak bisa memalsukannya lewat fetch.
+
     const viaCloudflare = Boolean(req.headers['cf-ray']);
     if (cfValid && (process.env.SITREP_TRUST_CF === '1' || viaCloudflare)) return cfValid;
     const xff = req.headers['x-forwarded-for'];
@@ -1012,9 +981,6 @@ function getClientIp(req, trustProxy = false, trustedHops = Number(process.env.S
   return (req && req.socket && req.socket.remoteAddress) || 'unknown';
 }
 
-/* Kunci rate-limit: IPv4 apa adanya, IPv6 dipadatkan ke /64.
-   Satu /64 = satu pelanggan (atau satu VPS), jadi tanpa ini penyerang bisa
-   memutar alamat baru tiap request dan limiter tidak pernah menyala. */
 function rateKey(ip) {
   const raw = String(ip || '').trim().replace(/^\[|\]$/g, '');
   if (!raw || net.isIP(raw) === 0) return raw || 'unknown';
@@ -1077,14 +1043,14 @@ function createAuthManager(opts = {}) {
   const signingKey = rawSecret.length >= 32
     ? crypto.createHash('sha256').update(rawSecret).digest()
     : crypto.randomBytes(32);
-  const sessionTtlSec = Math.max(300, Number(opts.sessionTtlSec) || 43200); // 12h default
+  const sessionTtlSec = Math.max(300, Number(opts.sessionTtlSec) || 43200);
   const trustProxy = Boolean(opts.trustProxy);
   const tokenRole = ROLE_RANK[opts.tokenRole] ? opts.tokenRole : 'admin';
   const allowQueryToken = opts.allowQueryToken !== undefined
     ? Boolean(opts.allowQueryToken)
     : (!publicMode && !userMode && process.env.SITREP_DISABLE_QUERY_TOKEN !== '1');
 
-  const revoked = new Map(); // jti -> expMs
+  const revoked = new Map();
 
   function signSession(username, role) {
     const now = Math.floor(Date.now() / 1000);
@@ -1136,7 +1102,7 @@ function createAuthManager(opts = {}) {
         for (const [k, expMs] of revoked) {
           if (expMs <= nowMs) revoked.delete(k);
         }
-        // Only evict oldest unexpired entries under extreme (>25000) revocation flood
+
         while (revoked.size > 25000) {
           revoked.delete(revoked.keys().next().value);
         }
@@ -1161,12 +1127,10 @@ function createAuthManager(opts = {}) {
       return null;
     }
 
-    // In multi-user session mode, prefer signed HttpOnly cookie
     const cookies = parseCookies(req);
     const sessPrincipal = verifySessionToken(cookies.sitrep_sess);
     if (sessPrincipal) return sessPrincipal;
 
-    // Headless API clients may still use header/query token ONLY if SITREP_TOKEN was explicitly set
     if (explicitToken && (timingEqualStr(hdrTok, apiToken) || timingEqualStr(qryTok, apiToken))) {
       return { username: 'api-token', role: tokenRole, via: 'token' };
     }
@@ -1235,7 +1199,7 @@ function createAuthManager(opts = {}) {
     verifyPassword: async (username, password) => {
       const rec = users.get(String(username || '').trim());
       if (!rec) {
-        // Constant-ish work even on unknown username to mitigate user enumeration timing
+
         await verifyPassword(password || 'x', 'scrypt$00112233445566778899aabbccddeeff$' + '00'.repeat(64));
         return null;
       }
@@ -1265,13 +1229,10 @@ function createAuthManager(opts = {}) {
 }
 
 function createRateLimiter(buckets = {}) {
-  const store = new Map(); // bucket:ip -> { count, resetAt }
+  const store = new Map();
   const cfg = {
     login: { limit: 10, windowMs: 300000 },
-    // Dashboard publik dipoll dari perangkat yang sering berbagi satu IP publik
-    // (CGNAT Telkomsel/Indihome, kantor, kampus). 300/menit per IP membunuh
-    // puluhan pengunjung sah sekaligus, jadi batasnya dinaikkan dan penjagaan
-    // utama dipindah ke edge (Cloudflare) + cache hit di origin.
+
     heavy: { limit: 600, windowMs: 60000 },
     api: { limit: 1200, windowMs: 60000 },
     ...buckets
@@ -1280,15 +1241,14 @@ function createRateLimiter(buckets = {}) {
 
   function sweep(now) {
     if (store.size <= MAX_KEYS) return;
-    // Buang entri yang window-nya sudah tutup dulu.
+
     for (const [k, v] of store) {
       if (v.resetAt <= now) store.delete(k);
     }
-    // Masih penuh: evict yang paling tua (Map = insertion order), bukan
-    // menghapus semuanya — limiter tidak boleh fail-open saat IP meledak.
+
     while (store.size > MAX_KEYS) {
       const k = store.keys().next().value;
-      if (String(k).startsWith('login:')) break; // bucket login jangan dikorbankan
+      if (String(k).startsWith('login:')) break;
       store.delete(k);
     }
   }
@@ -1314,10 +1274,6 @@ function createRateLimiter(buckets = {}) {
     }
   };
 }
-
-// ---------------------------------------------------------------------------
-// Runtime Resilience: Worker Isolation & Fatal Process Guard (Fix 04)
-// ---------------------------------------------------------------------------
 
 async function runIsolated(label, fn) {
   try {

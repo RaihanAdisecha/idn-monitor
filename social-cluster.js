@@ -1,13 +1,4 @@
 'use strict';
-/**
- * Social Intelligence Deduplication, Corroboration, Source Provenance & Event Clustering.
- *
- * Enforces non-negotiable OSINT principles:
- * - Multiple reposts / copied news captions are folded, NOT independent corroboration.
- * - Engagement (likes/views/reposts) NEVER increases credibility or confirmation.
- * - Official agency, news outlet, eyewitness, and anonymous accounts carry distinct provenance.
- * - Distinct events in the same city do NOT merge merely because they share a city name.
- */
 
 const OFFICIAL_HANDLES = new Set([
   'infobmkg', 'bnpb_indonesia', 'basarnas', 'damkardki', 'tmcpoldametro',
@@ -72,7 +63,6 @@ function classifySourceProvenance(post, assessment) {
     reason = 'eyewitness_event_framing';
   }
 
-  // Note: verified blue-check or likes/reposts do NOT grant official or news authority!
   return {
     sourceType,
     authorityWeight: PROVENANCE_WEIGHTS[sourceType] || 0.35,
@@ -131,7 +121,7 @@ function deduplicatePosts(posts) {
   const sorted = (posts || []).slice().sort((a, b) => (Number(b.ts) || 0) - (Number(a.ts) || 0));
   const unique = [];
   const seenUrls = new Set();
-  const seenExact = new Map(); // normText -> group
+  const seenExact = new Map();
 
   for (const p of sorted) {
     if (!p || !p.text) continue;
@@ -150,7 +140,6 @@ function deduplicatePosts(posts) {
       continue;
     }
 
-    // Check near-duplicate against already-kept posts (bounded check over last 200 unique)
     const pToks = new Set(similarityTokens(norm));
     let matched = null;
     const startIdx = Math.max(0, unique.length - 200);
@@ -207,7 +196,7 @@ function canClusterEvents(evA, evB, timeWindowMs) {
   const locB = String(evB.locationName || '').toLowerCase().trim();
   if (locA && locB && locA !== locB) return false;
   if (!locA || !locB) {
-    // Allow target match when location unknown
+
     const tA = String(evA.target || '').toLowerCase().trim();
     const tB = String(evB.target || '').toLowerCase().trim();
     if (!tA || !tB || tA !== tB) return false;
@@ -217,7 +206,6 @@ function canClusterEvents(evA, evB, timeWindowMs) {
   const provB = String(evB.prov || '').toLowerCase().trim();
   if (provA && provB && provA !== provB) return false;
 
-  // Distinguish multiple unrelated events in the same city!
   let shared = 0;
   for (const t of evA.specTokens) if (evB.specTokens.has(t)) shared++;
   const union = evA.specTokens.size + evB.specTokens.size - shared;
@@ -292,7 +280,6 @@ function clusterIncidents(posts, opts = {}) {
           ? 'single_source_eyewitness'
           : 'uncorroborated';
 
-    // Highest-authority record becomes representative (never just highest likes!)
     const sortedRecs = cl.records.slice().sort((a, b) => (b.provenance.authorityWeight - a.provenance.authorityWeight) || (b.ts - a.ts));
     const rep = sortedRecs[0];
 

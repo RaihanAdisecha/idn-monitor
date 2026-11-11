@@ -1,18 +1,13 @@
 'use strict';
-/**
- * Indonesian Social Media NLP & Hybrid Intelligence Engine (offline, zero-I/O).
- *
- * Implements:
- * - Layer 2: Language Normalization (slang, typos, abbreviations, affixes,
- *   reduplication, code-switching, regional hints, hashtag segmentation, emojis)
- * - Layer 3: Content Intent Classification (19 explicit intents + hybrid scoring)
- * - Layer 4: Structured Event Extraction (without fabricating unknown fields)
- * - Layer 5: Geographic Context Resolution (role disambiguation via geocode.js)
- * - Layer 6: Evidence-Based Word-Sense Disambiguation & Negation Scoping
- */
 
 const crypto = require('crypto');
 const GEO = require('./geocode');
+
+let francModule = null;
+try {
+  const f = require('franc');
+  francModule = f.franc || f;
+} catch (_) {}
 
 const INTENTS = Object.freeze([
   'incident_report',
@@ -75,7 +70,6 @@ const REJECT_REASONS = Object.freeze({
   OPINION_OR_COMMENTARY: 'opinion_or_commentary',
 });
 
-// HTML entities decoded safely without touching original text semantics.
 function decodeBasicEntities(s) {
   return String(s || '')
     .replace(/&#(x[0-9a-fA-F]+|\d+);?/g, (_, n) => {
@@ -90,26 +84,25 @@ function decodeBasicEntities(s) {
     .replace(/&amp;/gi, '&');
 }
 
-// Curated normalization map: preserves distinctions (never aggressive Porter stemming).
 const SLANG_MAP = Object.freeze({
-  // Negation
+
   ngga: 'tidak', nggak: 'tidak', engga: 'tidak', enggak: 'tidak',
   gak: 'tidak', ga: 'tidak', gk: 'tidak', kaga: 'tidak', kagak: 'tidak',
   ndak: 'tidak', ora: 'tidak', teu: 'tidak', tdk: 'tidak', tak: 'tidak',
   blm: 'belum', acan: 'belum', durung: 'belum',
   bkn: 'bukan',
-  // Pronouns / Actors
+
   gw: 'saya', gue: 'saya', gua: 'saya', aku: 'saya', aq: 'saya', sy: 'saya',
   lu: 'kamu', lo: 'kamu', loe: 'kamu', elu: 'kamu',
   org: 'orang', wrg: 'warga', rmh: 'rumah', omah: 'rumah', imah: 'rumah',
   dln: 'jalan', dalan: 'jalan', jln: 'jalan',
-  // Temporal & aspect
+
   udh: 'sudah', udah: 'sudah', sdh: 'sudah', wis: 'sudah', geus: 'sudah',
   skrg: 'sekarang', skg: 'sekarang', saiki: 'sekarang', ayeuna: 'sekarang',
   kmrn: 'kemarin', kmaren: 'kemarin', wingi: 'kemarin', kamari: 'kemarin',
   biyen: 'dulu', baheula: 'dulu',
   td: 'tadi', mlm: 'malam',
-  // Function words / modifiers
+
   yg: 'yang', dgn: 'dengan', dlm: 'dalam', utk: 'untuk', u: 'untuk',
   krn: 'karena', karna: 'karena', bgt: 'banget', bngt: 'banget',
   cuma: 'hanya', cuman: 'hanya', cm: 'hanya', cmn: 'hanya',
@@ -119,7 +112,7 @@ const SLANG_MAP = Object.freeze({
   dmn: 'dimana', kpn: 'kapan', brp: 'berapa',
   sblm: 'sebelum', stlh: 'setelah', bnyk: 'banyak', sm: 'sama', dr: 'dari',
   klo: 'kalau', kl: 'kalau', klw: 'kalau',
-  // Colloquial / regional disaster & incident verbs/nouns
+
   ujan: 'hujan', udan: 'hujan',
   kebakar: 'terbakar', kobongan: 'kebakaran', kahuruan: 'kebakaran',
   kejebak: 'terjebak', kerasa: 'terasa', keseret: 'terseret',
@@ -128,7 +121,7 @@ const SLANG_MAP = Object.freeze({
   banyu: 'air', cai: 'air', caina: 'airnya',
   ambrol: 'ambruk', mlebu: 'masuk', asup: 'masuk', munggah: 'naik',
   cepet: 'cepat', cepet2: 'cepat',
-  // Code-switching English -> Indonesian equivalents (kept alongside original if helpful)
+
   flooding: 'banjir', flooded: 'terendam banjir',
   earthquake: 'gempa', landslide: 'longsor', wildfire: 'karhutla',
   collapsed: 'ambruk', collapse: 'ambruk',
@@ -138,7 +131,6 @@ const SLANG_MAP = Object.freeze({
   blackout: 'listrik padam',
 });
 
-// Safe Indonesian city / region abbreviations (only applied on standalone tokens).
 const GEO_ABBR_MAP = Object.freeze({
   jkt: 'jakarta',
   jaksel: 'jakarta selatan',
@@ -161,7 +153,6 @@ const GEO_ABBR_MAP = Object.freeze({
   yogya: 'yogyakarta',
 });
 
-// Dictionary for segmenting glued lowercase hashtags (#banjirjakarta -> banjir jakarta).
 const HASHTAG_LEXICON = [
   'jakarta selatan', 'jakarta timur', 'jakarta barat', 'jakarta utara', 'jakarta pusat',
   'tangerang selatan', 'bandung', 'surabaya', 'semarang', 'makassar', 'yogyakarta',
@@ -186,7 +177,7 @@ const HASHTAG_LEXICON = [
 function segmentHashtag(tag) {
   const clean = String(tag || '').replace(/^#+/, '').trim();
   if (!clean) return '';
-  // 1. Underscores & camelCase boundaries
+
   const spaced = clean
     .replace(/_+/g, ' ')
     .replace(/([a-z\p{Ll}])([A-Z\p{Lu}])/gu, '$1 $2')
@@ -202,7 +193,7 @@ function segmentHashtag(tag) {
       parts.push(seg);
       continue;
     }
-    // Greedy lexicon segmentation for glued lowercase compounds
+
     let rest = seg;
     const out = [];
     let guard = 0;
@@ -212,7 +203,7 @@ function segmentHashtag(tag) {
         out.push(hit);
         rest = rest.slice(hit.length);
       } else {
-        // Scan ahead for next lexicon suffix
+
         let splitAt = -1;
         for (let i = 3; i < rest.length - 2; i++) {
           const tail = rest.slice(i);
@@ -259,7 +250,7 @@ const REDUPL_LEISURE_RE = /\b(jalan-jalan|makan-makan|senyum-senyum|foto-foto|no
 const REDUPL_COLLECTIVE_RE = /\b(?:(rumah|warga|gedung|ruko|kendaraan|mobil|motor|pohon|korban|bangunan|kios|toko|tiang|atap|dinding)-\1|(berjatuhan|berserakan|berhamburan|beterbangan|bertumbangan))\b/gi;
 
 function collapseElongation(tok) {
-  // Collapse 3+ identical consecutive letters -> 1 (e.g. banjiiir -> banjir, wortthhhh -> worth)
+
   return tok.replace(COLLAPSE_REPEAT_RE, '$1');
 }
 
@@ -270,14 +261,12 @@ function normalizePhraseText(text, expandGeoAbbr = false) {
     .replace(/https?:\/\/\S+/g, ' ')
     .replace(/@[\w.]+/g, ' ');
 
-  // Replace leisure reduplications like "jalan-jalan" before hyphen splitting
   const safeLeisure = s.replace(/\bjalan-jalan\b/g, 'jalan_jalan_leisure');
 
-  // Token-wise careful normalization preserving punctuation boundaries for clause logic
   return safeLeisure
     .replace(/[\p{L}\p{N}_'-]+/gu, word => {
       if (word === 'jalan_jalan_leisure') return 'wisata jalan_jalan';
-      // Handle explicit hyphenated reduplication (rumah-rumah -> rumah rumah)
+
       if (word.includes('-') && !/^cve-/i.test(word)) {
         const subs = word.split('-').filter(Boolean);
         if (subs.length === 2 && subs[0] === subs[1]) {
@@ -321,7 +310,6 @@ function normalizeIndonesian(rawText) {
   const hashtagsSegmented = rawHashtags.map(segmentHashtag).filter(Boolean);
   const emojiSignals = extractEmojiSignals(decoded);
 
-  // Prose with hashtags removed for evidence verification (prevents hashtag stuffing phantom events)
   const proseWithoutTags = decoded.replace(/#[\p{L}\p{N}_]+/gu, ' ');
   const normalizedProse = normalizePhraseText(proseWithoutTags, false);
   const normalizedGeoProse = normalizePhraseText(proseWithoutTags, true);
@@ -338,7 +326,6 @@ function normalizeIndonesian(rawText) {
     .replace(/\s+/g, ' ')
     .trim();
 
-  // Detect reduplications in raw prose
   const collectiveRedup = [...proseWithoutTags.matchAll(REDUPL_COLLECTIVE_RE)].map(m => m[0].toLowerCase());
   const leisureRedup = [...proseWithoutTags.matchAll(REDUPL_LEISURE_RE)].map(m => m[0].toLowerCase());
 
@@ -362,7 +349,7 @@ function normalizeIndonesian(rawText) {
       normGeo,
       normFull: [normProse, ...rcTags].filter(Boolean).join(' ').trim(),
       hashtags: rcTags,
-      hasQuestionMark: /\?/.test(rc),
+      hasQuestionMark: /\?(?![a-z0-9_]+=)/i.test(rcNoTags.replace(/\b(?:https?|hxxps?|ftp):\/\/\S+|\b[\w.-]+\[\.\][a-z]{2,}\S*/gi, ' ')),
     };
   });
 
@@ -386,10 +373,6 @@ function normalizeIndonesian(rawText) {
   };
 }
 
-// =========================================================================
-// Morphological & Syntactic Cues
-// =========================================================================
-
 const NEG_WORDS = '(?:tidak|bukan|belum|tanpa|nihil|nol|anti|bebas)';
 const NEG_PREFIX_RE = /\b(?:tidak|bukan|belum|tanpa|nihil|nol)\s+(?:ada\s+|lagi\s+|pernah\s+|terjadi\s+|mengalami\s+|akan\s+|bakal\s+)?([a-z0-9_]+(?:\s+[a-z0-9_]+)?)/gi;
 const NEG_POST_RE = /\b(gempa|tsunami|erupsi|kebakaran|banjir|kebanjiran|longsor|kecelakaan|ledakan|penembakan|peretasan|kebocoran|serangan|wabah|keracunan|korban|demo|bentrok)\b[^.!?\n]{0,36}\b(?:tidak terjadi|tidak benar|tidak ada|belum ada|nihil|aman terkendali|sudah surut|hoaks|hoax|palsu|dibantah|bohong|bukan)\b/gi;
@@ -397,7 +380,7 @@ const FREE_OF_DISASTER_RE = /\b(?:bebas|anti|aman|tanpa|jauh dari)\s+(?:banjir|k
 const CORRECTION_RE = /\bbukan\s+([^,;.\n]+?)\s*,\s*(?:tapi|tetapi|melainkan|cuma|hanya)\s+([^.!?\n]+)/i;
 
 const DENIAL_ANY_RE = /\b(?:hoaks?|kabar palsu|berita palsu|false claim|misinformation|disinformasi|isu hoax|video lama|foto lama|dibantah)\b/i;
-const HISTORICAL_RE = /\b(?:dulu|jaman dulu|zaman dulu|tempo dulu|sejarah|mengenang|kilas balik|nostalgia|ingat waktu|tahun lalu|bulan lalu|pekan lalu|minggu lalu|last year|last month|last week|historical|anniversary|orde baru|orba|soeharto|suharto|perang dunia|world war|penjajahan|kolonial|beberapa tahun silam)\b/i;
+const HISTORICAL_RE = /\b(?:dulu|jaman dulu|zaman dulu|tempo dulu|sejarah|mengenang|kilas balik|nostalgia|ingat waktu|tahun lalu|bulan lalu|pekan lalu|minggu lalu|last year|last month|last week|historical|anniversary|orde baru|orba|soeharto|suharto|perang dunia|world war|penjajahan|kolonial|beberapa tahun silam|(?:jaman|zaman|waktu|pas|saat|era|awal)\s+(?:covid(?:-?19)?|pandemi|lockdown|korona|corona)|(?:2019|2020|2021|2022)\b[^.!?\n]{0,40}\b(?:covid|pandemi|lockdown))\b/i;
 const HISTORICAL_YEAR_RE = /\b(?:tahun|pada|sejak|era)\s+((?:19|20)\d{2})\b/i;
 
 function isHistoricalClause(text, year = new Date().getFullYear()) {
@@ -422,23 +405,18 @@ const OFFICIAL_UPDATE_RE = /\b(?:melaporkan|mencatat|mengungkap|menyatakan|mengo
 const EYEWITNESS_FRAMING_RE = /\b(?:rumah saya|depan rumah|belakang rumah|samping rumah|kosan saya|kamar saya|kantor saya|jalanan depan|gang saya|kampung saya|wilayah saya|daerah saya|lingkungan saya|air(?:\s+selokan|\s+kali|\s+hujan)?\s+(?:sudah|mulai)\s+(?:naik\s+)?masuk|air masuk|terasa banget|terasa kencang|kerasa banget|bergoyang|bergetar|barusan|baru saja|saat ini|sekarang lagi|tolong|kejebak|terjebak|lihat langsung|dengar suara|asap tebal|listrik mati|mati lampu)\b/i;
 
 const COMMERCIAL_LISTING_RE = /\b(?:dijual|mau\s+jual|jual\s+(?:cepat|mobil|motor|honda|toyota|civic|brio|avanza|innova|xpander|ertiga|vario|nmax)|disewakan|disewa|over\s*kredit|for\s*sale|for\s*rent|open\s*rent|looking\s*to\s*rent|\bwts\b|\bwtb\b|\bwtt\b|loker|lowongan\s+kerja|membutuhkan\s+(?:karyawan|staff|cook|barista|admin|driver|kurir)|kirim\s+cv|lamaran|kpr|dp\s*(?:0|nol)|cicilan|booking\s*fee|nego|siap\s+(?:huni|pakai)|pajak\s+hidup|surat\s+lengkap|lt\s*\d+|lb\s*\d+|shm|hgb|tahun\s+pembelian|transmisi\s*:?\s*(?:matic|manual)|stnk|\bkm\s*\:?\s*\d|showroom|ready\s*stock|open\s*order|pre[- ]?order|jastip|jasa\s+titip|war\s+tiket|sewa\s+(?:raket|kamera|iphone|samsung|kost|kosan|kontrakan|apartemen|ruko|armybomb|army\s*bomb|lightstick)|rekomendasi\s+(?:kost|kosan|kontrakan|cafe|kafe|kuliner|makanan|cakes?|salon|dokter|klinik|tempat|bengkel|laundry|hotel|villa)|recommendation\s+(?:for\s+)?(?:cakes?|food|cafe|kost|hotel|place))\b/i;
-const ADVERTISEMENT_RE = /\b(?:promo|diskon|cashback|flash\s*sale|gratis\s+ongkir|bagi[- ]?bagi\s+(?:gratis|kopi|americano|minuman|makanan|voucher|hadiah)|gratis\s+(?:buat|untuk)\s+(?:warga|mahasiswa|kalian)|link\s+(?:ada\s+)?di\s+bio|cek\s+(?:link\s+)?di\s+bio|order\s+(?:via|di)\s+(?:wa|whatsapp|dm|bio)|dm\s+(?:untuk|for)\s+(?:order|harga|price|rent|booking)|grand\s+opening|fanmeeting\s+tour|world\s+tour|asia\s+tour|beli\s+tiket|tiket\s+(?:konser|nonton|film|bioskop))\b/i;
+const ADVERTISEMENT_RE = /\b(?:promo|diskon|cashback|flash\s*sale|gratis\s+ongkir|bagi[- ]?bagi\s+(?:gratis|kopi|americano|minuman|makanan|voucher|hadiah)|gratis\s+(?:buat|untuk)\s+(?:warga|mahasiswa|kalian)|link\s+(?:ada\s+)?di\s+bio|cek\s+(?:link\s+)?di\s+bio|order\s+(?:via|di)\s+(?:wa|whatsapp|dm|bio)|dm\s+(?:untuk|for)\s+(?:order|harga|price|rent|booking)|s\.shopee\.co\.id|shp\.ee|tokopedia\.link|(?:diskusiin|konsultasi)\s+project\s+kamu|(?:via\s+)?(?:dm|whatsapp|wa)\s+(?:atau\s+(?:whatsapp|wa|dm)\s+)?di\s+bio|grand\s+opening|fanmeeting\s+tour|world\s+tour|asia\s+tour|beli\s+tiket|tiket\s+(?:konser|nonton|film|bioskop))\b/i;
 const PERSONAL_VENT_RE = /\b(?:capek\s+banget|lelah\s+banget|pengen\s+resign|mau\s+resign|ingin\s+resign|muak\s+sama|stres\s+(?:kerja|banget|hidup)|ga\s+kuat\s+(?:lagi|di|hidup)|tidak\s+kuat\s+(?:lagi|di|hidup)|pindah\s+(?:aja|saja)\s+ke|capek\s+kerja|gaji\s+kecil|macetnya\s+bikin|bikin\s+(?:emosi|stres|gila|mati\s+berdiri)|badan\s+lemas|mager|gabut|galau|patah\s+hati|curhat|butuh\s+temen\s+cuddle|temen\s+cuddle)\b/i;
 const OPINION_PRAISE_RE = /\b(?:selalu\s+punya\s+tempat\s+di\s+hati|kota\s+(?:terindah|terbaik|favorit|kenangan)|i\s+love\s+|cinta\s+banget\s+sama|kangen\s+banget\s+sama|rindu\s+(?:kota|suasana|jakarta|bandung|jogja|surabaya)|menurut\s+(?:saya|pribadi)|pendapat\s+(?:saya|pribadi)|mengkhianati\s+demokrasi|wacana\s+(?:pemilihan|pilkada|kebijakan))\b/i;
 const SPAM_SCAM_RE = /\b(?:follow\s+[\w.@-]+\s*[+.&]?\s*follow|like\s*(?:dan|&|\+)\s*(?:follow|rt)|rt\s*(?:dan|&|\+)\s*follow|boost\s+followers?|giveaway|klaim\s+(?:hadiah|reward|bonus)|airdrop|seed\s+phrase|private\s+key|robot\s+trading|binary\s+option|joki\s+(?:tugas|skripsi|makalah|ujian)|cari\s+(?:jodoh|pasangan|pacar|suami|istri)|cv\s+taaruf|biodata\s+taaruf|kriteria\s*:\s*1\.|jilmek|open\s*bo|vcs|bispak|janda\b[^.\n]{0,30}\b(?:jakarta|bo|vcs|open|michat)|michat|bokep|sange|colmek|crowcaster\.com|slot\s+gacor|togel|judol|gestun\s+pinjol)\b|\bR[1-9]\s+#\d+\b[^.\n]{0,60}\$\d+\.\d+/i;
 const READER_ACTION_RE = /\b(?:saya|aku|gue|gw|kami|kita)\s+(?:(?:lagi|sedang|posisi|masih)\s+(?:di|dari)\s+[^,.!?\n]{2,30}[,\s]+)?(?:baca|membaca|membacanya|nonton|menonton|lihat\s+(?:berita|kabar|postingan)|melihat\s+(?:berita|kabar)|dengar\s+(?:berita|kabar)|mendengar\s+(?:berita|kabar)|pantau|memantau|scroll|liat|nemu)\b/i;
 
-// =========================================================================
-// Layer 6: Word-Sense Disambiguation & Event Evidence Frames
-// =========================================================================
-
-// Figurative / metaphorical / non-incident word senses evaluated by frame & surrounding nouns.
 const METAPHOR_FRAMES = [
-  { id: 'metaphor_banjir', re: /\b(?:dibanjiri|membanjiri)\b|\b(?:banjir|kebanjiran)\s+(?:order|orderan|cuan|rezeki|berkah|hadiah|bonus|promo|diskon|ucapan|pujian|penghargaan|kritik|kecaman|hujatan|komentar|aduan|laporan|air\s*mata|gol|darah|impor|produk|turis|wisatawan|penonton|pelamar|pendaftar|peserta|serangan\s+siber|serangan\s+cyber|pesan|chat|dm|email|notif)\b/i },
+  { id: 'metaphor_banjir', re: /\b(?:dibanjiri|membanjiri)\b|\b(?:banjir|kebanjiran)\s+(?:order|orderan|cuan|rezeki|berkah|hadiah|bonus|promo|diskon|ucapan|pujian|penghargaan|kritik|kecaman|hujatan|komentar|aduan|laporan|air\s*mata|gol|darah|impor|produk|turis|wisatawan|penonton|pelamar|pendaftar|peserta|serangan\s+siber|serangan\s+cyber|pesan|chat|dm|email|notif|konten|content|update|jadwal|kerjaan|tugas)\b/i },
   { id: 'metaphor_ledakan', re: /\b(?:harga|tarif|biaya|ongkos|sewa|tiket(?:\s+pesawat|\s+kereta|\s+konser)?|rumah|properti|penduduk|populasi|kasus|pasien|penderita|order|orderan|penjualan|omzet|saham|profit|bisnis|cuan|inflasi|utang|kemiskinan|emosi|amarah|tawa|tangis|popularitas|traffic|trafik|subscribers?|followers?|viewers?|komentar)\b[^.!?\n]{0,55}\b(?:meledak|ledakan)\b|\b(?:ledakan|meledak)\b[^.!?\n]{0,40}\b(?:harga|tarif|tiket|penduduk|populasi|kasus|pasien|order|orderan|penjualan|omzet|bisnis|popularitas|tawa|tangis|emosi|amarah|di\s+pasaran)\b/i },
   { id: 'metaphor_panas', re: /\b(?:politik|suasana|debat|opini|diskusi|persaingan|laga|pertandingan|derby|hati|kepala|makanan|kopi|teh|soto|bakso|cuaca)\b[^.!?\n]{0,20}\b(?:panas|memanas)\b|\b(?:panas|memanas)\b[^.!?\n]{0,20}\b(?:politik|persaingan|debat|hati|asam|lambung)\b/i },
   { id: 'metaphor_jatuh', re: /\b(?:harga|saham|ihsg|rupiah|kurs|nilai|poin|peringkat|klasemen|mental|wibawa|reputasi|cinta|hati|tempo|miskin)\b[^.!?\n]{0,20}\b(?:jatuh|ambruk|anjlok|runtuh)\b|\b(?:jatuh|ambruk|anjlok|runtuh)\b[^.!?\n]{0,20}\b(?:cinta|tempo|miskin|hati|jiwa|perasaan|logika|kurs|saham|ihsg|rupiah|harga|rezim|koalisi|suara)\b/i },
-  { id: 'metaphor_bakar', re: /\b(?:kebakaran\s+jenggot|kebakaran\s+(?:harga|promo|diskon|obral)|terbakar\s+(?:api\s+)?(?:amarah|cemburu|emosi|semangat|rindu|asmara)|membakar\s+(?:semangat|duit|uang|kalori|lemak)|panggung\s+terbakar)\b|\b(?:ayam|nasi|ikan|sate|roti|steak|jagung|bakso|kuliner|masak|resep|wajan)\b[^.!?\n]{0,20}\b(?:bakar|terbakar)\b/i },
+  { id: 'metaphor_bakar', re: /\b(?:kebakaran\s+jenggot|kebakaran\s+(?:harga|promo|diskon|obral)|(?:ihsg|saham|portofolio|porto|market|bursa|kripto|crypto)\s+kebakaran|terbakar\s+(?:api\s+)?(?:amarah|cemburu|emosi|semangat|rindu|asmara)|membakar\s+(?:semangat|duit|uang|kalori|lemak)|panggung\s+terbakar)\b|\b(?:ayam|nasi|ikan|sate|roti|steak|jagung|bakso|kuliner|masak|resep|wajan)\b[^.!?\n]{0,20}\b(?:bakar|terbakar)\b/i },
   { id: 'metaphor_tenggelam', re: /\b(?:tenggelam|hanyut)\s+(?:dalam|oleh)\s+(?:kenangan|lamunan|duka|kesedihan|nostalgia|alunan|suasana|musik|lagu|emosi|perasaan|senyuman|tatapan|cinta|pesona|dosa)\b|\btenggelam\s+di\s+dasar\s+klasemen\b/i },
   { id: 'metaphor_bencana_politik', re: /\b(?:tsunami|gempa|badai|longsor)\s+(?:biru|politik|kabinet|protes|suara|pemilu|dukungan|saham|cuan|phk|vonis|kritik|kecaman|hujatan|asmara|cinta|kehidupan|hidup|cedera|pasti\s+berlalu)\b|\b(?:guncangan|mengguncang)\s+(?:politik|kabinet|ekonomi|jiwa|batin|jagat|dunia\s+maya|netizen|medsos|publik|parlemen|panggung)\b/i },
   { id: 'metaphor_crime', re: /\b(?:pencuri|maling|rampok|begal)\b[^.!?\n]{0,18}\b(?:hati|cinta|perhatian|senyum|pandangan|poin|start|rekening|saldo|data|partai|konstitusi)\b|\b(?:dibunuh|membunuh)\b[^.!?\n]{0,18}\b(?:rasa|rindu|sepi|waktu|kebosanan|karakter|mimpi|harapan|cinta)\b|\b(?:ditembak|menembak)\b[^.!?\n]{0,25}\b(?:gebetan|doi|crush|pacar|pacaran|hati|cinta|mati\s+rasa|wifi|sim|gawang)\b/i },
@@ -472,7 +450,6 @@ function metaphorBlocksTopic(metaphorIds, topicId) {
   return false;
 }
 
-// Physical/concrete event extraction frames (evaluated on prose WITHOUT bare hashtags).
 const EVENT_FRAMES = [
   {
     topic: 'banjir',
@@ -485,7 +462,7 @@ const EVENT_FRAMES = [
         const hasAction = /\b(?:terjadi|melanda|menutup|menimbun|menerjang|rusak|ambruk|terputus|korban|evakuasi|warga|rumah|jalan|tebing|di\s+[a-z])\b/.test(t);
         return { action: 'landslide', strong: hasAction, type: 'landslide' };
       }
-      // Informal eyewitness flood without or alongside the word "banjir": "air sudah masuk rumah saya"
+
       if (/\b(?:air(?:nya)?(?:\s+(?:hujan|kali|sungai|selokan|got))?)\s+(?:(?:sudah|mulai|lagi|terus|makin)\s+){0,3}(?:naik\s+(?:masuk|ke)|masuk|naik|merendam|menggenang|mengalir\s+deras)\b[^.!?\n]{0,40}\b(?:rumah|kamar|teras|halaman|kosan|kontrakan|ruko|toko|gang|jalan|pemukiman|warga)\b/.test(t)
         || /\b(?:air|banjir)\s+(?:sudah\s+|mulai\s+|masih\s+)?se(?:mata\s+kaki|betis|lutut|pinggang|dada|leher)\b/.test(t)) {
         if (/\b(?:keran|kran|pipa|toren|galon|ember|ac\s+netes|bocor\s+atap)\b/.test(t)) return null;
@@ -523,6 +500,8 @@ const EVENT_FRAMES = [
     detect: c => {
       const t = c.normGeo;
       if (!/\b(?:karhutla|kebakaran\s+(?:hutan|lahan)|kabut\s+asap|titik\s+panas|hotspot)\b/.test(t)) return null;
+      if (/\b(?:wifi|wi-fi|tethering|phone|fone|hp|ponsel|kuota|paket\s+data|download|gta|game|connect|password)\b/i.test(t)) return null;
+      if (/\bhotspot\b/.test(t) && !/\b(?:karhutla|hutan|lahan|gambut|kabut\s+asap|titik\s+panas|kebakaran|terpantau|satelit|bmkg|bnpb|bpbd|sipongi|riau|kalimantan|sumatera|jambi|sumsel)\b/.test(t)) return null;
       const strong = /\b(?:meluas|terjadi|membakar|terpantau|hanguskan|padamkan|pemadaman|kabut\s+asap|lahan\s+gambut|sipongi|manggala\s+agni|bpbd|bnpb)\b/.test(t);
       return { action: 'wildfire_burning', strong, type: 'wildfire' };
     },
@@ -722,7 +701,7 @@ const EVENT_FRAMES = [
     eventType: 'politik',
     detect: c => {
       const t = c.normGeo;
-      // Only actual institutional acts qualify as events; debates/proposals ("usul dipilih", "wacana") do NOT.
+
       const act = /\b(?:resmi\s+dilantik|dilantik|mengundurkan\s+diri|dipecat|diberhentikan|reshuffle\s+kabinet|divonis|dimakzulkan|impeachment)\b/.test(t);
       if (!act) return null;
       if (/\b(?:usul|wacana|menurut|komentar|opini|mengkhianati|katanya|andai|jika)\b/.test(t)) return null;
@@ -758,7 +737,6 @@ function extractImpact(rawOrNorm) {
   const s = String(rawOrNorm || '');
   const impact = { fatalities: null, injuries: null, displacement: null, propertyDamage: null };
 
-  // Fatalities
   let m = s.match(/\b(\d+)\s+(?:orang\s+|warga\s+|korban\s+|jiwa\s+|penumpang\s+|siswa\s+)?(?:tewas|meninggal(?:\s+dunia)?|wafat|gugur)\b/i)
     || s.match(/\b(?:tewas|meninggal(?:\s+dunia)?)\s+(?:sebanyak\s+)?(\d+)\s+(?:orang|warga|jiwa)\b/i);
   if (m) impact.fatalities = Number(m[1]);
@@ -767,15 +745,12 @@ function extractImpact(rawOrNorm) {
   else if (/\b(?:satu|seorang)\s+(?:orang\s+|warga\s+|pria|wanita|siswa|anak|korban)?\s*(?:tewas|meninggal)\b/i.test(s)) impact.fatalities = 1;
   else if (/\b(?:tiga)\s+(?:orang\s+|warga\s+)?(?:tewas|meninggal)\b/i.test(s)) impact.fatalities = 3;
 
-  // Injuries
   m = s.match(/\b(\d+)\s+(?:orang\s+|warga\s+|korban\s+|petugas\s+)?(?:luka(?:-luka|\s+berat|\s+ringan)?|terluka|cedera)\b/i);
   if (m) impact.injuries = Number(m[1]);
 
-  // Displacement
   m = s.match(/\b(\d+|puluhan|ratusan|ribuan)\s+(?:orang\s+|warga\s+|kk\s+|keluarga\s+)?(?:mengungsi|dievakuasi|terdampak)\b/i);
   if (m) impact.displacement = /^\d+$/.test(m[1]) ? Number(m[1]) : m[1].toLowerCase();
 
-  // Property damage
   m = s.match(/\b(\d+|puluhan|ratusan|ribuan|sejumlah|banyak)\s+(?:rumah|ruko|kios|warung|bangunan|gedung|atap\s+rumah|mobil|kendaraan|motor|kapal)\s+(?:terendam|rusak|hangus|ludes|terbakar|hancur|ambruk|tertimbun|tenggelam)\b/i);
   if (m) impact.propertyDamage = m[0].toLowerCase();
 
@@ -814,11 +789,7 @@ function extractEventTime(text, isHistorical) {
   return { value: null, type: 'unknown' };
 }
 
-// =========================================================================
-// Layer 5: Geographic Context Resolution
-// =========================================================================
-
-const FOREIGN_MARKER_RE = /\b(chiba|odesa|kharkiv|tel aviv|abu dhabi|dubai|jepang|japan|nepal|london|oyo|osun|nigeria|amerika|united states|\busa\b|americans?|american|british|canadian|australian|japanese|chinese|korean|french|german|russian|indian|ukrainian|israeli|palestinian|malaysian|singaporean|filipino|vietnamese|brazilian|mexican|european|texas|california|new york|michigan|florida|ohio|illinois|pennsylvania|virginia|washington|boston|chicago|los angeles|brasil|brazil|filipina|philippines|thailand|malaysia|m'sia|msia|lebuhraya|sejuk beku|bekalan makanan|plusline|llmtrafik|korang|macam ni|banjir tak|banjir ke|kesiannya|memandu|tanpa halangan banjir|terowong smart|berbaki|penyokong|rombak kabinet|bubarkan parlimen|bubar parlimen|parlimen|timbalan perdana menteri|pakatan harapan|perikatan nasional|barisan nasional|umno|menteri besar|ketua menteri|dewan rakyat|dewan negara|kerajaan perpaduan|kerajaan madani|malaysia madani|kelantan|pulau pinang|sabah|sarawak|terengganu|pahang|kedah|perak|selangor|putrajaya|negeri sembilan|melaka|kota kinabalu|kuching|ipoh|seremban|alor setar|kuantan|kuala terengganu|kota bharu|astro awani|awani|jbpm|pdrm|korea|china|tiongkok|inggris|britain|prancis|perancis|paris|france|eiffel|jerman|germany|australia|india|pakistan|iran|israel|palestina|palestine|ukraina|ukraine|rusia|russia|gaza|turki|turkey|meksiko|mexico|kanada|canada|vietnam|chile|argentina|spanyol|spain|portugal|italia|italy|belanda|netherlands|swiss|swedia|sweden|norwegia|norway|denmark|yunani|greece|eropa|europe|fincen|poland|polandia|polonia|krakow|warsaw|warszawa|warschau|lublin|gdansk|wroclaw|poznan|szczecin|czechia|czech|ceko|prague|praha|brno|ostrava|austria|vienna|wina|salzburg|innsbruck|finland|finlandia|helsinki|singapura|singapore|hong kong|taipei|tokyo|kyoto|osaka|seoul|pyongyang|beijing|shanghai|guangzhou|shenzhen|manila|bangkok|chiang mai|hanoi|haiphong|vientiane|phnom penh|kualalumpur|kuala lumpur|penang|johor|kathmandu|colombo|islamabad|karachi|lahore|mumbai|delhi|new delhi|chennai|kolkata|dhaka|chittagong|yangon|mandalay|ulaanbaatar|timor leste|papua new guinea|port moresby|brunei|darussalam|afghanistan|kabul|herat|suriah|syria|irak|iraq|mesir|egypt|cairo|giza|libya|libia|maroko|morocco|sudan|ethiopia|kenya|ghana|myanmar|kamboja|cambodia|laos|srilanka|sri lanka|bangladesh|lebanon|yordania|jordan|yaman|yemen|oman|qatar|uea|georgia|panama|san francisco)\b|\btpm\b(?=\s+(?:pula|kata|malaysia|dato|datuk|zahid|fadillah))/i;
+const FOREIGN_MARKER_RE = /\b(chiba|odesa|kharkiv|tel aviv|abu dhabi|dubai|jepang|japan|nepal|london|oyo|osun|nigeria|amerika|united states|\busa\b|americans?|american|british|canadian|australian|japanese|chinese|korean|french|german|russian|indian|ukrainian|israeli|palestinian|malaysian|singaporean|filipino|vietnamese|brazilian|mexican|european|texas|california|new york|michigan|florida|ohio|illinois|pennsylvania|virginia|washington|boston|chicago|los angeles|brasil|brazil|filipina|philippines|thailand|malaysia|m'sia|msia|lebuhraya|sejuk beku|bekalan makanan|plusline|llmtrafik|korang|macam ni|banjir tak|banjir ke|kesiannya|memandu|tanpa halangan banjir|terowong smart|berbaki|penyokong|rombak kabinet|bubarkan parlimen|bubar parlimen|parlimen|timbalan perdana menteri|pakatan harapan|perikatan nasional|barisan nasional|umno|menteri besar|ketua menteri|dewan rakyat|dewan negara|kerajaan perpaduan|kerajaan madani|malaysia madani|varian baharu|baharu|dikesan|sejauh mana bahayanya|siakap keli|thesiakapkeli|banjir kilat|jabatan bomba|polis diraja|kawasan terjejas|hospital kerajaan|kementerian kesihatan|kelantan|pulau pinang|sabah|sarawak|terengganu|pahang|kedah|perak|selangor|putrajaya|negeri sembilan|melaka|kota kinabalu|kuching|ipoh|seremban|alor setar|kuantan|kuala terengganu|kota bharu|astro awani|awani|jbpm|pdrm|korea|china|tiongkok|inggris|britain|prancis|perancis|paris|france|eiffel|jerman|germany|australia|india|pakistan|iran|israel|palestina|palestine|ukraina|ukraine|rusia|russia|gaza|turki|turkey|meksiko|mexico|kanada|canada|vietnam|chile|argentina|spanyol|spain|portugal|italia|italy|belanda|netherlands|den haag|s-gravenhage|tweede kamer|eerste kamer|vvd|cda|d66|pvv|fvd|nsc|gl-pvda|groenlinks|pvda|nederland|nederlands|holland|amsterdam|rotterdam|utrecht|eindhoven|groningen|kabinet rutte|kabinet schoof|dick schoof|geert wilders|swiss|swedia|sweden|norwegia|norway|denmark|yunani|greece|eropa|europe|fincen|poland|polandia|polonia|krakow|warsaw|warszawa|warschau|lublin|gdansk|wroclaw|poznan|szczecin|czechia|czech|ceko|prague|praha|brno|ostrava|austria|vienna|wina|salzburg|innsbruck|finland|finlandia|helsinki|singapura|singapore|hong kong|taipei|tokyo|kyoto|osaka|seoul|pyongyang|beijing|shanghai|guangzhou|shenzhen|manila|bangkok|chiang mai|hanoi|haiphong|vientiane|phnom penh|kualalumpur|kuala lumpur|penang|johor|kathmandu|colombo|islamabad|karachi|lahore|mumbai|delhi|new delhi|chennai|kolkata|dhaka|chittagong|yangon|mandalay|ulaanbaatar|timor leste|papua new guinea|port moresby|brunei|darussalam|afghanistan|kabul|herat|suriah|syria|irak|iraq|mesir|egypt|cairo|giza|libya|libia|maroko|morocco|sudan|ethiopia|kenya|ghana|myanmar|kamboja|cambodia|laos|srilanka|sri lanka|bangladesh|lebanon|yordania|jordan|yaman|yemen|oman|qatar|uea|georgia|panama|san francisco)\b|\btpm\b(?=\s+(?:pula|kata|malaysia|dato|datuk|zahid|fadillah))/i;
 const LOCAL_ORG_RE = /\b(bmkg|bnpb|bpbd|bssn|pdn|polri|pln|kpu|bawaslu|komdigi|kominfo|bank indonesia|bursa efek indonesia|ihsg|kemenkes|kemensos|kemdikbud|kemendikdasmen|kemenhub|kejaksaan|kemenkumham|kementerian|pemkot|pemkab|pemprov|dishub|damkar|bpjs|taspen|bri|bni|mandiri|basarnas|knkt|kpk|polres|polda|polsek|kodim)\b/i;
 const LOCAL_MACRO_RE = /\b(?:(?:di|in|wilayah|pulau|kawasan)\s+indonesia|jabodetabek|sumatera|sumatra|kalimantan|sulawesi|nusa\s+tenggara|kepulauan\s+riau|bangka\s+belitung|pantura|\bwni\b|tol\s+(?:cipularang|jagorawi|cikampek|cipali|palikanci|pejagan|cisumdawu|mbz|japek|trans\s+jawa|bali\s+mandara)|jembatan\s+suramadu|sungai\s+ciliwung|kali\s+bekasi|gunung\s+(?:semeru|merapi|marapi|bromo|sinabung|lewotobi|rinjani|agung))\b/i;
 
@@ -837,7 +808,6 @@ function formatLoc(loc) {
   };
 }
 
-// Segment sub-phrases that explicitly declare reader, author-current, or hometown locations.
 const READER_SEG_RE = /\b(?:saya|kami|kita)\s+(?:lagi\s+|sedang\s+|posisi\s+)?(?:(?:di|dari)\s+([a-z][a-z\s]{2,26}?)(?:\s*,\s*|\s+)(?:baca|membaca|membacanya|nonton|menonton|lihat|melihat|dengar|mendengar|pantau)|(?:baca|membaca|membacanya|nonton|menonton|lihat|melihat|dengar|mendengar|pantau)[^.!?\n]{0,60}?\bdari\s+([a-z][a-z\s]{2,26}?)(?=[,.;!?]|$))/i;
 const AUTHOR_CUR_SEG_RE = /\b(?:kerja|bekerja|tinggal|kuliah|ngekos|ngekost|kost|kos|domisili|menetap|pindah(?:\s+kerja|\s+tugas)?|cari\s+(?:kost|kosan|kontrakan|kerja|loker)|berangkat|based(?:\s+in)?)\s+(?:di|ke|area|daerah|wilayah|in)?\s*([a-z][a-z\s]{2,26}?)(?=[,.;!?]|$|\s+(?:pengen|mau|udah|sudah|karena|harga|yang|dan|atau))/i;
 const AUTHOR_HOME_SEG_RE = /\b(?:asli|orang|pulang\s+kampung\s+ke|mudik\s+ke|asal)\s+([a-z][a-z\s]{2,26}?)(?=[,.;!?]|$|\s+(?:yang|di|dan|tapi))/i;
@@ -847,7 +817,7 @@ function locateBest(clauseRaw, clauseNormGeo) {
   const l1 = GEO.locate(clauseRaw);
   const l2 = clauseNormGeo && clauseNormGeo !== clauseRaw ? GEO.locate(clauseNormGeo) : null;
   if (l1 && l2) {
-    // Prefer raw unless geo abbreviation expansion resolved a higher/specific kab/poi
+
     const rank = p => ({ poi: 4, desa: 4, kelurahan: 4, kec: 3, kab: 2, region: 1, prov: 1 }[p] || 0);
     return rank(l2.prec) > rank(l1.prec) ? l2 : l1;
   }
@@ -864,7 +834,6 @@ function resolveClauseGeo(clause, clauseIntentHints) {
   let strippedForEventRaw = raw;
   let strippedForEventNorm = norm;
 
-  // 1. Reader location sub-phrase ("Saya baca berita banjir Jakarta dari Bandung")
   const rm = READER_SEG_RE.exec(norm) || READER_SEG_RE.exec(raw);
   if (rm) {
     const locTxt = (rm[1] || rm[2] || '').trim();
@@ -876,7 +845,6 @@ function resolveClauseGeo(clause, clauseIntentHints) {
     }
   }
 
-  // 2. Author current location ("Capek banget kerja di Jakarta", "pindah kerja ke Jakarta")
   const am = AUTHOR_CUR_SEG_RE.exec(norm) || AUTHOR_CUR_SEG_RE.exec(raw);
   if (am) {
     const locTxt = (am[1] || '').trim();
@@ -886,7 +854,6 @@ function resolveClauseGeo(clause, clauseIntentHints) {
     }
   }
 
-  // 3. Author hometown ("asli Surabaya", "temen gua yg orang Aceh")
   const hm = AUTHOR_HOME_SEG_RE.exec(norm) || AUTHOR_HOME_SEG_RE.exec(raw);
   if (hm) {
     const locTxt = (hm[1] || '').trim();
@@ -896,7 +863,6 @@ function resolveClauseGeo(clause, clauseIntentHints) {
     }
   }
 
-  // 4. Dateline ("JAKARTA — ...")
   const dm = DATELINE_SEG_RE.exec(raw);
   let datelineLoc = null;
   if (dm) {
@@ -922,7 +888,6 @@ function resolveClauseGeo(clause, clauseIntentHints) {
   const localOrgOrMacro = LOCAL_ORG_RE.test(raw) || LOCAL_MACRO_RE.test(raw);
   const formatted = formatLoc(loc);
 
-  // Determine role of the primary located entity in this clause
   let role = GEO_ROLES.UNKNOWN;
   let confidence = 0;
 
@@ -938,7 +903,7 @@ function resolveClauseGeo(clause, clauseIntentHints) {
       role = matchedAuthorMention ? matchedAuthorMention.role : GEO_ROLES.MENTIONED_IN_PASSING;
       confidence = 0.75;
     } else if (clauseIntentHints.hasEventEvidence || clauseIntentHints.isWarning || clauseIntentHints.hasHazardQuestion || clauseIntentHints.hasHazardCue) {
-      // Explicit location cue boosts confidence
+
       const hasPrep = new RegExp(`\\b(?:di|ke|wilayah|daerah|kawasan|sekitar|untuk|area|kota|kabupaten|provinsi)\\s+${formatted.name.split(',')[0].replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`, 'i').test(norm);
       role = GEO_ROLES.EVENT_LOCATION;
       confidence = formatted.prec === 'poi' || formatted.prec === 'kec' || formatted.prec === 'desa' || formatted.prec === 'kelurahan'
@@ -968,7 +933,6 @@ function resolveClauseGeo(clause, clauseIntentHints) {
   };
 }
 
-// Generic geographic phrase detector (used to prevent city/province names becoming adhoc topics).
 const GENERIC_GEO_TOKENS = new Set([
   'indonesia', 'ri', 'nkri', 'nusantara', 'nasional', 'daerah', 'wilayah', 'provinsi',
   'kabupaten', 'kota', 'kecamatan', 'desa', 'kelurahan', 'pulau', 'jawa', 'sumatera',
@@ -990,22 +954,112 @@ function isGenericLocationPhrase(phrase) {
   const cleanNorm = GEO.norm(expanded).replace(/^(kab|kabupaten|kota|kecamatan|kec|provinsi|prov|desa|kelurahan|wilayah|daerah)\s+/i, '');
   if (!cleanNorm) return true;
   if (cleanNorm === locNorm || (provNorm && cleanNorm === provNorm)) return true;
-  // Also match exact multi-word prefix/alias forms like "jakarta selatan", "jawa timur", "kota bandung"
+
   if (locNorm.includes(cleanNorm) && cleanNorm.length >= 4) return true;
-  // Catch "Jakarta Timur/Barat/Utara/Pusat/Selatan" (gazetteer maps "jakarta" -> "Jakarta" while sub-region is still a pure location)
+
   if (/^(jakarta|bandung|surabaya|semarang|medan|makassar|tangerang|bekasi|bogor|depok|yogyakarta)\s+(utara|selatan|timur|barat|pusat|kota|raya)$/i.test(cleanNorm)) return true;
   return false;
 }
 
-// =========================================================================
-// Layer 3 & 4: Full Pipeline Analysis (Hybrid Scoring + Routing)
-// =========================================================================
+const EUROPEAN_WORDS_RE = /\b(?:het|een|van|dat|die|voor|naar|niet|zijn|wordt|werd|worden|hebben|heeft|hadden|maar|door|over|deze|onze|jullie|tegen|zich|geen|nieuwe|moeten|mogen|toch|misschien|weer|alleen|wanneer|hoezo|waarom|vanavond|morgen|tussenformeren|verkiezingen|uitslag|regerende|regering|partij|partijen|kandidaat|coalitie|coalitieleden|meerderheid|minderheid|kiezer|stemt|stemmen|stemming|linksaf|rechtsaf|haag|den\s+haag|vvd|cda|d66|pvv|fvd|nsc|tweede\s+kamer|eerste\s+kamer|nederland|nederlands|holland|der|die|das|und|nicht|kabinett|bundestag|scholz|habeck|merz|bundeskanzler|wahl|stimmen|le|la|les|des|dans|pour|avec|macron|gouvernement|ministre|assemblee|el|los|las|del|por|para|con|gobierno|elecciones|partido|muito|voce|você|nao|não|entao|então|governo|eleicoes)\b/gi;
+
+const ID_UNAMBIGUOUS_CORE_RE = /\b(?:yang|yg|untuk|utk|dengan|dgn|sudah|udah|udh|belum|blm|tidak|nggak|ngga|gak|ga|enggak|engga|kagak|kaga|bukan|gue|gw|gua|aku|kami|kita|warga|banget|bgt|dong|deh|kok|sih|jir|anjir|njir|bjir|wkwk\w*|kalo|kalau|karena|krn|karna|terus|trs|masih|msh|bisa|pengen|pingin|bikin|pake|pakai|kemarin|kmrn|barusan|sekarang|skrg|kenapa|knp|gimana|gmn|bagaimana|siapa|apakah|adakah|dimana|dmn|kemana|terjadi|melanda|merendam|mengungsi|tewas|korban|polisi|aparat|rusak|ambruk|roboh|jebol|padam|hujan|kebakaran|banjir|gempa|longsor|terbakar|kecelakaan|tabrakan|penembakan|pencurian|begal|prabowo|gibran|jokowi|dpr\s+ri|jakarta|bandung|surabaya|semarang|medan|makassar|bekasi|depok|tangerang|bogor|pim|pln|kemang|jaksel)\b/gi;
+
+function detectLanguageProfile(rawText) {
+  const raw = String(rawText || '');
+  const clean = raw.replace(/https?:\/\/\S+|[@#]\S+/g, ' ').trim();
+  const idHits = (clean.match(ID_UNAMBIGUOUS_CORE_RE) || []).length;
+  const euroHits = (clean.match(EUROPEAN_WORDS_RE) || []).length;
+  if (idHits >= 2) {
+    return { isForeign: false, lang: 'ind', euroHits, idHits };
+  }
+  const lang = francModule ? francModule(clean) : 'und';
+  const foreignLangDetected = ['nld', 'deu', 'fra', 'spa', 'por', 'ita', 'rus', 'pol', 'dan', 'swe', 'nor'].includes(lang);
+  const candidateForeign = (euroHits >= 2 && idHits === 0) || (foreignLangDetected && idHits < 2) || (euroHits >= 4 && idHits < 2);
+  if (!candidateForeign) {
+    return { isForeign: false, lang, euroHits, idHits };
+  }
+  let hasLocal = LOCAL_ORG_RE.test(clean) || LOCAL_MACRO_RE.test(clean);
+  if (!hasLocal) {
+    const loc = GEO.locate(clean);
+    hasLocal = Boolean(loc && !/^(desa|kelurahan|poi)$/.test(loc.prec || ''));
+  }
+  return {
+    isForeign: !hasLocal,
+    lang,
+    euroHits,
+    idHits,
+  };
+}
 
 function analyzePost(rawText, options = {}) {
   const year = Number.isFinite(options.year) ? options.year : new Date().getFullYear();
   const normDoc = normalizeIndonesian(rawText);
   const fullNorm = normDoc.normalizedGeo;
   const proseNorm = normalizePhraseText(normDoc.decoded.replace(/#[\p{L}\p{N}_]+/gu, ' '), true);
+
+  const langProfile = detectLanguageProfile(rawText);
+  if (langProfile.isForeign) {
+    const scores = Object.fromEntries(INTENTS.map(i => [i, 0]));
+    scores.unrelated = 0.95;
+    return {
+      normDoc,
+      clauses: normDoc.clauses.map(c => ({
+        clause: c,
+        geo: { scope: 'foreign', location: null, primaryRole: GEO_ROLES.UNKNOWN, confidence: 0, mentions: [] },
+        events: [],
+        flags: {
+          isDenial: false, isHist: false, isQuest: false, isHearsay: false, isCond: false,
+          isEdu: false, isCeremony: false, isOfficialAgency: false, isWarning: false,
+          isOfficialUpdate: false, isEyewitness: false, isCommercial: false, isAd: false,
+          isVent: false, isOpinion: false, isSpam: false, isReader: false, isCommentaryMeta: false,
+          hasHazardCue: false, hasSituationalSupplyCue: false, hasHazardQuestion: false,
+          hasEventEvidence: false, metaphors: [], negatedTokens: [],
+        },
+      })),
+      intent: 'unrelated',
+      intentScores: scores,
+      confidence: 0.95,
+      geographicContext: { name: null, prov: null, prec: null, role: GEO_ROLES.UNKNOWN, confidence: 0, mentions: [] },
+      event: null,
+      extractedEvents: [],
+      negatedEvents: [],
+      metaphorHits: [],
+      flags: {
+        anyForeign: true,
+        anyOfficialWarning: false,
+        anyOfficialUpdate: false,
+        anyEyewitness: false,
+        anyDenial: false,
+        anyHistorical: false,
+        anyQuestion: false,
+        anyHearsay: false,
+        anyEducational: false,
+        anyCommercial: false,
+        anyAd: false,
+        anyVent: false,
+        anyOpinion: false,
+        anySpam: false,
+        anyMetaphor: false,
+        anyReaderAction: false,
+        anyMinorWaterlogging: false,
+        hasActionableEvent: false,
+      },
+      layerTrace: {
+        isForeignLanguage: true,
+        detectedLang: langProfile.lang,
+        normalization: {
+          clauses: normDoc.clauses.length,
+          hashtagsSegmented: normDoc.hashtagsSegmented,
+          reduplication: normDoc.reduplication,
+        },
+        intentScoresTop3: [['unrelated', 0.95]],
+        geoRole: GEO_ROLES.UNKNOWN,
+        negatedEvents: [],
+        metaphors: [],
+      },
+    };
+  }
 
   const clauseResults = [];
   const allMentions = [];
@@ -1036,7 +1090,6 @@ function analyzePost(rawText, options = {}) {
     const t = c.normGeo;
     const rawC = c.rawNoTags || c.raw;
 
-    // Negation analysis inside this clause
     const negatedTokens = new Set();
     for (const m of t.matchAll(NEG_PREFIX_RE)) {
       negatedTokens.add(m[1].trim());
@@ -1085,12 +1138,10 @@ function analyzePost(rawText, options = {}) {
     const isReader = READER_ACTION_RE.test(t);
     const isCommentaryMeta = /\b(?:ramai\s+dibahas|jadi\s+perbincangan|netizen\s+(?:bahas|soroti)|dampak\s+(?:kebijakan|ekonomi)\s+terhadap|menuai\s+(?:pro\s+dan\s+kontra|kritik|kecaman|pujian)|polemik\s+soal|pengamat\s+menilai)\b/i.test(t);
 
-    // Satire detection: hearsay + free/ironic disaster claim, or mockery emoji + claim, or ironic template
     const isSatire = SATIRE_IRONY_RE.test(t)
       || (FREE_OF_DISASTER_RE.test(t) && (isHearsay || normDoc.emojiSignals.mockery))
       || (normDoc.emojiSignals.mockery && /\b(?:banjir|gempa|kebakaran|macet|demo|tenggelam)\b/.test(t));
 
-    // Check metaphor frames on this clause
     const clauseMetaphors = [];
     for (const mf of METAPHOR_FRAMES) {
       if (mf.id === 'metaphor_jatuh' && /\b(?:trading\s+halt|bursa\s+efek)\b/i.test(t)) continue;
@@ -1098,7 +1149,6 @@ function analyzePost(rawText, options = {}) {
     }
     if (clauseMetaphors.length) metaphorHits.push(...clauseMetaphors);
 
-    // Event extraction on the NON-negated active text of this clause
     const evalClause = { ...c, normGeo: activeTextForEvent };
     const clauseEvents = [];
     const effectiveCommercial = isCommercial && !hasCyberIncidentCue && (strongListingDeal || !hasPhysicalDisasterCue);
@@ -1109,8 +1159,7 @@ function analyzePost(rawText, options = {}) {
         if (metaphorBlocksTopic(clauseMetaphors, frame.topic)) continue;
         const det = frame.detect(evalClause);
         if (!det) continue;
-        // Check if this specific hazard/topic was directly negated in this clause.
-        // For asserted minor waterlogging ("bukan banjir, hanya genangan"), only check negation of genangan/waterlogging!
+
         const isTopicNegated = det.minorWaterlogging
           ? (negatedTokens.has('genangan') || negatedTokens.has('waterlogging') || new RegExp(`\\b${NEG_WORDS}\\s+(?:ada\\s+)?genangan\\b`, 'i').test(activeTextForEvent))
           : (negatedTokens.has(frame.topic) || negatedTokens.has(det.type)
@@ -1124,7 +1173,6 @@ function analyzePost(rawText, options = {}) {
       }
     }
 
-    // Check if clause asks about or reports a real hazard ("Jakarta banjir nggak sih?", "Ada yang dengar ledakan di Jakarta?")
     const hasPriceWord = /\b(?:harga|tarif|biaya|ongkos|tiket|penduduk|order|penjualan|omzet)\b/.test(t);
     const hasHazardCue = (/\b(?:banjir|kebanjiran|gempa|tsunami|erupsi|kebakaran|terbakar|longsor|kecelakaan|tabrakan|penembakan|begal|(?:ber|men|di)?demo|unjuk\s+rasa|aksi\s+massa|kampus\s+dikepung|kawan\s+diculik|gas\s+air\s+mata|water\s+cannon|bentrok|ricuh|(?:ga|gak|tidak|kurang)\s+kondusif|keracunan|listrik\s+padam|mati\s+lampu|puting\s+beliung|angin\s+kencang|phk|pemutusan\s+hubungan\s+kerja|pabrik\s+tutup|trading\s+halt)\b|\btanggul\b[^.!?\n]{0,20}\bjebol\b|\b(?:gunung|g\.)\s+[a-z]+\b[^.!?\n]{0,30}\bstatus\b[^.!?\n]{0,20}\b(?:awas|siaga)\b|\b(?:gelar|menggelar|melakukan)\s+aksi\b|\baksi\s+(?:tolak|menolak|mahasiswa|buruh|massa)\b|\b(?:air(?:\s+(?:hujan|kali|sungai|selokan|got))?)\s+(?:(?:sudah|mulai|lagi|terus)\s+){0,3}(?:naik|masuk)/.test(t)
       || (!hasPriceWord && /\b(?:ledakan|meledak)\b/.test(t)))
@@ -1180,7 +1228,6 @@ function analyzePost(rawText, options = {}) {
     });
   }
 
-  // Adjacent-clause geo inheritance (safe: never across foreign/reader/hometown/denied/historical/vent/ad clauses)
   for (let i = 0; i < clauseResults.length; i++) {
     const cr = clauseResults[i];
     if (!cr.geo.location && cr.geo.scope === 'unknown' && !anyForeign && (cr.events.length > 0 || cr.flags.isWarning)) {
@@ -1205,7 +1252,6 @@ function analyzePost(rawText, options = {}) {
     }
   }
 
-  // Build extracted events across non-question/non-hearsay/non-reader/non-historical/non-denied clauses
   const impact = extractImpact(proseNorm);
   const affectedEntity = extractAffectedEntity(proseNorm);
   const globalEventTime = extractEventTime(proseNorm, anyHistorical && !clauseResults.some(c => c.events.length > 0 && !c.flags.isHist));
@@ -1213,8 +1259,7 @@ function analyzePost(rawText, options = {}) {
   for (const cr of clauseResults) {
     for (const ev of cr.events) {
       if (cr.flags.isDenial || cr.flags.isHist) continue;
-      // Minor waterlogging ("cuma genangan") or question/rumor is captured in extracted event
-      // with sourceType/verified semantics accurately marked, NOT elevated to confirmed incident signal.
+
       const sourceType = cr.flags.isOfficialAgency || cr.flags.isWarning
         ? 'official_agency'
         : (cr.flags.isEyewitness || ev.eyewitnessCue) ? 'eyewitness' : 'anonymous';
@@ -1243,7 +1288,6 @@ function analyzePost(rawText, options = {}) {
     }
   }
 
-  // Also add official warning event if BMKG/BNPB/BPBD warning has hazard without concrete past event
   if (anyOfficialWarning && detectedEvents.length === 0) {
     const warnClause = clauseResults.find(cr => cr.flags.isWarning && cr.geo.scope !== 'foreign');
     if (warnClause) {
@@ -1278,7 +1322,6 @@ function analyzePost(rawText, options = {}) {
     }
   }
 
-  // Primary geographic context resolution across clauses
   let geographicContext = { name: null, prov: null, prec: null, role: GEO_ROLES.UNKNOWN, confidence: 0, mentions: allMentions };
   const primaryEvLoc = detectedEvents.find(e => e.strong && e.scope === 'Indonesia' && e.location)?.location || null;
   const bestEventMention = (primaryEvLoc && allMentions.find(m => m.name === primaryEvLoc.name && m.role === GEO_ROLES.EVENT_LOCATION))
@@ -1297,7 +1340,6 @@ function analyzePost(rawText, options = {}) {
     };
   }
 
-  // Hybrid Intent Scoring (weights across all 19 intents)
   const scores = Object.fromEntries(INTENTS.map(i => [i, 0]));
   const hasActionableEvent = detectedEvents.some(e => e.strong && e.scope !== 'foreign' && !e.minorWaterlogging && !e.clauseFlags.isQuest && !e.clauseFlags.isHearsay && !e.clauseFlags.isReader && !e.clauseFlags.isCond && !e.clauseFlags.isCommentaryMeta);
   const hasAnyEvent = detectedEvents.length > 0;
@@ -1340,7 +1382,7 @@ function analyzePost(rawText, options = {}) {
     scores.discussion += 0.78;
   }
   if (anyMinorWaterlogging && !hasActionableEvent) {
-    // e.g. "Bukan banjir, cuma genangan di Bekasi" -> eyewitness/local condition observation, NOT denial
+
     scores.eyewitness_report = Math.max(scores.eyewitness_report, 0.78);
     scores.denial_or_debunk = 0;
   }
@@ -1351,7 +1393,6 @@ function analyzePost(rawText, options = {}) {
     scores.unrelated += 0.80;
   }
 
-  // Fallback discussion / unrelated / unknown
   if (Math.max(...Object.values(scores)) < 0.45) {
     const hasSupplyCue = clauseResults.some(c => c.flags.hasSituationalSupplyCue);
     if ((clauseResults.some(c => c.flags.hasHazardCue) || hasSupplyCue || hasAnyEvent) &&
@@ -1365,7 +1406,6 @@ function analyzePost(rawText, options = {}) {
     }
   }
 
-  // Pick dominant intent with clear tie-breaking priority
   const PRIORITY_ORDER = [
     'spam', 'commercial_listing', 'advertisement', 'personal_vent', 'educational',
     'historical', 'satire', 'denial_or_debunk', 'official_warning', 'question',
@@ -1381,7 +1421,6 @@ function analyzePost(rawText, options = {}) {
     }
   }
 
-  // Construct primary structured event (if any)
   const primaryEv = detectedEvents[0] || null;
   const event = primaryEv ? {
     eventType: primaryEv.eventType,

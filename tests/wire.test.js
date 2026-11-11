@@ -1,6 +1,8 @@
 'use strict';
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
 const WireCore = require('../public/wire-core');
 const GEO = require('../geocode');
 const EVMERGE = require('../evmerge');
@@ -8,6 +10,18 @@ const FEEDTEXT = require('../feedtext');
 const ASSESS = require('../assessment');
 const SOC = require('../social');
 const SIGNALS = require('../public/signals');
+
+function readBackendSrc() {
+  const root = path.join(__dirname, '..');
+  const srcDir = path.join(root, 'src');
+  const parts = [fs.readFileSync(path.join(root, 'server.js'), 'utf8')];
+  if (fs.existsSync(srcDir)) {
+    for (const f of fs.readdirSync(srcDir).sort()) {
+      if (f.endsWith('.js')) parts.push(fs.readFileSync(path.join(srcDir, f), 'utf8'));
+    }
+  }
+  return parts.join('\n');
+}
 
 test('WireCore.prepare preserves publisher/url alignment while adopting longer desc', () => {
   const now = 1_700_000_000_000;
@@ -457,7 +471,7 @@ test('demo detection, geocoding and social orchestration pipeline fixes', () => 
   const SOC = require('../social');
   const fs = require('fs');
   const path = require('path');
-  const serverCode = fs.readFileSync(path.join(__dirname, '../server.js'), 'utf8');
+  const serverCode = readBackendSrc();
   const html = fs.readFileSync(path.join(__dirname, '../public/index.html'), 'utf8');
 
   // 1. Geocode: Polda Metro Jaya does not reject valid location; Tugu Tani resolved
@@ -572,7 +586,7 @@ test('globe mobile touch pipeline isolates overlay pointer events and enables no
 test('reader resilience and banned news source enforcement', () => {
   const fs = require('fs');
   const path = require('path');
-  const serverJs = fs.readFileSync(path.join(__dirname, '../server.js'), 'utf8');
+  const serverJs = readBackendSrc();
   const html = fs.readFileSync(path.join(__dirname, '../public/index.html'), 'utf8');
 
   // 1. mozaik.inilah.com banned in server and client
@@ -599,7 +613,7 @@ test('anti-captcha enforcement and wire description / headline performance', () 
   const fs = require('fs');
   const path = require('path');
   const feedtext = require('../feedtext.js');
-  const serverJs = fs.readFileSync(path.join(__dirname, '../server.js'), 'utf8');
+  const serverJs = readBackendSrc();
   const html = fs.readFileSync(path.join(__dirname, '../public/index.html'), 'utf8');
 
   // 1. CAPTCHA warning is completely rejected by descFrom
@@ -629,7 +643,7 @@ test('anti-captcha enforcement and wire description / headline performance', () 
 test('wire-reader synchronization and skeleton lifecycle enforcement', () => {
   const fs = require('fs');
   const path = require('path');
-  const serverJs = fs.readFileSync(path.join(__dirname, '../server.js'), 'utf8');
+  const serverJs = readBackendSrc();
   const html = fs.readFileSync(path.join(__dirname, '../public/index.html'), 'utf8');
 
   // 1. server.js rdRead syncs article description into descRemember
@@ -651,7 +665,7 @@ test('wire-reader synchronization and skeleton lifecycle enforcement', () => {
             'rdPrefetch and renderLead must backfill description from reader to wire items');
 
   // 4. Headline-first list rendering: no stuck skeletons on wire cards
-  assert.ok(html.includes('// Headline-first: tidak memasang skeleton di kartu list'),
+  assert.ok(html.includes('function newsHtml(h, full){') && html.includes('const ext = descForItem(h)'),
             'newsHtml must use headline-first pattern and avoid mounting stuck skeletons');
   assert.ok(html.includes('descPending(h) ? `<p class="nw-ex-sk" aria-hidden="true"><span class="nw-sk-line"></span><span class="nw-sk-line short"></span></p>`'),
             'newsHtml must render transitional skeleton placeholder when description is pending');
@@ -673,7 +687,7 @@ test('indonesian disaster metaphor disambiguation and category domain precedence
   const fs = require('fs');
   const path = require('path');
   const SOC = require('../social');
-  const serverJs = fs.readFileSync(path.join(__dirname, '../server.js'), 'utf8');
+  const serverJs = readBackendSrc();
   const html = fs.readFileSync(path.join(__dirname, '../public/index.html'), 'utf8');
 
   // 1. Cyber headline with passive flood verb must resolve to siber, never flood
@@ -718,7 +732,7 @@ test('wire lead thumbnail pipeline upgrades small RSS images, prevents hijacks, 
   const fs = require('fs');
   const path = require('path');
   const MEDIA = require('../article-media');
-  const serverJs = fs.readFileSync(path.join(__dirname, '../server.js'), 'utf8');
+  const serverJs = readBackendSrc();
   const html = fs.readFileSync(path.join(__dirname, '../public/index.html'), 'utf8');
 
   // 1. Canonical RSS feedImage upgrades Detik/CNN ?w=360 and Antara regional /cache/255x170/ and rejects small hints
@@ -808,7 +822,7 @@ test('news wire lead renders inline video player when hero photo is absent and e
   const path = require('path');
   const EXTRACT = require('../article-extract');
   const html = fs.readFileSync(path.join(__dirname, '../public/index.html'), 'utf8');
-  const serverJs = fs.readFileSync(path.join(__dirname, '../server.js'), 'utf8');
+  const serverJs = readBackendSrc();
 
   const url = 'https://republika.co.id/page/shorts/yt-tobss2886393783/kapolri-bakal-selidiki-kericuhan-demonstrasi-di-yogyakarta';
   const sampleHtml = `<!doctype html><html><head>
@@ -862,7 +876,7 @@ test('social trending eliminates 0 0 clutter, unifies Swiss canted chips, preven
   const path = require('path');
   const SOC = require('../social');
   const HISTORY = require('../social-history');
-  const serverJs = fs.readFileSync(path.join(__dirname, '../server.js'), 'utf8');
+  const serverJs = readBackendSrc();
   const html = fs.readFileSync(path.join(__dirname, '../public/index.html'), 'utf8');
   const now = Date.now();
 
@@ -916,7 +930,7 @@ test('shared docCache and full mediaCache eliminate double fetch between Terbaru
   const fs = require('fs');
   const path = require('path');
   const SRV = require('../server');
-  const serverJs = fs.readFileSync(path.join(__dirname, '../server.js'), 'utf8');
+  const serverJs = readBackendSrc();
   const html = fs.readFileSync(path.join(__dirname, '../public/index.html'), 'utf8');
 
   const sampleUrl = 'https://contoh-berita.id/peristiwa/banjir-bandang-garut-2026';
@@ -979,7 +993,7 @@ test('Firecrawl per-URL cooldown and bounded thumbBusy wait prevent retry storms
   const fs = require('fs');
   const path = require('path');
   const SRV = require('../server');
-  const serverJs = fs.readFileSync(path.join(__dirname, '../server.js'), 'utf8');
+  const serverJs = readBackendSrc();
 
   // Behavior: fcFailMark blocks the URL for the cooldown window; fcBlocked expires cleanly
   const deadUrl = 'https://mati-total.id/artikel/timeout-selamanya';
@@ -1009,7 +1023,7 @@ test('Leaflet Peta Insiden & Globe render zoom-responsive, collision-culled, non
   assert.ok(html.includes('.reg-lbl-ic{pointer-events:none!important') && html.includes('pointer-events:none;user-select:none'), 'regional labels must be non-interactive CSS overlays');
   assert.ok(html.includes("const regPane = map.createPane('regLabels')") && html.includes("regPane.style.pointerEvents = 'none'"), 'Leaflet regLabels pane must be non-interactive');
   assert.ok(html.includes("map.on('moveend resize', paintMapRegLabels)"), 'Leaflet must update regional labels on zoom/pan/resize');
-  assert.ok(html.includes('box.x + box.w > w - 2') && html.includes('label di luar viewport jangan makan kuota maxLab'), 'Globe must cull off-screen regional labels before checking maxLab');
+  assert.ok(html.includes('if (box.x < 2 || box.x + box.w > w - 2 || box.y < 2 || box.y + box.h > h - 2) continue;') && html.includes('if (placed.length >= maxLab) break;'), 'Globe must cull off-screen regional labels before checking maxLab');
   const mapFooterHtml = html.slice(html.indexOf('<div class="map-f">'), html.indexOf('<aside class="tvwrap"'));
   assert.equal(/>Lalin</i.test(mapFooterHtml), false, 'Peta Insiden legend must remove stale Lalin item');
   assert.ok(mapFooterHtml.includes('id="map-leg-items"') && ['Demo', 'Kebakaran', 'Banjir', 'Bencana', 'Insiden', 'Siber', 'Kriminal', 'Kesehatan', 'Ekonomi', 'Politik', 'Gempa', 'Gunung Api'].every(l => mapFooterHtml.includes(l)), 'Peta Insiden legend must mirror all 12 Globe categories');
@@ -1080,7 +1094,7 @@ test('Social sources (Instagram Reels, TikTok, Facebook, Threads, X) are blocked
   const fs = require('fs');
   const path = require('path');
   const SRV = require('../server');
-  const serverJs = fs.readFileSync(path.join(__dirname, '../server.js'), 'utf8');
+  const serverJs = readBackendSrc();
 
   // Social URLs & GNEWS social publisher wrappers must be rejected
   assert.equal(SRV.isBannedHostUrl('https://www.instagram.com/reel/DfmGpMdTsyK/'), true);
@@ -1124,7 +1138,7 @@ test('WAF/Cloudflare-gated news photos verify via crawler fallback and flow clea
   const path = require('path');
   const SRV = require('../server');
   const MEDIA = require('../article-media');
-  const serverJs = fs.readFileSync(path.join(__dirname, '../server.js'), 'utf8');
+  const serverJs = readBackendSrc();
   const html = fs.readFileSync(path.join(__dirname, '../public/index.html'), 'utf8');
 
   const artUrl = 'https://www.suaradewata.com/berita/202405219038/contoh';
@@ -1173,7 +1187,7 @@ test('WAF/Cloudflare-gated news photos verify via crawler fallback and flow clea
 test('open-proxy hardening: shared-CDN suffixes need catalog membership, config.json cannot carry secrets, desc entries cannot promote URLs', () => {
   const fs = require('fs');
   const path = require('path');
-  const serverJs = fs.readFileSync(path.join(__dirname, '../server.js'), 'utf8');
+  const serverJs = readBackendSrc();
 
   // H1: /hls & snap hostOK must not suffix-match shared CDN domains
   assert.ok(serverJs.includes('SHARED_CDN_SUFFIX'), 'shared-CDN suffix denylist must exist');
@@ -1237,7 +1251,7 @@ test('social cold-start guard: warming/empty streaks delay "no data" and "error"
 
   // Server contract: warmSocial must flag cold-memo responses so the UI can
   // distinguish "collector still running" from "genuinely empty"
-  const serverJs = fs.readFileSync(path.join(__dirname, '../server.js'), 'utf8');
+  const serverJs = readBackendSrc();
   assert.ok(serverJs.includes('warming: true'), 'warmSocial must emit warming flag');
 
   // Client must consume the flag and gate empty/error copy behind streaks

@@ -1,8 +1,6 @@
 'use strict';
 const SOC = require('./social');
-// AGE (24 jam) adalah batas KESEGARAN TAG saat retag. Window ingest di server.js
-// (48h/72h) sengaja LEBIH PANJANG: post yang lebih tua dari AGE tetap disimpan
-// tapi tidak ikut feed sampai ada konteks baru — jangan "perbaiki" jadi sama.
+
 const AGE = 24 * 3600e3;
 const DROP_STATS = {
   total: 0,
@@ -43,7 +41,7 @@ function tag(p, extra = [], now = Date.now(), meta = {}) {
   }
   const text = String(p.text || '');
   const handle = String(p.handle || p.username || p.user || '').toLowerCase().replace(/^@/, '');
-  if (/^(501awani|bernamadotcom|beritartm|astroawani|utusanonline|sinarharian|bharianmy|hmetromy|malaysiakini)$/i.test(handle)) { DROP_STATS.handle++; return false; }
+  if (/^(501awani|bernamadotcom|beritartm|astroawani|utusanonline|sinarharian|bharianmy|hmetromy|malaysiakini|thesiakapkeli|siakapkeli|ohbulanofficial|mstaronline|kosmo_online)$/i.test(handle)) { DROP_STATS.handle++; return false; }
   if (SOC.socNonLatin(text) || SOC.socVi(text) || SOC.socHashJunk(text) || SOC.socForeignLang(text)) { DROP_STATS.lang++; return false; }
   if (SOC.SOC_FOREIGN_RE.test(text) && !SOC.SOC_LOCAL_RE.test(text)) { DROP_STATS.foreign++; return false; }
   p.ts = ts;
@@ -71,7 +69,7 @@ function tag(p, extra = [], now = Date.now(), meta = {}) {
   if (!p.assessment.feedEligible) { DROP_STATS.feedEligible++; return false; }
 
   p.topics = p.assessment.topics.slice();
-  p.qs = p.topics.slice(); // compatibility only, never query provenance
+  p.qs = p.topics.slice();
   p.adhocPhrases = extra.filter(t => t.adhoc && p.topics.includes(t.id) && !SOC.isGenericLocationPhrase(t.id)).map(t => t.id);
   if (!p.topics.length) { DROP_STATS.noTopic++; return false; }
   p._tagSig = tagSigOf(extra);
@@ -99,7 +97,7 @@ function retag(map, keep, extra = [], now = Date.now(), opts = {}) {
       }
       continue;
     }
-    // Retag strictly against canonical SOC_TOPICS + currently active extra (ADHOC); retired adhocPhrases decay cleanly.
+
     if (!tag(p, defs, now, { recordDiagnostics }) || !keep(p)) map.delete(key);
   }
 }

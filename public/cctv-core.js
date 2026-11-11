@@ -1,6 +1,5 @@
-/* Logika murni grid CCTV: dedupe stream, sanitasi fallback, urutan langkah
-   playback, dan scheduler per-host (round-robin). Dipakai browser
-   (window.CctvCore) dan Node test (module.exports). Tanpa DOM, tanpa fetch. */
+
+
 (function (root, factory) {
   const api = factory();
   if (typeof module === 'object' && module.exports) module.exports = api;
@@ -9,19 +8,22 @@
   const hostOf = u => { try { return new URL(u).host; } catch (e) { return ''; } };
   const norm = s => String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, '');
 
-  /* Kunci kanonik satu stream fisik: dua entri dengan kunci sama = kamera sama. */
   function streamKey(url) {
     try {
       const u = new URL(url);
       if (/(^|\.)pantaucctv\.com$/i.test(u.hostname) && /api\/stream/i.test(u.pathname)) {
         const id = u.searchParams.get('id'); if (id) return 'pc:' + id.toLowerCase();
       }
+      if (/(^|\.)dpuprkotang\.info$/i.test(u.hostname)) {
+        const src = u.searchParams.get('src'); if (src) return 'kt:' + src.toLowerCase();
+      }
       if (/(^|\.)molecool\.id$/i.test(u.hostname)) return 'mc:' + (u.pathname.split('/').filter(Boolean)[0] || '').toLowerCase();
+      const qId = u.searchParams.get('src') || u.searchParams.get('id') || u.searchParams.get('stream');
       const dir = u.pathname.replace(/\/(index|mono|playlist|master)\.m3u8$/i, '').replace(/\/tracks-v\d+\/[^/]*$/i, '');
-      return (u.host + dir).toLowerCase();
+      return (u.host + dir + (qId ? '?' + qId : '')).toLowerCase();
     } catch (e) { return String(url || ''); }
   }
-  /* Buang entri dengan stream yang sama (pertama menang). */
+
   function dedupe(list) {
     const seen = new Set(), out = [];
     for (const c of list) {
@@ -32,8 +34,7 @@
     }
     return out;
   }
-  /* Fallback `fb` hanya boleh menunjuk KAMERA YANG SAMA: stream sama-direktori
-     atau URL fallback memuat nama kamera. Selain itu label bohong. */
+
   function sanitizeFb(cam) {
     if (!cam || !cam.fb) return cam;
     const arr = Array.isArray(cam.fb) ? cam.fb : [cam.fb];
@@ -48,33 +49,29 @@
     if (keep.length) out.fb = keep; else delete out.fb;
     return out;
   }
-  /* Urutan langkah playback. Tiap langkah = {url, via:'direct'|'proxy'}.
-     direct dulu (hemat egress server), lalu proxy, lalu fallback, lalu varian
-     path hasil tebakan (paling akhir). cam.d === 0 → direct dilewati (host tanpa CORS). */
+
   function playSteps(cam, proxyFn) {
     const urls = [cam.s].concat(cam.fb ? (Array.isArray(cam.fb) ? cam.fb : [cam.fb]) : []).filter(Boolean);
     const steps = [], seen = new Set();
     const add = (url, via) => { const k = via + '|' + url; if (!seen.has(k)) { seen.add(k); steps.push({ url, via }); } };
     const noDirect = cam.d === 0;
+    const isProgressiveVid = u => /\.(mp4|webm)(\?|#|$)/i.test(String(u || ''));
     const variants = [];
     try {
       const u = new URL(cam.s);
-      if (!/pantaucctv\.com/i.test(u.hostname) && !/api\/stream/i.test(u.pathname)) {
+      if (!/pantaucctv\.com/i.test(u.hostname) && !/api\/stream/i.test(u.pathname) && !isProgressiveVid(u.pathname)) {
         const dir = u.pathname.replace(/[^/]+$/, '');
         ['index.m3u8', 'mono.m3u8', 'playlist.m3u8'].forEach(f => { const v = new URL(u.href); v.pathname = dir + f; if (v.href !== cam.s) variants.push(v.href); });
       }
     } catch (e) {}
     urls.forEach((url, i) => {
-      if (!noDirect) add(url, 'direct');
-      if (proxyFn) add(proxyFn(url), 'proxy');
+      if (!noDirect || isProgressiveVid(url)) add(url, 'direct');
+      if (proxyFn && !isProgressiveVid(url)) add(proxyFn(url), 'proxy');
     });
     variants.forEach(url => { if (!noDirect) add(url, 'direct'); });
     return steps;
   }
 
-  /* Scheduler: pilih sel mana yang boleh mulai load.
-     cands = [{key, host}] sudah terurut prioritas. Round-robin antar host supaya satu
-     host lambat tidak memonopoli slot; batas perHost (mis. 2) dan maxLoad global. */
   function pickStarts(cands, st) {
     const maxLoad = st.maxLoad, perHost = st.perHost;
     let total = st.loadingTotal | 0;
@@ -95,21 +92,17 @@
     }
     return picked;
   }
-  /* Sel yang loading terlalu lama dan masih ada antrean host lain → lepas slot. */
+
   function shouldDemote(p, now, hasWaitingOthers, softMs) {
     return !!(p && p.loading && !p.loaded && hasWaitingOthers && now - p.t0 > softMs && (p.dem || 0) < 3);
   }
 
-  /* Statistik RUM ringkas. */
   function quantile(arr, q) {
     if (!arr.length) return null;
     const a = arr.slice().sort((x, y) => x - y);
     return a[Math.min(a.length - 1, Math.floor(q * a.length))];
   }
 
-  /* Area pandang efektif grid CCTV: pakai bounds `.pb` saat overflow-y:auto/scroll (desktop/tablet),
-     atau viewport di bawah header sticky/fixed (mobile) supaya kartu yang ketutupan header
-     atau terpotong di atas/bawah tidak dianggap terlihat / mendapat prioritas LIVE. */
   function effectiveVisBounds(opts) {
     const o = opts || {};
     const ih = Number(o.innerHeight) || 0;
@@ -124,9 +117,6 @@
     return { top, bot, usePb };
   }
 
-  /* Ukur keterlihatan satu sel (`.cam`) + frame videonya terhadap bounds `vr`.
-     Kartu yang bagian atasnya sudah tertutup scroll area (topClip > 6) atau
-     sudah keluar pandangan tidak boleh dianggap inView untuk slot LIVE. */
   function measureCell(rect, frameRect, vr) {
     if (!rect || rect.width <= 0 || rect.height <= 0 || !vr || vr.bot <= vr.top) {
       return { inView: false, visH: 0, boxVisH: 0, visFrac: 0, topClip: 0, botClip: 0 };
@@ -149,21 +139,20 @@
     };
   }
 
-  /* Pilih sel mana yang berhak mendapat slot LIVE (`cap`), memprioritaskan sel yang utuh
-     terlihat (`topClip <= 2 && botClip <= 4`) dari atas ke bawah, lalu sel yang masuk dari bawah
-     (`topClip <= 4 && visFrac >= 0.55`). Kartu yang sudah ter-scroll ke atas dan bagian atasnya
-     sudah tertutup scroll area (`topClip > 4`) DILARANG mencuri slot LIVE dari kartu utuh. */
   function pickLiveKeys(cells, vr, cap) {
+    const atBottom = !!(vr && vr.atBottom);
     const cands = [], fallback = [];
     for (const item of cells || []) {
       if (!item) continue;
       const m = item.m || measureCell(item.rect, item.frameRect, vr);
       if (!m.inView) continue;
-      const clean = m.topClip <= 2 && m.botClip <= 4;
-      const topSafe = m.topClip <= 4;
+      const clean = atBottom
+        ? (m.topClip <= 6 && (m.botClip <= 16 || m.visFrac >= 0.35))
+        : (m.topClip <= 2 && m.botClip <= 4);
+      const topSafe = m.topClip <= (atBottom ? 6 : 4);
       let tier = 2;
       if (clean) tier = 0;
-      else if (topSafe && m.visFrac >= 0.55) tier = 1;
+      else if (topSafe && m.visFrac >= (atBottom ? 0.20 : 0.55)) tier = 1;
       const entry = {
         key: item.key,
         bad: item.bad ? 1 : 0,
@@ -176,14 +165,14 @@
         topClip: m.topClip,
       };
       if (entry.tier < 2) cands.push(entry);
-      else if (topSafe && m.boxVisH >= 24) fallback.push(entry);
+      else if (topSafe && m.boxVisH >= (atBottom ? 18 : 24)) fallback.push(entry);
     }
     const cmp = (a, b) =>
-      (a.bad - b.bad) ||
+      (atBottom ? 0 : (a.bad - b.bad)) ||
       (a.tier - b.tier) ||
       (a.tier === 0
-        ? (a.top - b.top) || (a.left - b.left) || (a.idx - b.idx)
-        : (b.visFrac - a.visFrac) || (a.topClip - b.topClip) || (a.top - b.top) || (a.left - b.left) || (a.idx - b.idx));
+        ? (atBottom ? (b.top - a.top) || (a.left - b.left) || (a.bad - b.bad) || (b.idx - a.idx) : (a.top - b.top) || (a.left - b.left) || (a.idx - b.idx))
+        : (atBottom ? (b.top - a.top) || (b.visFrac - a.visFrac) || (a.left - b.left) || (a.bad - b.bad) || (b.idx - a.idx) : (b.visFrac - a.visFrac) || (a.topClip - b.topClip) || (a.top - b.top) || (a.left - b.left) || (a.idx - b.idx)));
     const list = cands.length ? cands : fallback;
     list.sort(cmp);
     const out = list.map(x => x.key);
