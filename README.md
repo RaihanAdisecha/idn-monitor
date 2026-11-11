@@ -14,7 +14,10 @@ Real-time situation dashboard for Indonesia: incident news, social signals, disa
 - **24h retention** — incidents and history persist across restarts via `data/` state
 - **Globe** — 3D view of geolocated incidents from the last 24h, each point linked back to its news/social source
 
-  ![3D globe with 24h incident points](docs/globe.jpg)
+  <table><tr>
+    <td><img src="docs/globe.jpg" alt="3D globe with 24h incident points"></td>
+    <td><img src="docs/globe-2.jpg" alt="Globe close-up with incident detail"></td>
+  </tr></table>
 - **Incident map** — Leaflet detail view for hazards and environment: BMKG earthquakes/volcano/weather warnings, air quality (AQMS), wildfire hotspots (SiPongi + NASA FIRMS), rain radar (RainViewer timeline + BMKG), Himawari-9 satellite layers (IR / natural color / water vapor / rainfall), wind particles, and CCTV camera markers
 
   ![Map layers: weather, air quality, wildfire hotspots](docs/map-conditions.jpg)
