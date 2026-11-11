@@ -1169,3 +1169,30 @@ test('WAF/Cloudflare-gated news photos verify via crawler fallback and flow clea
     });
   });
 });
+
+test('open-proxy hardening: shared-CDN suffixes need catalog membership, config.json cannot carry secrets, desc entries cannot promote URLs', () => {
+  const fs = require('fs');
+  const path = require('path');
+  const serverJs = fs.readFileSync(path.join(__dirname, '../server.js'), 'utf8');
+
+  // H1: /hls & snap hostOK must not suffix-match shared CDN domains
+  assert.ok(serverJs.includes('SHARED_CDN_SUFFIX'), 'shared-CDN suffix denylist must exist');
+  assert.ok(serverJs.includes('cloudfront') && serverJs.includes('akamaized'), 'cloudfront/akamaized must be listed');
+  assert.ok(serverJs.includes('catalogHostAdd(new URL(u).hostname)'), 'px() must whitelist hosts discovered inside trusted playlists');
+  assert.ok(serverJs.includes("s:'(https?:\\/\\/[^']+)'"), 'TV_CH stream hosts must be seeded into catalogHosts');
+
+  // config.json secret strip: no credential fallbacks remain
+  for (const bad of ['CFG.tomtom.api_key', 'CFG.firms.api_key', 'CFG.aisstream.api_key', 'CFG.jina_key', 'CFG.firecrawl_key', 'CFG.copernicus.client_id', 'CFG.copernicus.client_secret', 'TH.cookies']) {
+    assert.ok(!serverJs.includes(bad), 'secret fallback must be removed: ' + bad);
+  }
+  assert.ok(serverJs.includes('delete X.auth_token'), 'X config must strip auth_token/ct0/accounts');
+  assert.ok(serverJs.includes('config.json berisi field yang menyerupai credential'), 'startup must warn on secret-looking config fields');
+
+  // M2: /api/desc entries are private — cannot promote arbitrary URLs to public allowlist
+  assert.ok(serverJs.includes('descRememberPriv'), 'descForUrl must write non-public entries');
+  assert.ok(serverJs.includes('de.pub'), 'isKnownNewsUrl must require pub desc entries');
+  assert.ok(serverJs.includes('descDemote([url])'), '/api/desc handler must demote processed URLs');
+
+  // M1: copernicus tiles use the heavy rate bucket
+  assert.ok(serverJs.includes("u.pathname.startsWith('/api/copernicus/tile/')"), 'copernicus tiles must be rate-limited as heavy');
+});

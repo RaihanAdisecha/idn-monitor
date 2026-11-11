@@ -1,4 +1,4 @@
-// node server.js  (Node 18+, tanpa dependency)
+// node server.js  (Node >=24, tanpa dependency runtime selain franc)
 const SOC = require('./social');
 const HISTORY = require('./social-history');
 const ASSESS = require('./assessment');
@@ -24,6 +24,23 @@ try {
   }
 } catch (e) {}
 let CFG = {}; try { CFG = JSON.parse(fs.readFileSync(path.join(__dirname, 'config.json'), 'utf8')); } catch (e) {}
+// config.json ikut ter-commit — credential WAJIB lewat env/.env, bukan file ini.
+// Deteksi field secret yang (mungkin) terisi dan teriak supaya tidak bocor ke git.
+try {
+  const secretHits = [];
+  const scan = (o, p) => {
+    if (!o || typeof o !== 'object') return;
+    for (const [k, v] of Object.entries(o)) {
+      const key = (p ? p + '.' : '') + k;
+      if (/token|secret|key|cookie|auth|session|ct0|csrftoken|ds_user|password/i.test(k) && typeof v === 'string' && v) secretHits.push(key);
+      else if (v && typeof v === 'object') scan(v, key);
+    }
+  };
+  scan(CFG, '');
+  if (secretHits.length) {
+    console.error('[SECURITY WARNING] config.json berisi field yang menyerupai credential: ' + secretHits.join(', ') + '. File ini tracked di git — pindahkan nilainya ke env/.env lalu kosongkan field tersebut.');
+  }
+} catch (e) {}
 const SEC = require('./security');
 const TRUSTED_ROOTS = SEC.loadTrustedRoots([
   ...String(process.env.SITREP_EXTRA_CA || '').split(/[,\n]/).map(s => s.trim()).filter(Boolean),
@@ -72,7 +89,7 @@ if (AUTH.publicMode) {
   console.warn('[SECURITY WARNING] SITREP berjalan di lingkungan publik tanpa SITREP_USERS — token API di-inject ke index.html.');
 }
 const PORT = process.env.PORT || process.env.SERVER_PORT || CFG.port || 8787;
-const TOMTOM_KEY = process.env.TOMTOM_API_KEY || process.env.TOMTOM_KEY || (CFG.tomtom && (CFG.tomtom.api_key || CFG.tomtom.key)) || '';
+const TOMTOM_KEY = process.env.TOMTOM_API_KEY || process.env.TOMTOM_KEY || '';
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36';
 const HTML = path.join(__dirname, 'public', 'index.html');
 const gn = q => 'https://news.google.com/rss/search?hl=id&gl=ID&ceid=ID:id&q=' + encodeURIComponent(q + ' when:2d');
@@ -1152,6 +1169,7 @@ const breaking = () => memo('breaking', 25000, async () => {
 });
 
 /* ---------- X via cookie sendiri (auth_token + ct0 dari config.json) ---------- */
+// Bearer publik web x.com (sama dengan yang di-embed di frontend twitter) — bukan credential pengguna.
 const BEARER = 'AAAAAAAAAAAAAAAAAAAAANRILgAAAAAAnNwIzUejRCOuH5E6I8xnZz4puTs%3D1Zv7ttfk8LF81IUq16cHjhLTvJu4FA33AGWWjCpTnA';
 const FEATURES = { rweb_tipjar_consumption_enabled: true, responsive_web_graphql_exclude_directive_enabled: true,
   verified_phone_label_enabled: false, creator_subscriptions_tweet_preview_api_enabled: true,
@@ -1165,7 +1183,10 @@ const FEATURES = { rweb_tipjar_consumption_enabled: true, responsive_web_graphql
   tweet_with_visibility_results_prefer_gql_limited_actions_policy_enabled: true, rweb_video_timestamps_enabled: true,
   longform_notetweets_rich_text_read_enabled: true, longform_notetweets_inline_media_enabled: true,
   responsive_web_enhance_cards_enabled: false };
-const X = CFG.x || {};
+// config.json tidak boleh menampung credential (file tracked) — auth_token/ct0/accounts
+// hanya dari env (X_AUTH_TOKEN[_N], X_CT0[_N]). Sisakan field non-secret (features, query_id).
+const X = { ...(CFG.x || {}) };
+delete X.auth_token; delete X.ct0; delete X.accounts;
 X.auth_token = process.env.X_AUTH_TOKEN || X.auth_token || '';
 X.ct0 = process.env.X_CT0 || X.ct0 || '';
 X.bearer = process.env.X_BEARER || X.bearer || '';
@@ -1840,7 +1861,6 @@ const TH_AUTH = (() => {
   const env = { sessionid: 'TH_SESSIONID', csrftoken: 'TH_CSRFTOKEN', ds_user_id: 'TH_DS_USER_ID', mid: 'TH_MID', rur: 'TH_RUR' };
   const ck = {};
   for (const [k, v] of Object.entries(env)) { const val = process.env[v]; if (val) ck[k] = val; }
-  for (const [k, v] of Object.entries(TH.cookies || {})) if (v && !ck[k]) ck[k] = String(v);
   return ck.sessionid ? ck : null;
 })();
 const PY_BIN = [
@@ -2461,7 +2481,7 @@ const row = (market, s) => {
   return { sym: s.s, ticker: d[0], name: d[0], price: d[1], pct: d[2] || 0,
     chg: d[3] || 0, vol: d[4] || 0, mkt: market };
 };
-const FXHIST_F = process.env.SITREP_DATA_DIR ? path.join(HIST_DIR, 'fxhist.json') : path.join(__dirname, 'fxhist.json');
+const FXHIST_F = path.join(HIST_DIR, 'fxhist.json');
 let fxhist = [];
 try { fxhist = JSON.parse(fs.readFileSync(FXHIST_F, 'utf8')); } catch (e) {}
 const saveFx = () => { try { fs.writeFileSync(FXHIST_F, JSON.stringify(fxhist.slice(-400))); } catch (e) {} };
@@ -2966,7 +2986,7 @@ function parseCsv(text){
   }).filter(Boolean);
 }
 const fires = () => singleFlight(fireCache, 600000, async () => {
-  const key = (process.env.NASA_FIRMS_API_KEY || (CFG.firms && CFG.firms.api_key) || '').trim();
+  const key = (process.env.NASA_FIRMS_API_KEY || '').trim();
   if (!key) { fireCache.at = Date.now(); fireCache.data = { ok: false, err: 'NASA_FIRMS_API_KEY belum diset', items: [], at: Date.now(), sources: [] }; return fireCache.data; }
   const out = [];
   const sourceStatus = [];
@@ -3269,7 +3289,7 @@ function aisConnect(){
     });
     socket.on('close', () => { if (socket === wsSock) wsSock = null; if (!isDraining) wsSchedule(15000); });
     socket.on('error', () => { if (socket === wsSock) wsSock = null; });
-    wsSend(JSON.stringify({ APIKey: process.env.AISSTREAM_API_KEY || (CFG.aisstream && CFG.aisstream.api_key) || '',
+    wsSend(JSON.stringify({ APIKey: process.env.AISSTREAM_API_KEY || '',
       BoundingBoxes:[[[-11,95],[6.5,141]]],
       FilterMessageTypes:['PositionReport'], FiltersShipMMSI:[] }));
   });
@@ -3611,7 +3631,7 @@ const jinaPump = () => {
   p.then(v => { jinaPending--; job.resolve(v); jinaPump(); },
          e => { jinaPending--; job.reject(e); jinaPump(); });
 };
-const JINA_KEY = process.env.JINA_API_KEY || CFG.jina_key || '';
+const JINA_KEY = process.env.JINA_API_KEY || '';
 const jinaGet = (u, ms, h, alive, prio, signal) => {
   if (!JINA_KEY && Date.now() < jinaSkipUntil) return Promise.reject(new Error('jina 402/429 cooldown'));
   if (jinaPending + jinaQP.length + jinaQN.length >= 12) return Promise.reject(new Error('jina queue penuh'));
@@ -3899,7 +3919,7 @@ async function thumbFetchAndResolve(u, article, canon, wireIt) {
         }
       } catch (e) {}
     }
-    const FC_KEY = process.env.FIRECRAWL_API_KEY || CFG.firecrawl_key || '';
+    const FC_KEY = process.env.FIRECRAWL_API_KEY || '';
     if (!doc && !jinaMd && FC_KEY && !fcBlocked(article)) {
       let fcOk = false;
       try {
@@ -4010,7 +4030,9 @@ function registerVhsUrl(u) {
 }
 function isKnownNewsUrl(raw) {
   if (!raw || typeof raw !== 'string') return false;
-  if (knownNewsUrls.has(raw) || urlToCanon.has(raw) || descGet(raw) !== undefined) return true;
+  if (knownNewsUrls.has(raw) || urlToCanon.has(raw)) return true;
+  const de = descGetEntry(raw);
+  if (de !== undefined && de.pub) return true;
   const canon = MEDIA.canonicalArticleUrl(raw) || raw;
   if (knownNewsUrls.has(canon) || getReadCache(canon, raw)) return true;
   return Boolean(rdWireFind(raw));
@@ -4207,14 +4229,36 @@ async function img(u, res) {
 const cctvHostList = () => (CFG.cctv_hosts || ['balitower.co.id', 'jakarta.go.id', 'molecool.id', 'pantaucctv.com']).concat(CFG.tv_hosts || []);
 // host dari katalog tepercaya (BPJT/pemda/molecool) ikut diizinkan: tanpa ini ~19% kamera
 // 403 di jalur proxy. Tetap lewat rdAssertPublic (anti-SSRF) + rate limit gateway.
+// Shared-CDN suffix (cloudfront/akamaized/dll) tidak boleh di-suffix-match:
+// hostname di sana bisa didapat siapa pun → proxy jadi open relay. Host legit
+// tetap lolos lewat catalogHosts (diisi dari katalog kamera + seed TV + host
+// yang ditemukan di dalam playlist tepercaya).
+const SHARED_CDN_SUFFIX = /^(?:cloudfront\.net|akamaized\.net|edgesuite\.net|edgespeed\.net|cloudflarestream\.com|tenbytecdn\.com|bytecdn\.cn|hwcdn\.net|cdngslb\.com|llnwd\.net|edgesuite\.net)$/i;
 const catalogHosts = new Set();
-const hostOK = u => { try { const h = new URL(u).hostname; return catalogHosts.has(h) || cctvHostList().some(d => h === d || h.endsWith('.' + d)); } catch (e) { return false; } };
+const catalogHostAdd = h => {
+  if (!h || catalogHosts.has(h)) return;
+  catalogHosts.add(h);
+  if (catalogHosts.size > 800) catalogHosts.delete(catalogHosts.values().next().value);
+};
+const hostOK = u => {
+  try {
+    const h = new URL(u).hostname;
+    if (catalogHosts.has(h)) return true;
+    return cctvHostList().some(d => h === d || (!SHARED_CDN_SUFFIX.test(d) && h.endsWith('.' + d)));
+  } catch (e) { return false; }
+};
 const isTvHost = u => { try { const h = new URL(u).hostname; return (CFG.tv_hosts || []).some(d => h === d || h.endsWith('.' + d)); } catch (e) { return false; } };
 // token disisipkan ke URL rewrite supaya segmen/URI turunan tetap lolos gate
 // (/hls /vhs digate — request sudah terauth saat playlist dibuat, aman disebar).
-const px = u => (AUTH.userMode || AUTH.publicMode)
-  ? ('/hls?u=' + encodeURIComponent(u))
-  : ('/hls?u=' + encodeURIComponent(u) + '&token=' + encodeURIComponent(API_TOKEN));
+// Host segmen yang ditemukan di dalam playlist tepercaya ikut di-whitelist
+// (trust-on-first-use) supaya CDN shared tetap bisa diputar tanpa membuka
+// proxy untuk host sembarangan.
+const px = u => {
+  try { catalogHostAdd(new URL(u).hostname); } catch (e) {}
+  return (AUTH.userMode || AUTH.publicMode)
+    ? ('/hls?u=' + encodeURIComponent(u))
+    : ('/hls?u=' + encodeURIComponent(u) + '&token=' + encodeURIComponent(API_TOKEN));
+};
 // Header upstream per provider: sesuaikan origin agar lolos anti-hotlink & bot filter
 function cctvHeaders(u) {
   const mh = (() => { try { return new URL(u).hostname; } catch (e) { return ''; } })();
@@ -4266,6 +4310,16 @@ const GW = require('./cctv-gateway').createGateway({
   isKnown: u => cctvKnown.has(u),
   options: GW_OPTIONS
 });
+// Seed host stream TV (TV_CH di index.html) ke catalogHosts: channel internasional
+// memang hosted di shared-CDN (cloudfront/akamaized) — host-nya diketahui dan
+// statis, jadi layak di-whitelist eksplisit tanpa membuka suffix-match.
+try {
+  const htmlSrc = fs.readFileSync(HTML, 'utf8');
+  const tvBlock = (htmlSrc.match(/const TV_CH = \[([\s\S]*?)\];/) || [])[1] || '';
+  for (const m of tvBlock.matchAll(/s:'(https?:\/\/[^']+)'/g)) {
+    try { catalogHostAdd(new URL(m[1]).hostname); } catch (e) {}
+  }
+} catch (e) {}
 const hls = (u, req, res) => GW.hls(u, req, res);
 // proxy video untuk instant reader: CDN berita (vod.detik dll) menolak Referer localhost → 403.
 // Server fetch tanpa referer; playlist m3u8 ditulis ulang rekursif lewat endpoint yang sama.
@@ -4331,7 +4385,7 @@ function seedStaticCctvAllowlist() {
   for (const c of camList()) {
     cctvKnown.add(c.s);
     (Array.isArray(c.fb) ? c.fb : c.fb ? [c.fb] : []).forEach(f => cctvKnown.add(f));
-    try { catalogHosts.add(new URL(c.s).hostname); } catch (e) {}
+    try { catalogHostAdd(new URL(c.s).hostname); } catch (e) {}
   }
 }
 seedStaticCctvAllowlist();
@@ -4431,7 +4485,7 @@ async function cctvFetch(url, ms, headers){
    (bpjt.pu.go.id). API key sudah dipakai reader; catalog di-memo 30 mnt supaya
    tidak bakar credit tiap refresh. */
 async function cctvFirecrawl(url){
-  const FC_KEY = process.env.FIRECRAWL_API_KEY || CFG.firecrawl_key || '';
+  const FC_KEY = process.env.FIRECRAWL_API_KEY || '';
   if (!FC_KEY || fcBlocked(url)) return '';
   let ok = false;
   try {
@@ -4647,8 +4701,8 @@ const cctvCatalog = () => memo('cctvcat', 300000, async () => {
   const probeable = cctvProbe.done.size ? [...bpjt, ...jogja].filter(c => cctvProbe.alive.has(c.s)) : [];
   const verified = probeable.filter(c => !cctvReportedDead(c.s));
   // host katalog → boleh lewat proxy; url katalog → sah untuk /api/cctv/report
-  for (const c of [...bpjt, ...jogja, ...other]) { try { catalogHosts.add(new URL(c.s).hostname); cctvKnown.add(c.s); } catch (e) {} }
-  for (const c of camList()) { cctvKnown.add(c.s); (Array.isArray(c.fb) ? c.fb : c.fb ? [c.fb] : []).forEach(f => cctvKnown.add(f)); try { catalogHosts.add(new URL(c.s).hostname); } catch (e) {} }
+  for (const c of [...bpjt, ...jogja, ...other]) { try { catalogHostAdd(new URL(c.s).hostname); cctvKnown.add(c.s); } catch (e) {} }
+  for (const c of camList()) { cctvKnown.add(c.s); (Array.isArray(c.fb) ? c.fb : c.fb ? [c.fb] : []).forEach(f => cctvKnown.add(f)); try { catalogHostAdd(new URL(c.s).hostname); } catch (e) {} }
   // dedupe stream fisik yang sama + tandai host tanpa CORS (d:0 → client langsung proxy, tidak buang 45 dtk)
   const cams = CCTVCORE.dedupe([...other.filter(c => !cctvReportedDead(c.s)), ...verified]).map(c => {
     try { if (hostCors.get(new URL(c.s).host) === false) return { ...c, d: 0 }; } catch (e) {}
@@ -5378,7 +5432,7 @@ async function rdRead(raw, bg, forceFresh = false) {
     });
     if (win) { fetchMs = Date.now() - t0; return await fin(win.d, win.url, win.html, win.jinaTxt, win.via || 'race'); }
 
-    const FC_KEY = process.env.FIRECRAWL_API_KEY || CFG.firecrawl_key || '';
+    const FC_KEY = process.env.FIRECRAWL_API_KEY || '';
     if (FC_KEY && left() > 16000 && !fcBlocked(target)) {
       let fcOk = false;
       try {
@@ -5695,8 +5749,8 @@ async function ttTile(kind, zRaw, xRaw, yRaw, res, req) {
 
 const copernicus = COPERNICUS.createCopernicusProxy({
   dataDir: HIST_DIR,
-  clientId: process.env.CDSE_CLIENT_ID || process.env.COPERNICUS_CLIENT_ID || (CFG.copernicus && CFG.copernicus.client_id) || '',
-  clientSecret: process.env.CDSE_CLIENT_SECRET || process.env.COPERNICUS_CLIENT_SECRET || (CFG.copernicus && CFG.copernicus.client_secret) || '',
+  clientId: process.env.CDSE_CLIENT_ID || process.env.COPERNICUS_CLIENT_ID || '',
+  clientSecret: process.env.CDSE_CLIENT_SECRET || process.env.COPERNICUS_CLIENT_SECRET || '',
   dailyCap: process.env.CDSE_DAILY_CAP,
   monthCap: process.env.CDSE_MONTH_CAP,
   cacheTtlMs: process.env.CDSE_CACHE_TTL_MS,
@@ -5729,23 +5783,37 @@ const descGetEntry = u => {
   if (!hit) return undefined;
   descCache.delete(k); descCache.set(k, hit);
   const ttl = hit.ttl || (hit.desc ? DESC_TTL : DESC_NEG_TTL);
-  return Date.now() - hit.at < ttl ? { desc: hit.desc, transient: Boolean(hit.transient) } : undefined;
+  return Date.now() - hit.at < ttl ? { desc: hit.desc, transient: Boolean(hit.transient), pub: hit.pub !== false } : undefined;
 };
 const descGet = u => {
   const e = descGetEntry(u);
   return e !== undefined ? e.desc : undefined;
 };
-const descRemember = (keys, desc, transient = false) => {
+const descRemember = (keys, desc, transient = false, opts = {}) => {
   const now = Date.now();
   const ttl = desc ? DESC_TTL : (transient ? DESC_TRANSIENT_NEG_TTL : DESC_NEG_TTL);
+  const pub = opts.pub !== false;
   const normKeys = new Set();
   for (const k of keys) {
     if (!k) continue;
     normKeys.add(descNormKey(k));
     normKeys.add('v' + PIPELINE_VERSION + ':' + k);
   }
-  for (const k of normKeys) { descCache.delete(k); descCache.set(k, { desc, transient: !desc && transient, at: now, ttl }); }
+  for (const k of normKeys) { descCache.delete(k); descCache.set(k, { desc, transient: !desc && transient, pub, at: now, ttl }); }
   while (descCache.size > DESC_CAP) descCache.delete(descCache.keys().next().value);
+};
+// Entry desc hasil /api/desc tidak boleh mempromosikan URL ke allowlist publik:
+// operator boleh fetch URL arbitrer, tapi itu tidak berarti viewer boleh
+// /api/read & /api/thumb ke sana. descDemote menandai entry tsb pub=false.
+const descRememberPriv = (keys, desc, transient = false) => descRemember(keys, desc, transient, { pub: false });
+const descDemote = keys => {
+  for (const k of keys) {
+    if (!k) continue;
+    for (const kk of [descNormKey(k), 'v' + PIPELINE_VERSION + ':' + k]) {
+      const e = descCache.get(kk);
+      if (e) e.pub = false;
+    }
+  }
 };
 // Baca stream untuk /api/desc: jika </head> punya meta description >=30 char berhenti cepat;
 // jika tidak (og:desc == judul atau meta ditaruh di akhir body), terus baca sampai </article> / beberapa </p> / 512KB.
@@ -5806,23 +5874,23 @@ async function descForUrl(reqUrl) {
   if (cached !== undefined) return cached;
   const x = publicURL(reqUrl);
   if (!x) return '';
-  if (isBannedHostUrl(reqUrl)) { descRemember([reqUrl], '', false); return ''; }
+  if (isBannedHostUrl(reqUrl)) { descRememberPriv([reqUrl], '', false); return ''; }
   let target = reqUrl;
   if (/(^|\.)news\.google\.com$/i.test(x.hostname) && GN_PATH.test(x.pathname)) {
-    try { target = await decodeGNews(reqUrl); } catch (e) { descRemember([reqUrl], '', true); return ''; }
-    if (/(^|\.)news\.google\.com$/i.test(new URL(target).hostname)) { descRemember([reqUrl], '', true); return ''; }
-    if (isBannedHostUrl(target)) { descRemember([reqUrl, target], '', false); return ''; }
+    try { target = await decodeGNews(reqUrl); } catch (e) { descRememberPriv([reqUrl], '', true); return ''; }
+    if (/(^|\.)news\.google\.com$/i.test(new URL(target).hostname)) { descRememberPriv([reqUrl], '', true); return ''; }
+    if (isBannedHostUrl(target)) { descRememberPriv([reqUrl, target], '', false); return ''; }
     const viaTarget = descGet(target);
-    if (viaTarget !== undefined) { descRemember([reqUrl], viaTarget); return viaTarget; }
+    if (viaTarget !== undefined) { descRememberPriv([reqUrl], viaTarget); return viaTarget; }
   }
-  if (isBannedHostUrl(target)) { descRemember([reqUrl, target], '', false); return ''; }
+  if (isBannedHostUrl(target)) { descRememberPriv([reqUrl, target], '', false); return ''; }
   const canon = MEDIA.canonicalArticleUrl(target) || target;
   // 1. Cek apakah artikel ini sudah ada di readCache (instan tanpa request jaringan)
   const rHit = getReadCache(canon, reqUrl);
   if (rHit && !rHit.wireFallback && (rHit.desc || (rHit.paras && rHit.paras[0]))) {
     const ds = rHit.desc || rHit.paras[0];
     if (ds && ds.length >= 26 && !BOT_CHALLENGE_RE.test(ds)) {
-      descRemember([reqUrl, target, canon], ds);
+      descRememberPriv([reqUrl, target, canon], ds);
       return ds;
     }
   }
@@ -5830,7 +5898,7 @@ async function descForUrl(reqUrl) {
   for (const testU of [target, canon, reqUrl]) {
     const wireIt = rdWireFind(testU);
     if (wireIt && wireIt.desc && wireIt.desc.length >= 26 && !BOT_CHALLENGE_RE.test(wireIt.desc)) {
-      descRemember([reqUrl, target, canon], wireIt.desc);
+      descRememberPriv([reqUrl, target, canon], wireIt.desc);
       return wireIt.desc;
     }
   }
@@ -5840,7 +5908,7 @@ async function descForUrl(reqUrl) {
       const extDoc = rdExtract(docHit.html, docHit.finalUrl || target);
       const dsDoc = extDoc && (extDoc.desc || (extDoc.paras && extDoc.paras[0])) || '';
       if (dsDoc && dsDoc.length >= 26 && !BOT_CHALLENGE_RE.test(dsDoc)) {
-        descRemember([reqUrl, target, canon], dsDoc);
+        descRememberPriv([reqUrl, target, canon], dsDoc);
         return dsDoc;
       }
     } catch (_) {}
@@ -5919,18 +5987,18 @@ async function descFetchNet(reqUrl, target, canon, x, host) {
             if (jDoc && jDoc.ok && !(jDoc.extraction && jDoc.extraction.quality && jDoc.extraction.quality.isChallengeOrError) && jDoc.paras && jDoc.paras.length) {
               const d = FEEDTEXT.descFrom({ description: jDoc.paras[0] }, jDoc.title || '');
               if (d && !BOT_CHALLENGE_RE.test(d)) {
-                descRemember([reqUrl, target, canon], d);
+                descRememberPriv([reqUrl, target, canon], d);
                 return d;
               }
             }
           }
         }
       } catch (e) { sawTransient = true; }
-      descRemember([reqUrl, target, canon], '', sawTransient);
+      descRememberPriv([reqUrl, target, canon], '', sawTransient);
       return '';
     }
     if (!html) {
-      descRemember([reqUrl, target, canon], '', sawTransient);
+      descRememberPriv([reqUrl, target, canon], '', sawTransient);
       return '';
     }
   } finally {
@@ -5953,7 +6021,7 @@ async function descFetchNet(reqUrl, target, canon, x, host) {
     }
   }
   const out = desc && Array.from(desc).length >= 26 && !BOT_CHALLENGE_RE.test(desc) ? desc : '';
-  descRemember([reqUrl, target, canon], out, !out && sawTransient);
+  descRememberPriv([reqUrl, target, canon], out, !out && sawTransient);
   return out;
 }
 
@@ -6384,7 +6452,7 @@ const SITREP_SERVER = http.createServer(async (req, res) => {
         return json({ ok: false, err: AUTH.userMode ? 'autentikasi diperlukan' : 'token tidak valid' }, AUTH.userMode ? 401 : 403);
       }
       const isHeavy = u.pathname === '/img' || u.pathname === '/hls' || u.pathname === '/vhs' ||
-        u.pathname === '/api/thumb' || u.pathname === '/api/read' || Boolean(u.searchParams.get('fresh'));
+        u.pathname === '/api/thumb' || u.pathname === '/api/read' || u.pathname.startsWith('/api/copernicus/tile/') || Boolean(u.searchParams.get('fresh'));
       const cacheKeyFn = !isHeavy && (req.method === 'GET' || req.method === 'HEAD') ? CACHE_ROUTE_KEY[u.pathname] : null;
       const warmHit = cacheKeyFn ? bodyCache.get(cacheKeyFn(u)) : null;
       const warmCacheRule = (warmHit && Date.now() - warmHit.at < 30000) ? { limit: 3600, windowMs: 60000 } : undefined;
@@ -6768,7 +6836,7 @@ const SITREP_SERVER = http.createServer(async (req, res) => {
         return json({ ok: false, err: e.message === 'body terlalu besar' ? 'payload terlalu besar' : 'payload tidak valid' }, e.message === 'body terlalu besar' ? 413 : 400);
       }
     }
-    if (u.pathname === '/api/tomtom/status') return json({ ok: true, keyConfigured: ttHas(), source: process.env.TOMTOM_API_KEY ? 'env' : (CFG.tomtom ? 'config' : 'none'), at: Date.now() });
+    if (u.pathname === '/api/tomtom/status') return json({ ok: true, keyConfigured: ttHas(), source: process.env.TOMTOM_API_KEY || process.env.TOMTOM_KEY ? 'env' : 'none', at: Date.now() });
     if (u.pathname === '/api/tomtom/flow') {
       const lat = parseFloat(u.searchParams.get('lat')), lon = parseFloat(u.searchParams.get('lon')), zoom = parseFloat(u.searchParams.get('zoom') || '10');
       if (isFinite(lat) && isFinite(lon)) return json(await ttFlow(lat, lon, isFinite(zoom) ? zoom : 10));
@@ -6951,6 +7019,7 @@ const SITREP_SERVER = http.createServer(async (req, res) => {
             const url = queue.shift();
             try {
               const d = await descForUrl(url);
+              descDemote([url]);
               descs[url] = d;
               if (!d) {
                 const ent = descGetEntry(url);

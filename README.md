@@ -50,6 +50,10 @@ Semua secret dibaca dari env / `.env` (file `.env` dimuat otomatis oleh `server.
 
 `config.json` hanya berisi konfigurasi non-secret (port, host CCTV/TV). Topik sosial (X + Threads) ada di `social.js` (`SOC_TOPICS`).
 
+### Variabel tuning lanjutan
+
+Selain tabel di atas, ada knob opsional (semua punya default aman — lihat `.env.example` untuk daftar lengkap): `JINA_API_KEY` (fallback reader), `CUSTOM_PROXY_URL`/`PROXY_URL`, `FFMPEG_PATH`, `CDSE_*` (cap & cache Copernicus), `SITREP_NLP_*` (adapter NLP eksternal, default offline), `SITREP_RSS_CONCURRENCY`/`SITREP_RSS_JITTER_MS`, `SITREP_DOC_CACHE_BYTES`, blok `SITREP_HLS_*` (gateway CCTV), `SITREP_MAC_PROFILE`, `SITREP_NO_WESERV`, `SITREP_NO_SUPERVISOR`, `SITREP_DISABLE_QUERY_TOKEN`, `SITREP_ALLOW_LAN_TOKEN` (opt-in berbahaya — mengizinkan bind non-loopback di mode token lokal).
+
 ## Mode Keamanan & Deployment
 
 SITREP memiliki tiga mode autentikasi fail-closed (detail di [`SECURITY.md`](SECURITY.md)):
@@ -92,10 +96,15 @@ docker run -d --name sitrep -p 8787:8787 \
   -e SITREP_PUBLIC=1 \
   -e SITREP_TRUST_PROXY=1 \
   --env-file .env \
+  -v sitrep-data:/app/data \
   sitrep
 ```
 
 Untuk deployment di balik reverse proxy/Cloudflare Tunnel, set `SITREP_TRUST_PROXY=1` (dan `SITREP_TRUST_CF=1` jika di balik Cloudflare).
+
+Volume `-v sitrep-data:/app/data` menjaga history berita/insiden, cache Copernicus, dan data pasar tetap ada saat container di-recreate — tanpa volume itu semua state hilang.
+
+`config.json` hanya untuk konfigurasi **non-secret** (port, host CCTV/TV, tuning). Credential (cookie X/Threads, API key, client secret) **wajib** lewat env/`.env` — server menolak membaca secret dari `config.json` dan akan mencetak peringatan bila field secret terisi.
 
 ## Pengujian & Audit
 
