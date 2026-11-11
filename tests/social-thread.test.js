@@ -2,10 +2,24 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const path = require('node:path');
+const fs = require('node:fs');
 const { spawnSync } = require('node:child_process');
 
-test('Threads thread worker correctly parses nested replies and returns top-level replies array', () => {
-  const pythonBin = path.join(__dirname, '..', '.venv', 'bin', 'python');
+function pickPython() {
+  const venv = path.join(__dirname, '..', '.venv', 'bin', 'python');
+  for (const candidate of [venv, 'python3', 'python']) {
+    if (candidate !== 'python3' && candidate !== 'python' && !fs.existsSync(candidate)) continue;
+    try {
+      const r = spawnSync(candidate, ['-c', 'print(1)'], { stdio: 'ignore' });
+      if (r.status === 0) return candidate;
+    } catch { /* try the next interpreter */ }
+  }
+  return null;
+}
+
+test('Threads thread worker correctly parses nested replies and returns top-level replies array', (t) => {
+  const pythonBin = pickPython();
+  if (!pythonBin) return t.skip('no Python interpreter available (.venv/bin/python, python3, python)');
   const workerScript = path.join(__dirname, '..', 'vendor', 'threads_thread.py');
 
   // Test empty url error handling

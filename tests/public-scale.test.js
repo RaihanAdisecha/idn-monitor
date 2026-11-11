@@ -328,7 +328,7 @@ test('server: /api/news?rev= serves CDN-cacheable delta responses and Brotli JSO
     });
   });
   try {
-    const hdr = { 'x-sitrep-token': process.env.SITREP_TOKEN };
+    const hdr = { 'x-sitrep-token': SRV.AUTH.apiToken };
     const rFull = await new Promise((resolve, reject) => {
       const req = http.request({ host: '127.0.0.1', port, path: '/api/news', headers: { ...hdr, 'accept-encoding': 'br' } }, res => {
         const ch = [];
@@ -443,7 +443,7 @@ test('P0/P1/P2 production hardening: loopback bind, HLS queue+abort, no s-maxage
     SRV.SITREP_SERVER.listen(0, '127.0.0.1', () => resolve(SRV.SITREP_SERVER.address().port));
   });
   try {
-    const hdr = { 'x-sitrep-token': process.env.SITREP_TOKEN };
+    const hdr = { 'x-sitrep-token': SRV.AUTH.apiToken };
     const rNodes = await fetch(`http://127.0.0.1:${port}/api/nodes`, { headers: hdr });
     const ccNodes = rNodes.headers.get('cache-control') || '';
     assert.ok(!/s-maxage/i.test(ccNodes), `/api/nodes must omit s-maxage, got: ${ccNodes}`);
