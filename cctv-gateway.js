@@ -11,14 +11,23 @@ const { spawn } = require('child_process');
 const crypto = require('crypto');
 
 /* ---------- primitif ---------- */
-/* Lane: antrean dengan batas total DAN per-host. FIFO, host penuh dilewati. */
-function makeLane(max, perHost) {
-  let n = 0; const per = new Map(); const q = [];
+/* Lane: antrean dengan batas total, per-host, DAN maxQueue + pembatalan AbortSignal. */
+function makeLane(max, perHost, maxQueue = Infinity) {
+  let n = 0, cancelled = 0; const per = new Map(); const q = [];
   const pump = () => {
     for (let i = 0; i < q.length && n < max;) {
       const j = q[i];
       if ((per.get(j.host) || 0) >= perHost) { i++; continue; }
-      q.splice(i, 1); n++; per.set(j.host, (per.get(j.host) || 0) + 1);
+      q.splice(i, 1);
+      if (j.cleanup) j.cleanup();
+      if (j.signal && j.signal.aborted) {
+        cancelled++;
+        const err = new Error('antrean dibatalkan klien');
+        err.name = 'AbortError'; err.status = 499;
+        j.rej(err);
+        continue;
+      }
+      n++; per.set(j.host, (per.get(j.host) || 0) + 1);
       Promise.resolve().then(j.fn).then(j.res, j.rej).finally(() => {
         n--; const c = (per.get(j.host) || 1) - 1; if (c) per.set(j.host, c); else per.delete(j.host);
         pump();
@@ -26,8 +35,38 @@ function makeLane(max, perHost) {
     }
   };
   return {
-    run: (host, fn) => new Promise((res, rej) => { q.push({ host, fn, res, rej }); pump(); }),
-    stats: () => ({ active: n, queued: q.length, hosts: per.size })
+    run: (host, fn, signal = null) => new Promise((res, rej) => {
+      if (signal && signal.aborted) {
+        cancelled++;
+        const err = new Error('antrean dibatalkan klien');
+        err.name = 'AbortError'; err.status = 499;
+        return rej(err);
+      }
+      if (q.length >= maxQueue) {
+        const err = new Error('antrean gateway penuh');
+        err.status = 503;
+        return rej(err);
+      }
+      const j = { host, fn, res, rej, signal, cleanup: null };
+      if (signal && typeof signal.addEventListener === 'function') {
+        const onAbort = () => {
+          const idx = q.indexOf(j);
+          if (idx >= 0) {
+            q.splice(idx, 1);
+            j.cleanup && j.cleanup();
+            cancelled++;
+            const err = new Error('antrean dibatalkan klien');
+            err.name = 'AbortError'; err.status = 499;
+            j.rej(err);
+          }
+        };
+        j.cleanup = () => { try { signal.removeEventListener('abort', onAbort); } catch {} };
+        signal.addEventListener('abort', onAbort, { once: true });
+      }
+      q.push(j);
+      pump();
+    }),
+    stats: () => ({ active: n, queued: q.length, maxQueue: Number.isFinite(maxQueue) ? maxQueue : null, hosts: per.size, cancelled })
   };
 }
 /* Token bucket per kunci (IP). rate = token/detik, burst = kapasitas. */
@@ -89,24 +128,24 @@ function createGateway(d) {
     isKnownHost = () => true,
   } = d;
   const O = Object.assign({
-    maxActive: 48, perHost: 8, snapActive: 2,
+    maxActive: 48, perHost: 8, maxQueue: 64, snapActive: 2, snapMaxQueue: 16,
     segCacheBytes: 64 << 20, segTtl: 30000, segCacheMax: 16 << 20, segMax: 25 << 20,
     plMin: 500, plMax: 2500,
     reqRate: 40, reqBurst: 200, byteRate: 3 << 20, byteBurst: 120 << 20,   // ~25 Mbps rata-rata per IP, burst 120MB
-    globalByteRate: 45 << 20, globalByteBurst: 180 << 20,                 // batas egress global NIC ~360 Mbps agar /hls fallback tidak menjatuhkan VPS
+    globalByteRate: 45 << 20, globalByteBurst: 180 << 20,                 // batas egress global NIC ~360 Mbps (override via env untuk Mac)
     snapTtl: 90000, upstreamMs: 25000
   }, d.options || {});
   const allowCors = allowCorsTop !== undefined ? Boolean(allowCorsTop) : (O.allowCors !== undefined ? Boolean(O.allowCors) : true);
   const allowPublicCache = Boolean(allowPublicCacheTop || O.allowPublicCache);
 
-  const lane = makeLane(O.maxActive, O.perHost);
-  const snapLane = makeLane(O.snapActive, O.snapActive);
+  const lane = makeLane(O.maxActive, O.perHost, O.maxQueue);
+  const snapLane = makeLane(O.snapActive, O.snapActive, O.snapMaxQueue);
   const reqRl = makeBucket(O.reqRate, O.reqBurst);
   const byteRl = makeBucket(O.byteRate, O.byteBurst);
   const byteGlobal = makeBucket(O.globalByteRate, O.globalByteBurst);
   const cache = makeLru(O.segCacheBytes);
   const inflight = new Map();
-  const m = { req: 0, hit: 0, coalesced: 0, upstream: 0, rl: 0, globalRl: 0, bytesOut: 0, errors: 0, aborted: 0 };
+  const m = { req: 0, hit: 0, coalesced: 0, upstream: 0, rl: 0, globalRl: 0, bytesOut: 0, errors: 0, aborted: 0, rejected503: 0 };
   const normIp = typeof injectedRateKey === 'function' ? injectedRateKey : (v => v);
 
   const clientIp = req => {
@@ -130,7 +169,7 @@ function createGateway(d) {
   const secHdr = { 'x-content-type-options': 'nosniff', 'content-security-policy': "default-src 'none'; sandbox" };
   const base = { ...corsHdr, ...secHdr, 'cache-control': 'no-store' };
   const segCacheHdr = allowCors ? 'public, max-age=60' : 'private, max-age=60';
-  const plCacheHdr = allowCors ? 'public, max-age=1, s-maxage=1' : 'no-store';
+  const plCacheHdr = allowCors ? 'public, max-age=1' : 'no-store';
   const deny = (res, code, extra) => {
     if (res.writableEnded || res.destroyed) return;
     res.writeHead(code, { ...base, ...(extra || {}) }); res.end();
@@ -190,7 +229,12 @@ function createGateway(d) {
   };
   const sendEntry = (res, e, ip) => {
     if (res.writableEnded || res.destroyed) return;
-    if (e.status !== 200) { res.writeHead(e.status, base); return res.end(); }
+    if (e.status !== 200) {
+      if (e.status === 503) m.rejected503++;
+      const extra = e.status === 503 ? { 'retry-after': '3' } : {};
+      res.writeHead(e.status, { ...base, ...extra });
+      return res.end();
+    }
     const buf = e.buf;
     const cc = e.pl ? plCacheHdr : segCacheHdr;
     res.writeHead(200, { ...base, 'cache-control': cc, 'content-type': e.ct, 'content-length': buf.length });
@@ -378,17 +422,19 @@ function createGateway(d) {
       await endSubscribers();
       const buf = fl.collect ? Buffer.concat(fl.chunks) : null;
       return { status: 200, ct: fl.ct, buf, snapPrefix: (!fl.collect && fl.bgRef > 0 && fl.chunks.length) ? Buffer.concat(fl.chunks) : null, ttl: O.segTtl, streamed: true };
-    });
+    }, fl.ac.signal);
     return fl;
   }
 
   /* Entri point /hls */
   async function hls(rawUrl, req, res) {
     m.req++;
+    if (req.destroyed || res.destroyed) return;
     const ip = rate(req, res); if (!ip) return;
     if (!rawUrl || !hostAllowed(rawUrl)) return deny(res, 403);
     let url = rawUrl;
     try { url = await rewriteUrl(rawUrl); } catch (e) {}
+    if (req.destroyed || res.destroyed) return;
     let host; try { host = new URL(url).host; } catch (e) { return deny(res, 400); }
     const key = canonicalKey(url);
     const hit = cache.get(key);
@@ -410,13 +456,13 @@ function createGateway(d) {
       const solo = startFlight(key + '#solo', url, host, false);
       const soloDetach = solo.attach(res, ip);
       let se;
-      try { se = await solo.promise; } catch { se = { status: 502, noCache: true }; }
+      try { se = await solo.promise; } catch (err) { se = { status: (err && err.status) || 502, noCache: true }; }
       if (soloDetach) soloDetach();
       return finish(res, se, ip);
     }
 
     let e;
-    try { e = await fl.promise; } catch { e = { status: 502, noCache: true }; }
+    try { e = await fl.promise; } catch (err) { e = { status: (err && err.status) || 502, noCache: true }; }
     if (isLeader) {
       inflight.delete(key);
       if (e.status === 200 && e.buf && !e.noCache) cache.set(key, e, e.buf.length, e.ttl);
@@ -503,25 +549,49 @@ function createGateway(d) {
     throw new Error('terlalu dalam');
   }
   async function snap(rawUrl, req, res) {
+    if (req.destroyed || res.destroyed) return;
     const ip = rate(req, res); if (!ip) return;
     if (!rawUrl || !hostAllowed(rawUrl)) return deny(res, 403);
     if (!(await detectFfmpeg())) return deny(res, 501);
-    const jh = { ...corsHdr, ...secHdr, 'content-type': 'image/jpeg', 'cache-control': (allowCors || allowPublicCache) ? 'public, max-age=60, s-maxage=60, stale-while-revalidate=60' : 'private, max-age=60' };
+    const jh = { ...corsHdr, ...secHdr, 'content-type': 'image/jpeg', 'cache-control': (allowCors || allowPublicCache) ? 'public, max-age=60, stale-while-revalidate=60' : 'private, max-age=60' };
     const snapKey = canonicalKey(rawUrl);
     const hit = snaps.get(snapKey);
     if (hit) { res.writeHead(200, jh); return res.end(hit); }
     const f = snapFail.get(snapKey); if (f && f > Date.now()) return deny(res, 503, { 'retry-after': '30' });
-    let p = snapIn.get(snapKey);
-    if (!p) {
-      p = snapLane.run('snap', async () => {
-        let u = rawUrl; try { u = await rewriteUrl(rawUrl); } catch (e) {}
-        return snapshotFor(u);
-      });
-      snapIn.set(snapKey, p.catch(() => null));
-      p.finally(() => snapIn.delete(snapKey)).catch(() => {});
+    let entry = snapIn.get(snapKey);
+    if (!entry) {
+      const ac = new AbortController();
+      const flight = {
+        ac,
+        waiters: 0,
+        promise: snapLane.run('snap', async () => {
+          let u = rawUrl; try { u = await rewriteUrl(rawUrl); } catch (e) {}
+          return snapshotFor(u);
+        }, ac.signal),
+      };
+      flight.promise.finally(() => snapIn.delete(snapKey)).catch(() => {});
+      entry = flight;
+      snapIn.set(snapKey, entry);
     }
+    entry.waiters++;
+    const onClose = () => {
+      entry.waiters = Math.max(0, entry.waiters - 1);
+      if (entry.waiters === 0) { try { entry.ac.abort(); } catch {} }
+    };
+    req.once('close', onClose);
     let jpg;
-    try { jpg = await p; } catch (e) { snapFail.set(snapKey, Date.now() + 45000); if (snapFail.size > 2000) snapFail.delete(snapFail.keys().next().value); return deny(res, 503, { 'retry-after': '45' }); }
+    try {
+      jpg = await entry.promise;
+    } catch (e) {
+      req.off('close', onClose);
+      if (!e || (e.status !== 503 && e.status !== 499)) {
+        snapFail.set(snapKey, Date.now() + 45000);
+        if (snapFail.size > 2000) snapFail.delete(snapFail.keys().next().value);
+      }
+      return deny(res, 503, { 'retry-after': e && e.status === 503 ? '5' : '45' });
+    }
+    req.off('close', onClose);
+    if (!jpg || res.destroyed || res.writableEnded) return;
     snaps.set(snapKey, jpg, jpg.length, O.snapTtl);
     res.writeHead(200, jh); res.end(jpg); chargeBytes(ip, jpg.length);
   }
@@ -579,7 +649,7 @@ function createGateway(d) {
 
   return {
     hls, snap, report, reportedDead, rumIngest, rumStats, detectFfmpeg,
-    stats: () => ({ ...m, lane: lane.stats(), cache: cache.stats(), snapCache: snaps.stats(), inflight: inflight.size, reports: reports.size })
+    stats: () => ({ ...m, lane: lane.stats(), snapLane: snapLane.stats(), cache: cache.stats(), snapCache: snaps.stats(), inflight: inflight.size, reports: reports.size })
   };
 }
 

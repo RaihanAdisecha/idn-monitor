@@ -998,3 +998,171 @@ test('Firecrawl per-URL cooldown and bounded thumbBusy wait prevent retry storms
   // Contract: rdRead waits on in-flight thumb with a timeout, not forever
   assert.ok(serverJs.includes('Promise.race([thumbBusy.get(canon), sleep(8000)])'), 'thumbBusy wait must be bounded at 8s');
 });
+
+test('Leaflet Peta Insiden & Globe render zoom-responsive, collision-culled, non-interactive regional labels', () => {
+  const fs = require('fs');
+  const path = require('path');
+  const vm = require('vm');
+  const html = fs.readFileSync(path.join(__dirname, '../public/index.html'), 'utf8');
+
+  // CSS + Globe viewport culling + Leaflet wiring contracts
+  assert.ok(html.includes('.reg-lbl-ic{pointer-events:none!important') && html.includes('pointer-events:none;user-select:none'), 'regional labels must be non-interactive CSS overlays');
+  assert.ok(html.includes("const regPane = map.createPane('regLabels')") && html.includes("regPane.style.pointerEvents = 'none'"), 'Leaflet regLabels pane must be non-interactive');
+  assert.ok(html.includes("map.on('moveend resize', paintMapRegLabels)"), 'Leaflet must update regional labels on zoom/pan/resize');
+  assert.ok(html.includes('box.x + box.w > w - 2') && html.includes('label di luar viewport jangan makan kuota maxLab'), 'Globe must cull off-screen regional labels before checking maxLab');
+
+  // Extract paintMapRegLabels body and execute against mock Leaflet map + data
+  const fnStart = html.indexOf('function paintMapRegLabels(){');
+  const fnEnd = html.indexOf('\nfunction ttFlowPopup(', fnStart);
+  assert.ok(fnStart > 0 && fnEnd > fnStart, 'paintMapRegLabels must exist in public/index.html');
+  const fnCode = html.slice(fnStart, fnEnd);
+
+  const added = [];
+  let currentZoom = 5;
+  let cleared = 0;
+  const ctx = {
+    mapReady: true,
+    mapOpen: true,
+    layerOn: { pins: true, heat: true },
+    mapData: [
+      { fixed: true, name: 'Node Empty', la: -6.2, lo: 106.8 },
+      { name: 'Jakarta', la: -6.2, lo: 106.8 },
+      { name: 'Jakarta', la: -6.2, lo: 106.8 },
+      { name: 'Jakarta', la: -6.2, lo: 106.8 },
+      { name: 'Bekasi', la: -6.21, lo: 106.85 }, // collides with Jakarta box at same px neighborhood
+      { name: 'Surabaya', la: -7.25, lo: 112.75 },
+      { name: 'Surabaya', la: -7.25, lo: 112.75 },
+      { name: 'Papua Jauh', la: -2.5, lo: 140.7 }, // offscreen in mock projection -> must not consume maxLab
+    ],
+    deEmoji: s => String(s || ''),
+    esc: s => String(s || ''),
+    regTextWidth: txt => txt.length * 5,
+    regLabelLayer: {
+      clearLayers: () => { added.length = 0; cleared++; },
+      addLayer: m => added.push(m),
+    },
+    map: {
+      getSize: () => ({ x: 800, y: 500 }),
+      getZoom: () => currentZoom,
+      latLngToContainerPoint: ([la, lo]) => {
+        if (lo > 130) return { x: 1200, y: 200 }; // offscreen right
+        if (Math.abs(la + 6.2) < 0.05 && Math.abs(lo - 106.82) < 0.1) return { x: 200, y: 250 }; // Jakarta & Bekasi collide
+        return { x: 450, y: 280 }; // Surabaya clear
+      },
+    },
+    L: {
+      divIcon: opts => opts,
+      marker: (ll, opts) => ({ ll, opts }),
+    },
+  };
+  vm.runInNewContext(fnCode + '; paintMapRegLabels();', ctx);
+
+  assert.equal(added.length, 2, 'should place Jakarta 3 and Surabaya 2 while culling colliding Bekasi and offscreen Papua');
+  assert.ok(added[0].opts.icon.html.includes('JAKARTA 3'), 'highest count cluster wins slot');
+  assert.ok(added[1].opts.icon.html.includes('SURABAYA 2'));
+  assert.equal(added[0].opts.interactive, false, 'marker must be non-interactive');
+  assert.equal(added[0].opts.keyboard, false, 'marker must not be keyboard-focusable');
+  assert.equal(added[0].opts.pane, 'regLabels');
+  assert.ok(!added.some(m => m.opts.icon.html.includes('NODE EMPTY')), 'fixed monitoring nodes must not create incident labels');
+
+  // Turning off both pins and heat clears regional labels
+  ctx.layerOn.pins = false;
+  ctx.layerOn.heat = false;
+  vm.runInNewContext(fnCode + '; paintMapRegLabels();', ctx);
+  assert.equal(added.length, 0, 'turning off both pins and heat must clear regional labels');
+  assert.ok(cleared >= 2);
+});
+
+test('Social sources (Instagram Reels, TikTok, Facebook, Threads, X) are blocked from Newswire without false-positiving news about Instagram', async () => {
+  const fs = require('fs');
+  const path = require('path');
+  const SRV = require('../server');
+  const serverJs = fs.readFileSync(path.join(__dirname, '../server.js'), 'utf8');
+
+  // Social URLs & GNEWS social publisher wrappers must be rejected
+  assert.equal(SRV.isBannedHostUrl('https://www.instagram.com/reel/DfmGpMdTsyK/'), true);
+  assert.equal(SRV.isBannedHostUrl('https://instagr.am/p/ABC123/'), true);
+  assert.equal(SRV.isBannedHostUrl('https://vt.tiktok.com/ZS2abc/'), true);
+  assert.equal(SRV.isBannedHostUrl('https://www.facebook.com/watch/?v=123'), true);
+  assert.equal(SRV.isBannedNewsItem({
+    title: 'Aksi demo di Yogyakarta ricuh #tribunmedan',
+    url: 'https://news.google.com/rss/articles/CBMiVkFVX3lxTFAzZWYzbVpY',
+    pub: 'Instagram',
+  }), true);
+  assert.equal(SRV.isBannedNewsItem({
+    title: 'Kejadian banjir',
+    url: 'https://news.google.com/rss/articles/CBMi123',
+    srcUrl: 'https://www.instagram.com',
+    pub: '',
+  }), true);
+
+  // Legitimate articles discussing Instagram or Threads CDN image proxy must remain intact
+  assert.equal(SRV.isBannedNewsItem({
+    title: 'Instagram Gibran Banjir 26 Postingan Semalam',
+    url: 'https://www.detik.com/bali/berita/d-8747561/instagram-gibran-banjir-26-postingan-semalam',
+    pub: '',
+    src: 'DETIK BALI',
+  }), false);
+  assert.ok(serverJs.includes("const IMG_HOSTS = ['fbcdn.net', 'cdninstagram.com'"), 'Threads CDN proxy allowlist must stay enabled');
+
+  // Direct thumb() & rdRead() calls on Instagram Reel URLs must reject cleanly without scraping
+  const th = await SRV.thumb('https://www.instagram.com/reel/DfmGpMdTsyK/');
+  assert.equal(th.verified, false);
+  assert.equal(th.status, 'rejected');
+  assert.equal(th.transient, false);
+  await assert.rejects(
+    () => SRV.rdRead('https://www.instagram.com/reel/DfmGpMdTsyK/'),
+    err => !err.transient && /dikecualikan/i.test(err.message)
+  );
+});
+
+test('WAF/Cloudflare-gated news photos verify via crawler fallback and flow cleanly through /img verified proxy allowlist', async () => {
+  const fs = require('fs');
+  const path = require('path');
+  const SRV = require('../server');
+  const MEDIA = require('../article-media');
+  const serverJs = fs.readFileSync(path.join(__dirname, '../server.js'), 'utf8');
+  const html = fs.readFileSync(path.join(__dirname, '../public/index.html'), 'utf8');
+
+  const artUrl = 'https://www.suaradewata.com/berita/202405219038/contoh';
+  const imgUrl = 'https://www.suaradewata.com/uploads/berita/contoh_123.webp';
+  const res = await MEDIA.resolveArticleMedia({
+    requestedUrl: artUrl,
+    canonicalUrl: artUrl,
+    html: `<html><head><meta property="og:image" content="${imgUrl}"></head><body><article><p>Konten berita modifikasi cuaca.</p></article></body></html>`,
+    mode: 'full',
+    method: 'bot',
+    probeFn: async () => ({
+      ok: true,
+      w: 750,
+      h: 500,
+      mime: 'image/webp',
+      bytes: 111112,
+      fingerprint: 'fp-waf-bot',
+      finalUrl: imgUrl,
+      viaBot: true,
+    }),
+  });
+  assert.equal(res.hero.verified, true);
+  assert.equal(res.hero.url, imgUrl);
+  assert.equal(res.hero.proxy, true, 'bot-verified image must signal proxy: true so browser bypasses WAF 403');
+
+  // Verify frontend & server contracts for /img verified proxy allowlist + single-hop error fallback
+  assert.ok(serverJs.includes('for (const bua of RD_BOT_UAS.slice(0, 3))') && serverJs.includes('registerVerifiedProxyImg'), 'probeImage must fall back to RD_BOT_UAS and whitelist verified image URLs');
+  assert.ok(serverJs.includes('const vMeta = u ? verifiedProxyImgs.get(u) : null;'), '/img must serve verified news images while still returning 403 for unverified hosts');
+  assert.ok(html.includes('rdMediaImgSrc(d.img, d.proxy)') && html.includes('rdMediaImgSrc(hero, d.imgProxy)'), 'Terbaru and Reader must load proxy-flagged images through /img');
+  assert.ok(html.includes('function rdImgProxyFallback(img)') && html.includes('rdFigFb(this)') && html.includes('rdLeadImgFb(this)'), 'Terbaru and Reader must fall back once to /img on client load error');
+
+  // Security check: arbitrary non-verified external URL still returns 403 on /img
+  await new Promise((resolve, reject) => {
+    const s = SRV.SITREP_SERVER.listen(0, '127.0.0.1', async () => {
+      try {
+        const r = await fetch(`http://127.0.0.1:${s.address().port}/img?u=${encodeURIComponent('https://evil.example/unverified.webp')}`, {
+          headers: { 'x-sitrep-token': SRV.AUTH.apiToken },
+        });
+        assert.equal(r.status, 403);
+        resolve();
+      } catch (e) { reject(e); } finally { s.close(); }
+    });
+  });
+});

@@ -10,6 +10,7 @@ const MEDIA = require('./article-media');
 const PIPELINE_VERSION = MEDIA.PIPELINE_VERSION;
 const assetReuse = new MEDIA.AssetReuseTracker();
 const XPOOL = require('./xpool');
+const { monitorEventLoopDelay } = require('perf_hooks');
 const http = require('http'), fs = require('fs'), path = require('path'), dns = require('dns').promises, crypto = require('crypto'), zlib = require('zlib');
 // muat .env sederhana (satu baris KEY=VALUE) agar TOMTOM_API_KEY bisa dari env
 try {
@@ -47,7 +48,7 @@ const AUTH = SEC.createAuthManager({
   explicitToken: explicitApiToken,
   usersSpec: process.env.SITREP_USERS || '',
   authSecret: process.env.SITREP_AUTH_SECRET || '',
-  tokenRole: process.env.SITREP_TOKEN_ROLE || 'admin',
+  tokenRole: process.env.SITREP_TOKEN_ROLE || (isPublicDeploy ? 'operator' : 'admin'),
   trustProxy: TRUST_PROXY,
   publicDeploy: isPublicDeploy
 });
@@ -558,6 +559,28 @@ const cleanPub = v => {
 // domain/sumber yang dilarang — item langsung dibuang dari semua feed.
 // kompasiana = platform opini/blog; koran/majalah/plus tempo = edisi berbayar/langganan.
 const BANNED_SRC = /infopublik\.id|infopublik|kompasiana|koran\.tempo\.co|majalah\.tempo\.co|plus\.tempo\.co|tempo\.co\/(?:plus|langganan|subscribe)\b|mozaik\.inilah\.com|mediacenter\.palangkaraya\.go\.id|viva\.co\.id\/foto|nokenlive|polreskedirikota|korankaltim|pelakita|cilegon\.go\.id|twaslnews|kilangbara\.com|klikmu\.co/i;
+// platform media sosial bukan sumber berita wire (Instagram Reels/TikTok/Facebook nyasar via GNEWS) —
+// cek hostname & nama publisher exact agar artikel berita yang sekadar menyebut "Instagram" di judul tetap lolos.
+const BANNED_SOCIAL_HOST_RE = /(?:^|\.)(?:instagram\.com|instagr\.am|tiktok\.com|vt\.tiktok\.com|vm\.tiktok\.com|facebook\.com|fb\.com|fb\.watch|threads\.net|threads\.com|x\.com|twitter\.com)$/i;
+const BANNED_SOCIAL_PUB_RE = /^(?:instagram|tiktok|facebook|threads|x|twitter)$/i;
+function isBannedHostUrl(u) {
+  if (!u) return false;
+  const s = String(u);
+  if (BANNED_SRC.test(s)) return true;
+  try {
+    const h = new URL(s).hostname.replace(/^www\./i, '');
+    if (BANNED_SOCIAL_HOST_RE.test(h)) return true;
+  } catch (e) {}
+  return false;
+}
+function isBannedNewsItem(it) {
+  if (!it) return false;
+  const pub = String(it.pub || '').trim();
+  if (pub && BANNED_SOCIAL_PUB_RE.test(pub)) return true;
+  if (isBannedHostUrl(it.url) || isBannedHostUrl(it.srcUrl) || isBannedHostUrl(it.final)) return true;
+  const bid = (it.title || '') + ' ' + (it.url || '') + ' ' + pub + ' ' + (it.srcUrl || '');
+  return BANNED_SRC.test(bid);
+}
 function parseFeed(xml, feedUrl = 'https://localhost/') {
   const out = [];
   for (const m of xml.matchAll(/<item[\s>]([\s\S]*?)<\/item>/gi)) {
@@ -567,13 +590,13 @@ function parseFeed(xml, feedUrl = 'https://localhost/') {
     const d = tag(b, 'pubDate') || tag(b, 'dc:date');   // dc:date = RSS 1.0/RDF (DW)
     const isGN = /^https?:\/\/news\.google\.com\//i.test(url);
     const srcUrl = (b.match(/<source[^>]*url="([^"]+)"/i) || [])[1] || '';   // GN bungkus domain asli di atribut source url — tanpa ini BANNED_SRC buta
-    const bid = title + ' ' + url + ' ' + tag(b, 'source') + ' ' + srcUrl;
-    if (title && url && !BANNED_SRC.test(bid)) {
+    const pub = cleanPub(tag(b, 'source'));
+    if (title && url && !isBannedNewsItem({ title, url, pub, srcUrl })) {
       const rssImgs = MEDIA.extractFeedImageCandidates(b, url || feedUrl);
       out.push({
         title, url, ts: d ? Date.parse(d) || 0 : 0,
         img: '', rssImg: rssImgs[0] || '', rssImgs,
-        pub: cleanPub(tag(b, 'source')), desc: isGN ? '' : descOf(b, title)
+        pub, desc: isGN ? '' : descOf(b, title)
       });
     }
   }
@@ -583,8 +606,7 @@ function parseFeed(xml, feedUrl = 'https://localhost/') {
     const rawLink = (l && (l[1] || '').trim()) || '';
     const url = MEDIA.resolveUrl(rawLink, feedUrl);
     const isGN2 = /^https?:\/\/news\.google\.com\//i.test(url);
-    const bid = t + ' ' + url;
-    if (url && t && !BANNED_SRC.test(bid)) {
+    if (url && t && !isBannedNewsItem({ title: t, url })) {
       const rssImgs = MEDIA.extractFeedImageCandidates(b, url || feedUrl);
       out.push({
         title: t, url, ts: Date.parse(d) || 0,
@@ -649,7 +671,7 @@ function loadNewsHist() {
       if (!it || !it.src || !it.url || !it.title) continue;
       const ts = Number(it.ts) || 0;
       if (ts <= 0 || ts > now + 5 * 60e3 || now - ts > 24 * 3600e3) continue;
-      if (BANNED_SRC.test((it.title || '') + ' ' + it.url + ' ' + (it.pub || ''))) continue;
+      if (isBannedNewsItem(it)) continue;
       if (FEEDTEXT.newsEnglish(it.title, it.desc)) continue;
       let m = newsHistByFeed.get(it.src);
       if (!m) { m = new Map(); newsHistByFeed.set(it.src, m); }
@@ -669,7 +691,7 @@ function mergeNewsHist(id, liveItems, now, opts = {}) {
   let m = newsHistByFeed.get(id);
   if (!m) { m = new Map(); newsHistByFeed.set(id, m); }
   for (const [k, prev] of m) {
-    if (!prev || !prev.ts || prev.ts <= 0 || prev.ts > now + 5 * 60e3 || now - prev.ts > 24 * 3600e3 || BANNED_SRC.test((prev.title || '') + ' ' + (prev.url || '') + ' ' + (prev.pub || ''))) {
+    if (!prev || !prev.ts || prev.ts <= 0 || prev.ts > now + 5 * 60e3 || now - prev.ts > 24 * 3600e3 || isBannedNewsItem(prev)) {
       m.delete(k);
     }
   }
@@ -677,7 +699,7 @@ function mergeNewsHist(id, liveItems, now, opts = {}) {
     const cleanIt = { ...it, title: cleanTitle(it.title, it.pub), src: id };
     const ts = Number(cleanIt.ts) || 0;
     if (ts <= 0 || ts > now + 5 * 60e3 || now - ts > 24 * 3600e3) continue;
-    if (BANNED_SRC.test(cleanIt.title + ' ' + cleanIt.url + ' ' + (cleanIt.pub || ''))) continue;
+    if (isBannedNewsItem(cleanIt)) continue;
     if (FEEDTEXT.newsEnglish(cleanIt.title, cleanIt.desc)) continue;
     const k = newsHistKey(cleanIt);
     if (!k) continue;
@@ -720,65 +742,109 @@ function invalidateDerivedFromNews() {
   assessedCacheMap = null;
   assessedInflight = null;
 }
-async function fetchFeedEntry(id, url) {
-  const customProxy = process.env.CUSTOM_PROXY_URL || process.env.PROXY_URL || CFG.custom_proxy;
-  const attempts = [
-    url,
-    ...(customProxy ? [(customProxy.endsWith('/') ? customProxy : customProxy + '/') + encodeURIComponent(url)] : []),
-    'https://api.codetabs.com/v1/proxy?quest=' + encodeURIComponent(url),
-    'https://api.allorigins.win/raw?url=' + encodeURIComponent(url),
-    'https://test.cors.workers.dev/?' + encodeURIComponent(url)
-  ];
-  let lastErr = '';
-  const t0 = Date.now();
-  // rss.tempo.co = edisi INGGRIS (bukan untuk wire ID) dan tempo.co utama di-blokir
-  // Cloudflare; exclude edisi berbayar koran/majalah/plus & Inggris agar wire tetap bersih.
-  if (id === 'TEMPO') attempts.unshift('https://news.google.com/rss/search?hl=id&gl=ID&ceid=ID:id&q=' + encodeURIComponent('site:tempo.co -site:koran.tempo.co -site:majalah.tempo.co -site:plus.tempo.co -site:en.tempo.co when:2d'));
-  // voi.id/rss dibalik Cloudflare 403 — siapkan Google News site:voi.id sebelum proxy CORS lambat/timeout.
-  if (id === 'VOI') attempts.splice(customProxy ? 2 : 1, 0, 'https://news.google.com/rss/search?hl=id&gl=ID&ceid=ID:id&q=' + encodeURIComponent('site:voi.id when:2d'));
-  outer: for (const u of attempts) {
-    for (let i = 0; i < 2; i++) {
-      if (Date.now() - t0 > 26000) break outer;   // deadline per feed: jangan biarkan satu feed macetkan semua
-      try {
-        const isDirectPub = !/^https?:\/\/(?:news\.google\.com|r\.jina\.ai|corsproxy\.|api\.allorigins\.|api\.codetabs\.)/i.test(u);
-        const initHdrs = id === 'JPNN'
-          ? { headers: { 'user-agent': 'Wget/1.21' } }
-          : (isDirectPub ? { headers: { 'accept-language': 'id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7' } } : {});
-        let r = await get(u, initHdrs, 12000);
-        if (!r.ok && isDirectPub && (r.status === 403 || r.status === 406 || r.status === 429)) {
-          try { if (r.body && r.body.cancel) await r.body.cancel(); } catch (e) {}
-          r = await get(u, {
-            headers: {
-              'user-agent': 'WhatsApp/2.23.20.0 A',
-              accept: 'application/rss+xml, application/xml, text/xml;q=0.9, */*;q=0.8',
-            }
-          }, 12000);
+const RSS_CONCURRENCY = Math.max(1, Number(process.env.SITREP_RSS_CONCURRENCY) || 8);
+const RSS_JITTER_MS = Math.max(0, Number(process.env.SITREP_RSS_JITTER_MS ?? 250));
+const rssSem = makeSem(RSS_CONCURRENCY, 160);
+const feedHealth = new Map();   // feedId -> { id, lastAttempt, lastSuccess, consecutiveFailures, lastError, lastOkCount }
+function recordFeedHealth(id, ok, err, okCount = 0) {
+  const now = Date.now();
+  const prev = feedHealth.get(id) || { id, lastAttempt: 0, lastSuccess: 0, consecutiveFailures: 0, lastError: '', lastOkCount: 0 };
+  prev.lastAttempt = now;
+  if (ok) {
+    prev.lastSuccess = now;
+    prev.consecutiveFailures = 0;
+    prev.lastError = '';
+    prev.lastOkCount = okCount;
+  } else {
+    prev.consecutiveFailures++;
+    prev.lastError = String(err || 'gagal').slice(0, 120);
+  }
+  feedHealth.set(id, prev);
+}
+function getFeedHealthSummary() {
+  const now = Date.now();
+  const sources = [];
+  let healthy = 0, failing = 0, maxAgeMs = 0;
+  for (const [id] of NEWS) {
+    const h = feedHealth.get(id) || { id, lastAttempt: 0, lastSuccess: 0, consecutiveFailures: 0, lastError: '', lastOkCount: 0 };
+    const ageMs = h.lastSuccess ? Math.max(0, now - h.lastSuccess) : null;
+    if (ageMs !== null && ageMs > maxAgeMs) maxAgeMs = ageMs;
+    if (h.consecutiveFailures > 0) failing++;
+    else if (h.lastSuccess > 0) healthy++;
+    sources.push({ id, lastAttempt: h.lastAttempt, lastSuccess: h.lastSuccess, ageMs, consecutiveFailures: h.consecutiveFailures, lastOkCount: h.lastOkCount });
+  }
+  return { total: NEWS.length, healthy, failing, maxAgeMs, sources };
+}
+function fetchFeedEntry(id, url) {
+  return rssSem(async () => {
+    const prevAttempt = (feedHealth.get(id) || {}).lastAttempt || 0;
+    if (RSS_JITTER_MS > 0 && prevAttempt > 0) {
+      await sleep(Math.floor(Math.random() * RSS_JITTER_MS));
+    }
+    const customProxy = process.env.CUSTOM_PROXY_URL || process.env.PROXY_URL || CFG.custom_proxy;
+    const attempts = [
+      url,
+      ...(customProxy ? [(customProxy.endsWith('/') ? customProxy : customProxy + '/') + encodeURIComponent(url)] : []),
+      'https://api.codetabs.com/v1/proxy?quest=' + encodeURIComponent(url),
+      'https://api.allorigins.win/raw?url=' + encodeURIComponent(url),
+      'https://test.cors.workers.dev/?' + encodeURIComponent(url)
+    ];
+    let lastErr = '';
+    const t0 = Date.now();
+    // rss.tempo.co = edisi INGGRIS (bukan untuk wire ID) dan tempo.co utama di-blokir
+    // Cloudflare; exclude edisi berbayar koran/majalah/plus & Inggris agar wire tetap bersih.
+    if (id === 'TEMPO') attempts.unshift('https://news.google.com/rss/search?hl=id&gl=ID&ceid=ID:id&q=' + encodeURIComponent('site:tempo.co -site:koran.tempo.co -site:majalah.tempo.co -site:plus.tempo.co -site:en.tempo.co when:2d'));
+    // voi.id/rss dibalik Cloudflare 403 — siapkan Google News site:voi.id sebelum proxy CORS lambat/timeout.
+    if (id === 'VOI') attempts.splice(customProxy ? 2 : 1, 0, 'https://news.google.com/rss/search?hl=id&gl=ID&ceid=ID:id&q=' + encodeURIComponent('site:voi.id when:2d'));
+    outer: for (const u of attempts) {
+      for (let i = 0; i < 2; i++) {
+        if (Date.now() - t0 > 26000) break outer;   // deadline per feed: jangan biarkan satu feed macetkan semua
+        try {
+          const isDirectPub = !/^https?:\/\/(?:news\.google\.com|r\.jina\.ai|corsproxy\.|api\.allorigins\.|api\.codetabs\.)/i.test(u);
+          const initHdrs = id === 'JPNN'
+            ? { headers: { 'user-agent': 'Wget/1.21' } }
+            : (isDirectPub ? { headers: { 'accept-language': 'id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7' } } : {});
+          let r = await get(u, initHdrs, 12000);
+          if (!r.ok && isDirectPub && (r.status === 403 || r.status === 406 || r.status === 429)) {
+            try { if (r.body && r.body.cancel) await r.body.cancel(); } catch (e) {}
+            r = await get(u, {
+              headers: {
+                'user-agent': 'WhatsApp/2.23.20.0 A',
+                accept: 'application/rss+xml, application/xml, text/xml;q=0.9, */*;q=0.8',
+              }
+            }, 12000);
+          }
+          if (!r.ok) throw new Error('HTTP ' + r.status);
+          const items = parseFeed(await r.text(), url);
+          if (!items.length) throw new Error('feed kosong');
+          const now = Date.now();
+          const fresh = items.filter(it => !it.ts || (it.ts <= now + 5 * 60e3 && now - it.ts <= 24 * 3600e3));
+          const newest = Math.max(0, ...fresh.map(i => i.ts || 0));
+          const outItems = mergeNewsHist(id, fresh, now);
+          // Tangkap item tanpa timestamp XML sebagai live fallback bila masih ada
+          if (!outItems.length && fresh.length) {
+            for (const it of fresh.slice(0, NEWS_FEED_CAP)) outItems.push({ ...it, title: cleanTitle(it.title, it.pub), src: id });
+          }
+          const sig = feedSig(outItems);
+          const prevSig = feedSigMap.get(id);
+          if (prevSig && prevSig !== sig) invalidateDerivedFromNews();
+          feedSigMap.set(id, sig);
+          const stale = !fresh.length || !!(newest && now - newest > 3 * 3600e3);
+          recordFeedHealth(id, true, '', outItems.length);
+          recordUpstream('rss', true, Date.now() - t0);
+          return { id, ok: true, stale, items: outItems, at: now };
+        } catch (e) {
+          lastErr = String(e.message || e);
+          if (/^HTTP (?:403|404|410)\b/.test(lastErr)) break;
+          if (i === 0) await new Promise(res => setTimeout(res, 350));
         }
-        if (!r.ok) throw new Error('HTTP ' + r.status);
-        const items = parseFeed(await r.text(), url);
-        if (!items.length) throw new Error('feed kosong');
-        const now = Date.now();
-        const fresh = items.filter(it => !it.ts || (it.ts <= now + 5 * 60e3 && now - it.ts <= 24 * 3600e3));
-        const newest = Math.max(0, ...fresh.map(i => i.ts || 0));
-        const outItems = mergeNewsHist(id, fresh, now);
-        // Tangkap item tanpa timestamp XML sebagai live fallback bila masih ada
-        if (!outItems.length && fresh.length) {
-          for (const it of fresh.slice(0, NEWS_FEED_CAP)) outItems.push({ ...it, title: cleanTitle(it.title, it.pub), src: id });
-        }
-        const sig = feedSig(outItems);
-        const prevSig = feedSigMap.get(id);
-        if (prevSig && prevSig !== sig) invalidateDerivedFromNews();
-        feedSigMap.set(id, sig);
-        const stale = !fresh.length || !!(newest && now - newest > 3 * 3600e3);
-        return { id, ok: true, stale, items: outItems, at: now };
-      } catch (e) {
-        lastErr = String(e.message || e);
-        if (/^HTTP (?:403|404|410)\b/.test(lastErr)) break;
-        if (i === 0) await new Promise(res => setTimeout(res, 350));
       }
     }
-  }
-  return { id, ok: false, err: ('gagal direct + proxy: ' + lastErr).slice(0, 140), items: [] };
+    const errMsg = ('gagal direct + proxy: ' + lastErr).slice(0, 140);
+    recordFeedHealth(id, false, errMsg, 0);
+    recordUpstream('rss', false, Date.now() - t0);
+    return { id, ok: false, err: errMsg, items: [] };
+  });
 }
 let lastManualNewsBustAt = 0, manualNewsBustInflight = null;
 async function refreshNewsNow() {
@@ -3270,20 +3336,26 @@ const RD_JUNK_BASE = MEDIA.RD_JUNK_BASE;
 const BOT_CHALLENGE_RE = EXTRACT.BOT_CHALLENGE_RE;
 
 const probeCache = new Map();   // 'v<N>:<url>' -> { res, at }
-async function probeImageDirect(u, referer) {
-  const ck = 'v' + PIPELINE_VERSION + ':' + u;
-  const hit = probeCache.get(ck);
-  if (hit) {
-    const ttl = hit.res.ok ? 900000 : (hit.res.transient ? 15000 : 600000);
-    if (Date.now() - hit.at < ttl) return hit.res;
+const verifiedProxyImgs = new Map();   // verified image URL -> { ua, referer, finalUrl, at }
+function registerVerifiedProxyImg(urls, meta) {
+  const rec = { ua: (meta && meta.ua) || '', referer: (meta && meta.referer) || '', finalUrl: (meta && meta.finalUrl) || '', at: Date.now() };
+  for (const raw of urls) {
+    if (!raw || typeof raw !== 'string') continue;
+    verifiedProxyImgs.delete(raw);
+    verifiedProxyImgs.set(raw, rec);
+    lruCap(verifiedProxyImgs, 2500);
   }
+}
+async function probeImageDirect(u, referer, extraHeaders = null) {
   let res;
   try {
     // URL gambar berasal dari HTML artikel pihak ketiga — wajib assert publik per hop redirect (mediaGet).
-    const { r, url: finalUrl } = await mediaGet(u, 4500, {
+    const hdrs = {
       accept: 'image/webp,image/png,image/jpeg,image/gif,image/*,*/*;q=0.8',
-      ...(referer ? { referer } : {})
-    });
+      ...(referer ? { referer } : {}),
+      ...(extraHeaders || {}),
+    };
+    const { r, url: finalUrl } = await mediaGet(u, 4500, hdrs);
     if (!r.ok) {
       const transient = r.status === 403 || r.status === 429 || r.status >= 500;
       res = { ok: false, reason: 'http_' + r.status, detail: String(r.status), transient };
@@ -3357,21 +3429,41 @@ async function probeImageDirect(u, referer) {
     const isSsrf = /tidak valid|lokal|privat|diizinkan|kredensial|redirect/i.test(msg);
     res = { ok: false, reason: isSsrf ? 'ssrf_or_redirect_blocked' : 'network_or_timeout', detail: msg.slice(0, 100), transient: !isSsrf };
   }
-  probeCache.set(ck, { res, at: Date.now() });
-  lruCap(probeCache, 600);
   return res;
 }
 
 async function probeImage(u, referer) {
-  const direct = await probeImageDirect(u, referer);
-  if (direct.ok || !direct.transient || process.env.SITREP_NO_WESERV === '1') return direct;
-  // Hanya jika probe langsung terkena block WAF/403/timeout transien, coba verifikasi via weserv
-  const w = 'https://images.weserv.nl/?url=' + encodeURIComponent(String(u).replace(/^https?:\/\//, ''));
-  const viaWeserv = await probeImageDirect(w, referer);
-  if (viaWeserv.ok) {
-    return { ...viaWeserv, finalUrl: u };
+  const ck = 'v' + PIPELINE_VERSION + ':' + u;
+  const hit = probeCache.get(ck);
+  if (hit) {
+    const ttl = hit.res.ok ? 900000 : (hit.res.transient ? 15000 : 600000);
+    if (Date.now() - hit.at < ttl) return hit.res;
   }
-  return direct;
+  let res = await probeImageDirect(u, referer);
+  // Banyak portal berita di balik Cloudflare challenge hanya membuka gambar ke crawler UA resmi (RD_BOT_UAS)
+  if (!res.ok && res.transient) {
+    for (const bua of RD_BOT_UAS.slice(0, 3)) {
+      const botRes = await probeImageDirect(u, referer, { 'user-agent': bua });
+      if (botRes.ok) {
+        res = { ...botRes, viaBot: true, botUa: bua };
+        break;
+      }
+    }
+  }
+  // Jika direct & crawler UA masih terblokir transien, coba verifikasi via weserv
+  if (!res.ok && res.transient && process.env.SITREP_NO_WESERV !== '1') {
+    const w = 'https://images.weserv.nl/?url=' + encodeURIComponent(String(u).replace(/^https?:\/\//, ''));
+    const viaWeserv = await probeImageDirect(w, referer);
+    if (viaWeserv.ok) {
+      res = { ...viaWeserv, finalUrl: u, viaWeserv: true };
+    }
+  }
+  if (res.ok) {
+    registerVerifiedProxyImg([u, res.finalUrl], { ua: res.botUa || '', referer, finalUrl: res.finalUrl || u });
+  }
+  probeCache.set(ck, { res, at: Date.now() });
+  lruCap(probeCache, 600);
+  return res;
 }
 
 const GN_PATH = /^\/rss\/articles\/|\/articles\/|\/read\//i;
@@ -3529,10 +3621,19 @@ const jinaGet = (u, ms, h, alive, prio, signal) => {
   });
 };
 
-// Shared article HTML/Jina cache (5m TTL, bounded 1MB/article, 48 unique articles keyed canonically)
+// Shared article HTML/Jina cache (5m TTL, bounded 1MB/article, 48 articles & aggregate byte budget)
 const docCache = new Map();
 const docAlias = new Map();
 const DOC_CACHE_MAX_HTML = 1 << 20;
+const DOC_CACHE_MAX_BYTES = Math.max(4 << 20, Number(process.env.SITREP_DOC_CACHE_BYTES) || (48 << 20));
+let docCacheBytes = 0;
+function docCacheDelete(k) {
+  const prev = docCache.get(k);
+  if (prev) {
+    docCacheBytes = Math.max(0, docCacheBytes - (prev.bytes || 0));
+    docCache.delete(k);
+  }
+}
 function docCacheGet(u) {
   if (!u) return null;
   const canon = docAlias.get(u) || MEDIA.canonicalArticleUrl(u) || u;
@@ -3551,9 +3652,16 @@ function docCacheSet(urls, entry) {
   const htmlClipped = typeof entry.html === 'string' && entry.html.length > DOC_CACHE_MAX_HTML
     ? entry.html.slice(0, DOC_CACHE_MAX_HTML)
     : (entry.html || null);
-  const payload = { html: htmlClipped, jinaTxt: entry.jinaTxt || null, finalUrl: entry.finalUrl || '', via: entry.via || '', at: Date.now() };
+  const jinaTxt = entry.jinaTxt || null;
+  const bytes = (htmlClipped ? Buffer.byteLength(htmlClipped, 'utf8') : 0) + (jinaTxt ? Buffer.byteLength(jinaTxt, 'utf8') : 0);
+  if (bytes > DOC_CACHE_MAX_BYTES) return;
+  docCacheDelete(canonKey);
+  const payload = { html: htmlClipped, jinaTxt, bytes, finalUrl: entry.finalUrl || '', via: entry.via || '', at: Date.now() };
   docCache.set(canonKey, payload);
-  lruCap(docCache, 48);
+  docCacheBytes += bytes;
+  while ((docCache.size > 48 || docCacheBytes > DOC_CACHE_MAX_BYTES) && docCache.size) {
+    docCacheDelete(docCache.keys().next().value);
+  }
   for (const u of rawList) {
     docAlias.set(u, canonKey);
     lruCap(docAlias, 240);
@@ -3662,6 +3770,7 @@ function formatThumbResponse(mediaRes) {
     mime: (chosen && chosen.mime) || '',
     bytes: (chosen && chosen.bytes) || 0,
     verified: Boolean(chosen && (chosen.verified === true || bodyFallback)),
+    proxy: Boolean(chosen && chosen.proxy),
     status,
     transient: Boolean(!chosen && mediaRes.transientFailure),
     videos: Array.isArray(mediaRes.videos) ? mediaRes.videos : [],
@@ -3673,6 +3782,13 @@ function formatThumbResponse(mediaRes) {
 async function thumbRun(u) {
   const x = publicURL(u);
   if (!x) throw new Error('url tidak valid');
+  const bannedThumb = canonUrl => ({
+    img: '', w: 0, h: 0, src: canonUrl || u, canonicalUrl: canonUrl || u,
+    source: 'none', method: 'none', aspectRatio: 0, mime: '', bytes: 0,
+    verified: false, proxy: false, status: 'rejected', transient: false,
+    videos: [], schemaVersion: PIPELINE_VERSION, diagnostics: null,
+  });
+  if (isBannedHostUrl(u)) return bannedThumb(u);
   const preHit = mediaCacheGet(u);
   if (preHit) return formatThumbResponse(preHit);
 
@@ -3681,6 +3797,7 @@ async function thumbRun(u) {
     article = await decodeGNews(u);
     if (article === u) throw new Error('gagal resolve google news');
   }
+  if (isBannedHostUrl(article)) return bannedThumb(article);
   const canon = MEDIA.canonicalArticleUrl(article) || article;
   const hitA = mediaCacheGet(u, canon);
   if (hitA) return formatThumbResponse(hitA);
@@ -3932,6 +4049,32 @@ function isKnownVhsUrl(u) {
 for (const m of newsHistByFeed.values()) {
   for (const it of m.values()) if (it && it.url) registerNewsUrl(it.url);
 }
+const LAT_BUCKETS = [5, 15, 50, 150, 500, 1500, 5000];
+const eventLoopDelay = monitorEventLoopDelay({ resolution: 20 });
+eventLoopDelay.enable();
+function newLatHist() {
+  return { buckets: new Array(LAT_BUCKETS.length + 1).fill(0), count: 0, sumMs: 0 };
+}
+function addLatSample(h, ms) {
+  const v = Math.max(0, Number(ms) || 0);
+  h.count++;
+  h.sumMs += v;
+  let bi = LAT_BUCKETS.length;
+  for (let i = 0; i < LAT_BUCKETS.length; i++) {
+    if (v <= LAT_BUCKETS[i]) { bi = i; break; }
+  }
+  h.buckets[bi]++;
+}
+function quantileFromHist(h, q) {
+  if (!h || !h.count) return 0;
+  const target = Math.ceil(h.count * q);
+  let cum = 0;
+  for (let i = 0; i < LAT_BUCKETS.length; i++) {
+    cum += h.buckets[i];
+    if (cum >= target) return LAT_BUCKETS[i];
+  }
+  return LAT_BUCKETS[LAT_BUCKETS.length - 1];
+}
 const METRICS = {
   startedAt: Date.now(),
   reqTotal: 0,
@@ -3941,39 +4084,111 @@ const METRICS = {
   outboundBlocked: 0,
   proxyWarning: false,
   cacheHits: 0,
+  bytesOut: 0,
+  bytesWindow: [],   // [{ sec, bytes }] last 10 seconds
+  latency: newLatHist(),
   routes: new Map(),
+  upstream: new Map(),
 };
+function addBytesOut(n) {
+  if (!n || n <= 0) return;
+  METRICS.bytesOut += n;
+  const sec = Math.floor(Date.now() / 1000);
+  const w = METRICS.bytesWindow;
+  const last = w[w.length - 1];
+  if (last && last.sec === sec) last.bytes += n;
+  else {
+    w.push({ sec, bytes: n });
+    while (w.length > 15) w.shift();
+  }
+}
+function originBytesPerSec() {
+  const nowSec = Math.floor(Date.now() / 1000);
+  const cutoff = nowSec - 9;
+  let sum = 0;
+  for (const b of METRICS.bytesWindow) if (b.sec >= cutoff) sum += b.bytes;
+  const span = Math.max(1, Math.min(10, Math.floor((Date.now() - METRICS.startedAt) / 1000) || 1));
+  return Math.round(sum / span);
+}
+function normalizeMetricRoute(route) {
+  if (!route) return 'other';
+  if (/^\/(?:signals|wxicons|wire-core|cctv-core)\.[a-f0-9]{8}\.js$/.test(route)) return '/asset.js';
+  if (route.startsWith('/tomtom/tile/')) return '/tomtom/tile/*';
+  if (METRICS.routes.has(route) || METRICS.routes.size < 80) return route;
+  return 'other';
+}
 function metricInc(route, status) {
   METRICS.reqTotal++;
   if (status === 429) METRICS.rejected429++;
   else if (status === 403) METRICS.rejected403++;
   else if (status === 503) METRICS.rejected503++;
-  if (route) {
-    let r = METRICS.routes.get(route);
-    if (!r) {
-      r = { count: 0, err: 0 };
-      if (METRICS.routes.size < 120) METRICS.routes.set(route, r);
-    }
-    if (r) { r.count++; if (status >= 400) r.err++; }
+}
+function recordRequestMetric(route, status, ms, cacheHit, bytesOut) {
+  addLatSample(METRICS.latency, ms);
+  addBytesOut(bytesOut);
+  const key = normalizeMetricRoute(route);
+  let r = METRICS.routes.get(key);
+  if (!r) {
+    r = { count: 0, err: 0, cacheHits: 0, bytesOut: 0, lat: newLatHist() };
+    METRICS.routes.set(key, r);
   }
+  r.count++;
+  if (status >= 400) r.err++;
+  if (cacheHit) r.cacheHits++;
+  r.bytesOut += bytesOut || 0;
+  addLatSample(r.lat, ms);
+}
+function recordUpstream(provider, ok, ms) {
+  const k = String(provider || 'other').slice(0, 24);
+  let u = METRICS.upstream.get(k);
+  if (!u) {
+    if (METRICS.upstream.size >= 32) return;
+    u = { count: 0, err: 0, lat: newLatHist() };
+    METRICS.upstream.set(k, u);
+  }
+  u.count++;
+  if (!ok) u.err++;
+  addLatSample(u.lat, ms);
 }
 
-/* ---------- IMG: proxy avatar CDN (Instagram kirim CORP same-origin, hotlink diblokir browser) ---------- */
+/* ---------- IMG: proxy avatar CDN & verified news images behind WAF/hotlink ---------- */
 const IMG_HOSTS = ['fbcdn.net', 'cdninstagram.com', 'unavatar.io', 'googleusercontent.com', 'ggpht.com'];
 const imgOK = u => { try { const h = new URL(u); return h.protocol === 'https:' && IMG_HOSTS.some(d => h.hostname === d || h.hostname.endsWith('.' + d)); } catch (e) { return false; } };
 async function img(u, res) {
-  if (!u || !imgOK(u)) { res.writeHead(403); return res.end('host tidak diizinkan'); }
+  const vMeta = u ? verifiedProxyImgs.get(u) : null;
+  if (!u || (!imgOK(u) && !vMeta)) { res.writeHead(403); return res.end('host tidak diizinkan'); }
   // mediaGet: redirect manual + rdAssertPublic/imgOK divalidasi ulang tiap hop —
   // redirect ke IP privat tidak bisa lagi bypass allowlist hostname.
+  const origHost = (() => { try { return new URL(u).hostname.toLowerCase(); } catch { return ''; } })();
+  const sameRootHost = (a, b) => a === b || a.endsWith('.' + b) || b.endsWith('.' + a);
+  const hopOK = vMeta
+    ? (hopU => {
+        if (imgOK(hopU) || verifiedProxyImgs.has(hopU)) return true;
+        try { const hh = new URL(hopU).hostname.toLowerCase(); return Boolean(origHost && sameRootHost(hh, origHost)); }
+        catch { return false; }
+      })
+    : imgOK;
+  const reqHdrs = vMeta
+    ? {
+        accept: 'image/webp,image/png,image/jpeg,image/gif,image/*,*/*;q=0.8',
+        ...(vMeta.ua ? { 'user-agent': vMeta.ua } : {}),
+        ...(vMeta.referer ? { referer: vMeta.referer } : {}),
+      }
+    : {};
   let r;
-  try { ({ r } = await mediaGet(u, 12000, {}, imgOK)); }
+  try { ({ r } = await mediaGet(u, 12000, reqHdrs, hopOK)); }
   catch (e) { res.writeHead(502); return res.end(); }
+  if (r.status === 403 && vMeta && !vMeta.ua) {
+    try { if (r.body && r.body.cancel) await r.body.cancel(); } catch (e) {}
+    try { ({ r } = await mediaGet(u, 12000, { ...reqHdrs, 'user-agent': RD_BOT_UAS[0] }, hopOK)); }
+    catch (e) { res.writeHead(502); return res.end(); }
+  }
   if (!r.ok) { res.writeHead(r.status); return res.end(); }
   const ct = r.headers.get('content-type') || '';
   const ctLow = ct.split(';')[0].trim().toLowerCase();
   if (!/^image\//i.test(ctLow) || /^image\/svg\+xml\b/i.test(ctLow)) { res.writeHead(415); return res.end('bukan gambar'); }
   let buf;
-  try { buf = await mediaBody(r, 2 << 20); }
+  try { buf = await mediaBody(r, 5 << 20); }
   catch (e) { res.writeHead(/terlalu besar/.test(e.message) ? 413 : 502); return res.end('terlalu besar'); }
   const hdrs = {
     'content-type': ctLow || 'image/jpeg',
@@ -4023,6 +4238,21 @@ async function cctvRewrite(u) {
   return u;
 }
 const cctvKnown = new Set();   // url kamera yang sah (katalog + inline): validasi /api/cctv/report
+const isMacGwProfile = process.env.SITREP_MAC_PROFILE === '1' || (AUTH.publicMode && process.platform === 'darwin');
+const envPosInt = (name, fallback) => {
+  const v = Number(process.env[name]);
+  return Number.isFinite(v) && v > 0 ? Math.floor(v) : fallback;
+};
+const GW_OPTIONS = {
+  maxActive: envPosInt('SITREP_HLS_MAX_ACTIVE', isMacGwProfile ? 10 : 48),
+  perHost: envPosInt('SITREP_HLS_PER_HOST', isMacGwProfile ? 3 : 8),
+  maxQueue: envPosInt('SITREP_HLS_MAX_QUEUE', 64),
+  snapActive: envPosInt('SITREP_HLS_SNAP_ACTIVE', 2),
+  snapMaxQueue: envPosInt('SITREP_HLS_SNAP_QUEUE', 16),
+  globalByteRate: envPosInt('SITREP_HLS_GLOBAL_BPS', (isMacGwProfile ? 6 : 45) << 20),
+  globalByteBurst: envPosInt('SITREP_HLS_GLOBAL_BURST', (isMacGwProfile ? 20 : 180) << 20),
+  segCacheBytes: envPosInt('SITREP_HLS_CACHE_BYTES', (isMacGwProfile ? 32 : 64) << 20),
+};
 const GW = require('./cctv-gateway').createGateway({
   getRaw: mediaGetRaw, hostAllowed: hostOK, headersFor: cctvHeaders, rewriteUrl: cctvRewrite, px,
   trustProxy: Boolean(TRUST_PROXY),
@@ -4031,7 +4261,8 @@ const GW = require('./cctv-gateway').createGateway({
   getClientIp: (req, tp) => SEC.getClientIp(req, tp),
   rateKey: SEC.rateKey,
   isKnownHost: h => hostOK('https://' + h + '/'),
-  isKnown: u => cctvKnown.has(u)
+  isKnown: u => cctvKnown.has(u),
+  options: GW_OPTIONS
 });
 const hls = (u, req, res) => GW.hls(u, req, res);
 // proxy video untuk instant reader: CDN berita (vod.detik dll) menolak Referer localhost → 403.
@@ -4771,6 +5002,7 @@ function rdAssembleBlocks(d, mediaRes) {
           width: bi.width || 0,
           height: bi.height || 0,
           aspectRatio: bi.aspectRatio || 0,
+          ...(bi.proxy ? { proxy: true } : {}),
         },
       },
       k: m ? m.k : -1,
@@ -4839,6 +5071,7 @@ async function rdFinish(d, url, canonUrl, html, jinaMd, via, wireIt) {
     mediaRes.mode = 'full';
     d.img = (mediaRes.hero && mediaRes.hero.url) || '';
     d.imgVerified = Boolean(mediaRes.hero && mediaRes.hero.verified);
+    d.imgProxy = Boolean(mediaRes.hero && mediaRes.hero.proxy);
     d.imgStatus = (mediaRes.hero && mediaRes.hero.status) || 'no_candidates';
     d.canonicalUrl = mediaRes.canonicalUrl || resolvedCanon;
     d.media = {
@@ -4921,6 +5154,11 @@ const outboundScrapeRl = SEC.createRateLimiter({ outbound: { limit: 180, windowM
 async function rdRead(raw, bg, forceFresh = false) {
   const x = publicURL(raw);
   if (!x) throw new Error('URL tidak valid');
+  if (isBannedHostUrl(raw)) {
+    const eb = new Error('Sumber berbayar atau dikecualikan (' + (rdHost(raw) || 'diblokir') + ')');
+    eb.transient = false;
+    throw eb;
+  }
   const yid = ytIdOf(raw);
   if (yid) return memo('yt:' + yid, 600000, () => rdReadYouTube(yid, raw));
 
@@ -4929,7 +5167,7 @@ async function rdRead(raw, bg, forceFresh = false) {
 
   let target = raw;
   if (/(^|\.)news\.google\.com$/i.test(x.hostname) && GN_PATH.test(x.pathname)) target = await decodeGNews(raw);
-  if (BANNED_SRC.test(target)) {
+  if (isBannedHostUrl(target)) {
     const eb = new Error('Sumber berbayar atau dikecualikan (' + (rdHost(target) || 'diblokir') + ')');
     eb.transient = false;
     throw eb;
@@ -4960,6 +5198,11 @@ async function rdRead(raw, bg, forceFresh = false) {
     const metaScore = d => ((d.videos || []).length * 2) + (d.desc ? 1 : 0) + ((d.paras || []).length * 0.5);
 
     const evaluateHtml = (html, url) => {
+      if (isBannedHostUrl(url)) {
+        const eb = new Error('Sumber berbayar atau dikecualikan (' + (rdHost(url) || 'diblokir') + ')');
+        eb.transient = false;
+        throw eb;
+      }
       const d = rdExtract(html, url, extractOpts);
       const q = d.extraction && d.extraction.quality;
       if (q && q.isChallengeOrError) {
@@ -5271,11 +5514,18 @@ const haversine = (a, b) => {
 // yang sama dan body JSON di-cap 2MB.
 const ttHostOK = u => { try { const h = new URL(u).hostname; return h === 'api.tomtom.com' || h.endsWith('.api.tomtom.com'); } catch (e) { return false; } };
 async function ttFetch(url) {
-  const { r } = await mediaGet(url, 12000, { accept: 'application/json' }, ttHostOK);
-  const txt = await mediaText(r, 2 << 20);
-  let data; try { data = JSON.parse(txt); } catch (e) { data = { raw: txt.slice(0, 400) }; }
-  if (!r.ok) { const err = new Error('TomTom ' + r.status + ' ' + (data.detailedError?.message || data.error || txt.slice(0, 120))); err.status = r.status; err.data = data; throw err; }
-  return data;
+  const t0 = Date.now();
+  try {
+    const { r } = await mediaGet(url, 12000, { accept: 'application/json' }, ttHostOK);
+    const txt = await mediaText(r, 2 << 20);
+    let data; try { data = JSON.parse(txt); } catch (e) { data = { raw: txt.slice(0, 400) }; }
+    if (!r.ok) { const err = new Error('TomTom ' + r.status + ' ' + (data.detailedError?.message || data.error || txt.slice(0, 120))); err.status = r.status; err.data = data; throw err; }
+    recordUpstream('tomtom', true, Date.now() - t0);
+    return data;
+  } catch (e) {
+    recordUpstream('tomtom', false, Date.now() - t0);
+    throw e;
+  }
 }
 const roundGrid = (v, step) => Math.round(Number(v) / step) * step;
 const roundGridStr = (v, step, d = 2) => roundGrid(v, step).toFixed(d);
@@ -5542,15 +5792,16 @@ async function descForUrl(reqUrl) {
   if (cached !== undefined) return cached;
   const x = publicURL(reqUrl);
   if (!x) return '';
+  if (isBannedHostUrl(reqUrl)) { descRemember([reqUrl], '', false); return ''; }
   let target = reqUrl;
   if (/(^|\.)news\.google\.com$/i.test(x.hostname) && GN_PATH.test(x.pathname)) {
     try { target = await decodeGNews(reqUrl); } catch (e) { descRemember([reqUrl], '', true); return ''; }
     if (/(^|\.)news\.google\.com$/i.test(new URL(target).hostname)) { descRemember([reqUrl], '', true); return ''; }
-    if (BANNED_SRC.test(target)) { descRemember([reqUrl, target], '', false); return ''; }
+    if (isBannedHostUrl(target)) { descRemember([reqUrl, target], '', false); return ''; }
     const viaTarget = descGet(target);
     if (viaTarget !== undefined) { descRemember([reqUrl], viaTarget); return viaTarget; }
   }
-  if (BANNED_SRC.test(target)) { descRemember([reqUrl, target], '', false); return ''; }
+  if (isBannedHostUrl(target)) { descRemember([reqUrl, target], '', false); return ''; }
   const canon = MEDIA.canonicalArticleUrl(target) || target;
   // 1. Cek apakah artikel ini sudah ada di readCache (instan tanpa request jaringan)
   const rHit = getReadCache(canon, reqUrl);
@@ -5694,6 +5945,7 @@ async function descFetchNet(reqUrl, target, canon, x, host) {
 
 /* ---------- static: cache di memori, ETag/304, brotli/gzip sekali per versi file ----------
    Dulu: readFileSync + regex inject tiap request, index 578KB tanpa kompresi. */
+const VERSIONED_JS_FILES = ['signals.js', 'wxicons.js', 'wire-core.js', 'cctv-core.js'];
 const STATIC_FILES = {
   '/signals.js': ['signals.js', 'application/javascript; charset=utf-8', 'no-cache'],
   '/wxicons.js': ['wxicons.js', 'application/javascript; charset=utf-8', 'no-cache'],
@@ -5708,33 +5960,85 @@ const STATIC_FILES = {
   '/index.html': ['index.html', 'text/html; charset=utf-8', 'no-cache']
 };
 const staticCache = new Map();
+function getAssetVersionMap() {
+  const sigParts = [];
+  const entries = [];
+  for (const name of VERSIONED_JS_FILES) {
+    const f = path.join(__dirname, 'public', name);
+    try {
+      const st = fs.statSync(f);
+      sigParts.push(name + ':' + st.mtimeMs + ':' + st.size);
+      entries.push([name, f, st]);
+    } catch {}
+  }
+  const sig = sigParts.join('|');
+  const cached = staticCache.get('vermap');
+  if (cached && cached.sig === sig) return cached.map;
+  const map = new Map();
+  for (const [name, f] of entries) {
+    const buf = fs.readFileSync(f);
+    const hash = crypto.createHash('sha1').update(buf).digest('hex').slice(0, 8);
+    map.set(name, { hash, versioned: name.replace(/\.js$/, '.' + hash + '.js') });
+  }
+  staticCache.set('vermap', { sig, map });
+  return map;
+}
+function rewriteHtmlAssetRefs(html) {
+  const map = getAssetVersionMap();
+  let out = html;
+  for (const [name, info] of map) {
+    out = out.replace(new RegExp('<script src="' + name.replace(/\./g, '\\.') + '"><\\/script>', 'g'),
+      `<script src="${info.versioned}"></script>`);
+  }
+  return out;
+}
 function readIndexRaw() {
   const file = path.join(__dirname, 'public', 'index.html');
   const st = fs.statSync(file);
+  const vMap = getAssetVersionMap();
+  const verSig = [...vMap.values()].map(v => v.hash).join(':');
   const key = 'raw:' + file;
   let e = staticCache.get(key);
-  if (e && e.mtime === st.mtimeMs && e.size === st.size) return e.html;
-  const html = fs.readFileSync(file, 'utf8');
-  staticCache.set(key, { mtime: st.mtimeMs, size: st.size, html });
+  if (e && e.mtime === st.mtimeMs && e.size === st.size && e.verSig === verSig) return e.html;
+  const html = rewriteHtmlAssetRefs(fs.readFileSync(file, 'utf8'));
+  staticCache.set(key, { mtime: st.mtimeMs, size: st.size, verSig, html });
   return html;
 }
 function staticEntry(pathname) {
-  const def = STATIC_FILES[pathname]; if (!def) return null;
+  let def = STATIC_FILES[pathname] || null;
+  let immutableHash = '';
+  if (!def) {
+    const vm = String(pathname || '').match(/^\/(signals|wxicons|wire-core|cctv-core)\.([a-f0-9]{8})\.js$/);
+    if (vm) {
+      const baseName = vm[1] + '.js';
+      const info = getAssetVersionMap().get(baseName);
+      if (info && info.hash === vm[2]) {
+        def = [baseName, 'application/javascript; charset=utf-8', 'public, max-age=31536000, immutable'];
+        immutableHash = info.hash;
+      }
+    }
+  }
+  if (!def) return null;
   if (def[0] === 'index.html' && AUTH.userMode) return null;
   const file = path.join(__dirname, 'public', def[0]);
   let st; try { st = fs.statSync(file); } catch (e) { return null; }
-  let e = staticCache.get(file);
+  const htmlPublicCC = (def[0] === 'index.html' && AUTH.publicMode)
+    ? 'public, max-age=30, stale-while-revalidate=300'
+    : def[2];
+  const vSig = def[0] === 'index.html' ? [...getAssetVersionMap().values()].map(v => v.hash).join(':') : '';
+  const cacheKey = immutableHash ? (file + '#immutable:' + immutableHash) : (file + ':' + htmlPublicCC + ':' + vSig);
+  let e = staticCache.get(cacheKey);
   if (e && e.mtime === st.mtimeMs && e.size === st.size) return e;
   let buf = fs.readFileSync(file);
   if (def[0] === 'index.html') {   // local mode: inject boot/env token agar frontend bisa membacanya
-    buf = Buffer.from(AUTH.injectHtmlMeta(buf.toString('utf8'), null));
+    buf = Buffer.from(AUTH.injectHtmlMeta(rewriteHtmlAssetRefs(buf.toString('utf8')), null));
   }
   const big = buf.length > 1024 && !/svg|png|jpe?g/.test(def[1]) || def[1] === 'image/svg+xml' && buf.length > 1024;
-  e = { mtime: st.mtimeMs, size: st.size, buf, type: def[1], cc: def[2],
+  e = { mtime: st.mtimeMs, size: st.size, buf, type: def[1], cc: htmlPublicCC,
     etag: 'W/"' + crypto.createHash('sha1').update(buf).digest('base64').slice(0, 16) + '"',
     br: big ? zlib.brotliCompressSync(buf, { params: { [zlib.constants.BROTLI_PARAM_QUALITY]: 5 } }) : null,
     gz: big ? zlib.gzipSync(buf, { level: 6 }) : null };
-  staticCache.set(file, e);
+  staticCache.set(cacheKey, e);
   return e;
 }
 function serveStatic(pathname, req, res) {
@@ -5747,12 +6051,18 @@ function serveStatic(pathname, req, res) {
     vary: 'accept-encoding'
   };
   if (pathname.endsWith('.json') && openCors()) h['access-control-allow-origin'] = '*';
-  if (req.headers['if-none-match'] === e.etag) { res.writeHead(304, h); res.end(); return true; }
+  if (req.headers['if-none-match'] === e.etag) {
+    METRICS.cacheHits++;
+    metricInc(pathname, 304);
+    res.writeHead(304, h); res.end(); return true;
+  }
   const ae = String(req.headers['accept-encoding'] || '');
   let body = e.buf;
   if (e.br && /\bbr\b/.test(ae)) { body = e.br; h['content-encoding'] = 'br'; }
   else if (e.gz && /\bgzip\b/.test(ae)) { body = e.gz; h['content-encoding'] = 'gzip'; }
   h['content-length'] = body.length;
+  METRICS.cacheHits++;
+  metricInc(pathname, 200);
   res.writeHead(200, h);
   res.end(req.method === 'HEAD' ? undefined : body);
   return true;
@@ -5886,11 +6196,29 @@ const CACHE_ROUTE_KEY = {
 };
 let runtimeProxyWarned = false;
 const SITREP_SERVER = http.createServer(async (req, res) => {
+  const reqStartNs = process.hrtime.bigint();
+  let reqBytesOut = 0;
+  let routeWasCacheHit = false;
+  const origWrite = res.write.bind(res);
+  const origEnd = res.end.bind(res);
+  res.write = (chunk, ...rest) => {
+    if (chunk) reqBytesOut += Buffer.isBuffer(chunk) ? chunk.length : Buffer.byteLength(String(chunk));
+    return origWrite(chunk, ...rest);
+  };
+  res.end = (chunk, ...rest) => {
+    if (chunk && typeof chunk !== 'function') reqBytesOut += Buffer.isBuffer(chunk) ? chunk.length : Buffer.byteLength(String(chunk));
+    return origEnd(chunk, ...rest);
+  };
   const cors = openCors() ? { 'access-control-allow-origin': '*' } : {};
   const secHdr = { 'x-content-type-options': 'nosniff', 'referrer-policy': 'same-origin' };
+  // Hapus s-maxage agar tidak memicu proxy-revalidate di Cloudflare; Edge TTL diatur di Cloudflare Cache Rule
   const pubCC = (sMax, swr = sMax * 2, maxAge = Math.min(15, Math.floor(sMax / 2))) =>
-    AUTH.userMode ? 'private, no-store' : `public, max-age=${maxAge}, s-maxage=${sMax}, stale-while-revalidate=${swr}`;
+    AUTH.userMode ? 'private, no-store' : `public, max-age=${maxAge}, stale-while-revalidate=${swr}`;
   let routeTag = '';
+  res.once('finish', () => {
+    const ms = Number(process.hrtime.bigint() - reqStartNs) / 1e6;
+    recordRequestMetric(routeTag || 'unknown', res.statusCode || 200, ms, routeWasCacheHit, reqBytesOut);
+  });
   const sendHit = (hit, c, cacheHdr = 'no-store') => {
     const ae = String(req.headers['accept-encoding'] || '');
     const wantBr = /\bbr\b/.test(ae);
@@ -5947,6 +6275,7 @@ const SITREP_SERVER = http.createServer(async (req, res) => {
     const hit = bodyCache.get(cacheKey);
     if (!hit || Date.now() - hit.at >= cacheTtl) return false;
     METRICS.cacheHits++;
+    routeWasCacheHit = true;
     metricInc(routeTag, c);
     sendHit(hit, c, cacheHdr);
     return true;
@@ -6030,7 +6359,7 @@ const SITREP_SERVER = http.createServer(async (req, res) => {
 
     if ((u.pathname === '/' || u.pathname === '/index.html') && (req.method === 'GET' || req.method === 'HEAD')) {
       if (AUTH.userMode) return serveAuthenticatedHtml(req, res, principal);
-      if (serveStatic(u.pathname, req, res)) return;
+      if (serveStatic(u.pathname, req, res)) { routeWasCacheHit = true; return; }
     }
 
     const gated = (u.pathname.startsWith('/api/') && u.pathname !== '/api/ping' && !u.pathname.startsWith('/api/auth/')) ||
@@ -6058,10 +6387,39 @@ const SITREP_SERVER = http.createServer(async (req, res) => {
         return json({ ok: false, err: 'origin tidak valid (CSRF)' }, 403);
       }
     }
-    if (req.method === 'GET' || req.method === 'HEAD') { if (serveStatic(u.pathname, req, res)) return; }
+    if (req.method === 'GET' || req.method === 'HEAD') { if (serveStatic(u.pathname, req, res)) { routeWasCacheHit = true; return; } }
     if (u.pathname === '/api/metrics') {
       if (!AUTH.hasRole(principal, 'operator')) return json({ ok: false, err: 'akses ditolak (butuh role operator)' }, 403);
       const mem = process.memoryUsage();
+      const bps = originBytesPerSec();
+      const routesOut = {};
+      for (const [rk, rv] of METRICS.routes) {
+        routesOut[rk] = {
+          count: rv.count,
+          err: rv.err,
+          cacheHits: rv.cacheHits,
+          hitRatio: rv.count ? +(rv.cacheHits / rv.count).toFixed(3) : 0,
+          bytesOut: rv.bytesOut,
+          p50Ms: quantileFromHist(rv.lat, 0.5),
+          p95Ms: quantileFromHist(rv.lat, 0.95),
+          p99Ms: quantileFromHist(rv.lat, 0.99),
+        };
+      }
+      const upstreamOut = {};
+      for (const [uk, uv] of METRICS.upstream) {
+        upstreamOut[uk] = {
+          count: uv.count,
+          err: uv.err,
+          p50Ms: quantileFromHist(uv.lat, 0.5),
+          p95Ms: quantileFromHist(uv.lat, 0.95),
+        };
+      }
+      const feedSumm = getFeedHealthSummary();
+      const degradedFeeds = feedSumm.sources
+        .filter(f => f.consecutiveFailures > 0 || (f.ageMs !== null && f.ageMs > 300000))
+        .slice(0, 20)
+        .map(f => ({ id: f.id, consecutiveFailures: f.consecutiveFailures, ageMs: f.ageMs }));
+      const toMs = ns => Number.isFinite(ns) && ns > 0 ? +(ns / 1e6).toFixed(2) : 0;
       return json({
         ok: true,
         mode: AUTH.userMode ? 'session' : (AUTH.publicMode ? 'public' : 'token'),
@@ -6071,11 +6429,41 @@ const SITREP_SERVER = http.createServer(async (req, res) => {
         proxy: { trustProxy: TRUST_PROXY, trustCf: TRUST_CF, proxyWarning: METRICS.proxyWarning },
         rejected: { r403: METRICS.rejected403, r429: METRICS.rejected429, r503: METRICS.rejected503, outboundBlocked: METRICS.outboundBlocked },
         gateway: GW.stats(),
+        latencyMs: {
+          count: METRICS.latency.count,
+          p50: quantileFromHist(METRICS.latency, 0.5),
+          p95: quantileFromHist(METRICS.latency, 0.95),
+          p99: quantileFromHist(METRICS.latency, 0.99),
+          bucketsMs: LAT_BUCKETS,
+        },
+        eventLoopLagMs: {
+          min: toMs(eventLoopDelay.min),
+          mean: toMs(eventLoopDelay.mean),
+          p50: toMs(eventLoopDelay.percentile(50)),
+          p95: toMs(eventLoopDelay.percentile(95)),
+          p99: toMs(eventLoopDelay.percentile(99)),
+          max: toMs(eventLoopDelay.max),
+        },
+        egress: {
+          totalBytes: METRICS.bytesOut,
+          originBytesPerSec: bps,
+          originMbps: +((bps * 8) / 1e6).toFixed(3),
+        },
+        feeds: {
+          total: feedSumm.total,
+          healthy: feedSumm.healthy,
+          failing: feedSumm.failing,
+          maxAgeMs: feedSumm.maxAgeMs,
+          degraded: degradedFeeds,
+        },
+        upstream: upstreamOut,
         caches: {
           memo: cache.size,
           userQuery: userQueryCache.size,
           bodyCount: bodyCache.size,
           bodyBytes: bodyCacheBytes(),
+          docCount: docCache.size,
+          docBytes: docCacheBytes,
           readCache: readCache.size,
           thumbCache: thumbCache.size,
           descCache: descCache.size,
@@ -6084,8 +6472,14 @@ const SITREP_SERVER = http.createServer(async (req, res) => {
           knownNews: knownNewsUrls.size,
           knownVhs: knownVhsUrls.size,
         },
-        memoryMb: { rss: Math.round(mem.rss / 1048576), heapUsed: Math.round(mem.heapUsed / 1048576) },
-        routes: Object.fromEntries(METRICS.routes),
+        memoryMb: {
+          rss: Math.round(mem.rss / 1048576),
+          heapUsed: Math.round(mem.heapUsed / 1048576),
+          heapTotal: Math.round(mem.heapTotal / 1048576),
+          external: Math.round((mem.external || 0) / 1048576),
+          arrayBuffers: Math.round((mem.arrayBuffers || 0) / 1048576),
+        },
+        routes: routesOut,
       });
     }
     if (u.pathname === '/api/news') {
@@ -6538,6 +6932,7 @@ SITREP_SERVER.on('error', e => {
   try { histFlushAll(); } catch {}
   process.exit(e && (e.code === 'EADDRINUSE' || e.code === 'EACCES') ? 78 : 1);
 });
+let newsCollectInflight = null;
 async function warmNewsSnapshots() {
   await yieldTick();
   const rs = await news();
@@ -6560,10 +6955,16 @@ async function warmNewsSnapshots() {
   await Promise.allSettled([newsTopicHeat(), adhocRefresh()]);
   return { rs, incData, sitData };
 }
+function runNewsCollectOnce() {
+  if (newsCollectInflight) return null;   // skip tick bila siklus sebelumnya belum selesai
+  newsCollectInflight = warmNewsSnapshots().finally(() => { newsCollectInflight = null; });
+  return newsCollectInflight;
+}
 if (require.main === module) {
-  SITREP_SERVER.listen({ port: Number(PORT) || 8787, backlog: 1024 }, () => {
+  SITREP_SERVER.listen({ host: BIND_HOST, port: Number(PORT) || 8787, backlog: 1024 }, () => {
     const modeLbl = AUTH.userMode ? ' [session-auth]' : (AUTH.publicMode ? ' [public-osint]' : ' [local-token]');
-    console.log('SITREP jalan di http://localhost:' + PORT + modeLbl + (xHas() ? ' (X pool: ' + xPool.size() + ' akun)' : '  (X: cookie belum diisi)'));
+    const hostLbl = BIND_HOST === '0.0.0.0' ? 'localhost' : BIND_HOST;
+    console.log('SITREP jalan di http://' + hostLbl + ':' + PORT + modeLbl + (xHas() ? ' (X pool: ' + xPool.size() + ' akun)' : '  (X: cookie belum diisi)'));
     const diskIntelBoot = Promise.allSettled([newsTopicHeat(), adhocRefresh()]);
     SEC.runIsolated('threadsWarm', async () => {
       await diskIntelBoot;
@@ -6572,7 +6973,10 @@ if (require.main === module) {
       console.log('Threads warm: ' + r.posts.length + ' post');
     });
     SEC.runIsolated('newsWarm', async () => {
-      const { rs, incData, sitData } = await warmNewsSnapshots();
+      const p = runNewsCollectOnce();
+      const res = p ? await p : null;
+      if (!res) return;
+      const { rs, incData, sitData } = res;
       console.log('News warm: ' + rs.filter(s => s.ok).length + '/' + rs.length + ' feed' +
         (incData ? ' · peta ' + incData.items.length + ' titik' : '') +
         (sitData ? ' · situasi ' + sitData.total : ''));
@@ -6586,7 +6990,7 @@ if (require.main === module) {
     SEC.runIsolated('disasterWarm', async () => { const r = await disaster(); if (r) prewarmJson('disaster', r); });
     SEC.runIsolated('marketWarm', async () => { const r = await market(); if (r) prewarmJson('market', r); });
     // Clock-driven collector sweep: snapshot & Brotli dihangatkan di background tanpa stall request pengunjung
-    setInterval(() => SEC.runIsolated('newsCollect', warmNewsSnapshots), 50000).unref();
+    setInterval(() => SEC.runIsolated('newsCollect', () => runNewsCollectOnce()), 50000).unref();
     setInterval(() => SEC.runIsolated('marketCollect', async () => { const r = await market(); if (r) prewarmJson('market', r); }), 45000).unref();
     setInterval(() => SEC.runIsolated('socialCollect', async () => {
       const [xr, tr] = await Promise.allSettled([xposts(), threads()]);
@@ -6613,6 +7017,10 @@ module.exports = {
   loadNewsHist,
   newsHistByFeed,
   invalidateDerivedFromNews,
+  isBannedHostUrl,
+  isBannedNewsItem,
+  probeImage,
+  verifiedProxyImgs,
   rdRead,
   thumb,
   descForUrl,
@@ -6622,6 +7030,15 @@ module.exports = {
   docCache,
   docCacheGet,
   docCacheSet,
+  getDocCacheBytes: () => docCacheBytes,
+  DOC_CACHE_MAX_BYTES,
+  rssSem,
+  getFeedHealthSummary,
+  runNewsCollectOnce,
+  GW_OPTIONS,
+  staticEntry,
+  getAssetVersionMap,
+  recordUpstream,
   fcBlocked,
   fcFailMark,
   getReadCache,

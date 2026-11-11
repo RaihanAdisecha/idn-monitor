@@ -1065,12 +1065,18 @@ function createAuthManager(opts = {}) {
   const userMode = users.size > 0;
   const publicMode = !userMode && Boolean(opts.publicDeploy);
   const rawSecret = String(opts.authSecret || '');
-  const signingKey = rawSecret.length >= 16
+  if (userMode && rawSecret.length < 32) {
+    throw new Error('SITREP_AUTH_SECRET wajib minimal 32 karakter saat SITREP_USERS (mode session) aktif');
+  }
+  const signingKey = rawSecret.length >= 32
     ? crypto.createHash('sha256').update(rawSecret).digest()
     : crypto.randomBytes(32);
   const sessionTtlSec = Math.max(300, Number(opts.sessionTtlSec) || 43200); // 12h default
   const trustProxy = Boolean(opts.trustProxy);
   const tokenRole = ROLE_RANK[opts.tokenRole] ? opts.tokenRole : 'admin';
+  const allowQueryToken = opts.allowQueryToken !== undefined
+    ? Boolean(opts.allowQueryToken)
+    : (!publicMode && !userMode && process.env.SITREP_DISABLE_QUERY_TOKEN !== '1');
 
   const revoked = new Map(); // jti -> expMs
 
@@ -1134,7 +1140,7 @@ function createAuthManager(opts = {}) {
 
   function authenticate(req, parsedUrl) {
     const hdrTok = req.headers['x-sitrep-token'];
-    const qryTok = parsedUrl && parsedUrl.searchParams ? parsedUrl.searchParams.get('token') : null;
+    const qryTok = allowQueryToken && parsedUrl && parsedUrl.searchParams ? parsedUrl.searchParams.get('token') : null;
 
     if (!userMode) {
       if (publicMode) {
@@ -1217,6 +1223,7 @@ function createAuthManager(opts = {}) {
   return {
     userMode,
     publicMode,
+    allowQueryToken,
     apiToken,
     authenticate,
     verifyPassword: async (username, password) => {

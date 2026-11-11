@@ -376,3 +376,92 @@ test('server: /api/news?rev= serves CDN-cacheable delta responses and Brotli JSO
     await new Promise(r => SRV.SITREP_SERVER.close(r));
   }
 });
+
+test('P0/P1/P2 production hardening: loopback bind, HLS queue+abort, no s-maxage, asset immutable, docCache bytes, auth secret & metrics', async () => {
+  const fs = require('fs');
+  const http = require('http');
+  const SEC = require('../security');
+  const { makeLane } = require('../cctv-gateway');
+  const html = fs.readFileSync(path.join(REPO, 'public/index.html'), 'utf8');
+  const serverJs = fs.readFileSync(SERVER, 'utf8');
+
+  // P0: SITREP_SERVER.listen passes BIND_HOST
+  assert.ok(serverJs.includes('SITREP_SERVER.listen({ host: BIND_HOST, port: Number(PORT) || 8787'), 'listen must bind explicit BIND_HOST');
+
+  // P1: makeLane enforces maxQueue=503 and removes aborted queued jobs before execution
+  const lane = makeLane(1, 1, 2);
+  let release0;
+  const p0 = lane.run('cam-a', () => new Promise(r => { release0 = r; }));
+  const ac = new AbortController();
+  const p1 = lane.run('cam-a', async () => 'ran-1', ac.signal);
+  const p2 = lane.run('cam-a', async () => 'ran-2');
+  await assert.rejects(() => lane.run('cam-a', async () => 'overflow'), err => err && err.status === 503);
+  ac.abort();
+  await assert.rejects(() => p1, err => err && err.name === 'AbortError');
+  assert.equal(lane.stats().queued, 1, 'aborted queued job must be removed from queue');
+  release0('done-0');
+  assert.equal(await p0, 'done-0');
+  assert.equal(await p2, 'ran-2');
+  assert.equal(lane.stats().cancelled, 1);
+
+  // P1: Static assets versioned immutable + lazy-load hls.js & Leaflet (inline L.VelocityLayer wrapped)
+  assert.equal(html.includes('cdn.jsdelivr.net/npm/hls.js@1.5.13/dist/hls.min.js"></script>'), false, 'hls.min.js must be lazy-loaded');
+  assert.equal(html.includes('cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>'), false, 'leaflet.js must be lazy-loaded');
+  assert.ok(html.includes('function ensureHls()') && html.includes('function ensureLeaflet()') && html.includes('function initLeafletVelocity()'));
+
+  const vMap = SRV.getAssetVersionMap();
+  const sigInfo = vMap.get('signals.js');
+  assert.ok(sigInfo && /^signals\.[a-f0-9]{8}\.js$/.test(sigInfo.versioned));
+  const vAsset = SRV.staticEntry('/' + sigInfo.versioned);
+  assert.ok(vAsset && vAsset.cc === 'public, max-age=31536000, immutable');
+  const htmlEntry = SRV.staticEntry('/');
+  assert.ok(htmlEntry && htmlEntry.buf.toString('utf8').includes(sigInfo.versioned));
+
+  // P2: docCache tracks combined HTML + jinaTxt bytes and enforces aggregate budget
+  const hugeTxt = 'x'.repeat(300 * 1024);
+  SRV.docCache.clear();
+  for (let i = 0; i < 6; i++) {
+    SRV.docCacheSet([`https://doc-budget.example/a${i}`], { html: hugeTxt, jinaTxt: hugeTxt, finalUrl: `https://doc-budget.example/a${i}`, via: 'direct' });
+  }
+  assert.ok(SRV.getDocCacheBytes() <= SRV.DOC_CACHE_MAX_BYTES);
+  assert.ok(SRV.getDocCacheBytes() > 0);
+  SRV.docCache.clear();
+
+  // P2: session mode requires >=32-char SITREP_AUTH_SECRET; public/session disable ?token= query param
+  assert.throws(
+    () => SEC.createAuthManager({ usersSpec: 'op:strongpass123:operator', authSecret: 'short-secret' }),
+    /minimal 32 karakter/
+  );
+  const pubAuth = SEC.createAuthManager({ publicDeploy: true, apiToken: 'tok-abc-123', explicitToken: true, tokenRole: 'operator' });
+  assert.equal(pubAuth.allowQueryToken, false);
+  assert.equal(pubAuth.authenticate({ headers: {} }, new URL('http://x/api/metrics?token=tok-abc-123')).role, 'viewer', 'query token must be ignored in publicMode');
+  assert.equal(pubAuth.authenticate({ headers: { 'x-sitrep-token': 'tok-abc-123' } }, new URL('http://x/api/metrics')).role, 'operator');
+
+  // P1 & P2 HTTP check: no s-maxage on /api/news & /api/nodes, plus enriched /api/metrics fields
+  const port = await new Promise((resolve) => {
+    SRV.SITREP_SERVER.listen(0, '127.0.0.1', () => resolve(SRV.SITREP_SERVER.address().port));
+  });
+  try {
+    const hdr = { 'x-sitrep-token': process.env.SITREP_TOKEN };
+    const rNodes = await fetch(`http://127.0.0.1:${port}/api/nodes`, { headers: hdr });
+    const ccNodes = rNodes.headers.get('cache-control') || '';
+    assert.ok(!/s-maxage/i.test(ccNodes), `/api/nodes must omit s-maxage, got: ${ccNodes}`);
+
+    const rNews = await fetch(`http://127.0.0.1:${port}/api/news`, { headers: hdr });
+    const ccNews = rNews.headers.get('cache-control') || '';
+    assert.ok(!/s-maxage/i.test(ccNews), `pubCC must omit s-maxage, got: ${ccNews}`);
+    assert.match(ccNews, /public,\s*max-age=\d+,\s*stale-while-revalidate=/);
+
+    const rMetrics = await (await fetch(`http://127.0.0.1:${port}/api/metrics`, { headers: hdr })).json();
+    assert.ok(rMetrics.latencyMs && typeof rMetrics.latencyMs.p95 === 'number');
+    assert.ok(rMetrics.eventLoopLagMs && typeof rMetrics.eventLoopLagMs.p95 === 'number');
+    assert.ok(rMetrics.egress && typeof rMetrics.egress.originBytesPerSec === 'number');
+    assert.ok(rMetrics.feeds && typeof rMetrics.feeds.total === 'number');
+    assert.ok(typeof rMetrics.caches.docBytes === 'number');
+    assert.ok(typeof rMetrics.memoryMb.external === 'number');
+    assert.ok(rMetrics.gateway && rMetrics.gateway.lane && 'maxQueue' in rMetrics.gateway.lane);
+  } finally {
+    SRV.SITREP_SERVER.closeAllConnections && SRV.SITREP_SERVER.closeAllConnections();
+    await new Promise(r => SRV.SITREP_SERVER.close(r));
+  }
+});

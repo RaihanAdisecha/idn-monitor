@@ -11,17 +11,49 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..600&family=IBM+Plex+Mono:wght@400;500;600;700&family=Lexend:wght@400;500;600&family=Plus+Jakarta+Sans:wght@400;500;600&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.13/dist/hls.min.js"></script>
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css">
 <style>.leaflet-velocity { pointer-events: none !important; } .velocity-overlay, canvas.velocity-overlay { pointer-events: none !important; }</style>
-<script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/leaflet.heat@0.2.0/dist/leaflet-heat.js"></script>
 <script src="signals.js"></script>
 <script src="wxicons.js"></script>
 <script src="wire-core.js"></script>
 <script src="cctv-core.js"></script>
 <script>
+const _extCssDone = new Set(), _extJsP = new Map();
+function loadExtCss(href) {
+  if (_extCssDone.has(href) || document.querySelector('link[href="' + href + '"]')) { _extCssDone.add(href); return; }
+  const l = document.createElement('link'); l.rel = 'stylesheet'; l.href = href;
+  document.head.appendChild(l);
+  _extCssDone.add(href);
+}
+function loadExtScript(src) {
+  if (_extJsP.has(src)) return _extJsP.get(src);
+  const p = new Promise((res, rej) => {
+    const s = document.createElement('script'); s.src = src; s.async = true;
+    s.onload = () => res();
+    s.onerror = () => { _extJsP.delete(src); rej(new Error('gagal muat ' + src)); };
+    document.head.appendChild(s);
+  });
+  _extJsP.set(src, p);
+  return p;
+}
+function ensureHls() {
+  if (window.Hls) return Promise.resolve(window.Hls);
+  return loadExtScript('https://cdn.jsdelivr.net/npm/hls.js@1.5.13/dist/hls.min.js').then(() => window.Hls);
+}
+let _leafletP = null;
+function ensureLeaflet() {
+  if (window.L && typeof L.heatLayer === 'function' && typeof L.velocityLayer === 'function') return Promise.resolve(window.L);
+  if (_leafletP) return _leafletP;
+  loadExtCss('https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css');
+  _leafletP = loadExtScript('https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js')
+    .then(() => loadExtScript('https://cdn.jsdelivr.net/npm/leaflet.heat@0.2.0/dist/leaflet-heat.js'))
+    .then(() => { initLeafletVelocity(); return window.L; })
+    .catch(err => { _leafletP = null; throw err; });
+  return _leafletP;
+}
+function initLeafletVelocity(){
+if (!window.L || L.velocityLayer) return;
 "use strict";L.DomUtil.setTransform||(L.DomUtil.setTransform=function(t,e,n){var i=e||new L.Point(0,0);t.style[L.DomUtil.TRANSFORM]=(L.Browser.ie3d?"translate("+i.x+"px,"+i.y+"px)":"translate3d("+i.x+"px,"+i.y+"px,0)")+(n?" scale("+n+")":"")}),L.CanvasLayer=(L.Layer?L.Layer:L.Class).extend({initialize:function(t){this._map=null,this._canvas=null,this._frame=null,this._delegate=null,L.setOptions(this,t)},delegate:function(t){return this._delegate=t,this},needRedraw:function(){return this._frame||(this._frame=L.Util.requestAnimFrame(this.drawLayer,this)),this},_onLayerDidResize:function(t){this._canvas.width=t.newSize.x,this._canvas.height=t.newSize.y},_onLayerDidMove:function(){var t=this._map.containerPointToLayerPoint([0,0]);L.DomUtil.setPosition(this._canvas,t),this.drawLayer()},getEvents:function(){var t={resize:this._onLayerDidResize,moveend:this._onLayerDidMove};return this._map.options.zoomAnimation&&L.Browser.any3d&&(t.zoomanim=this._animateZoom),t},onAdd:function(t){this._map=t,this._canvas=L.DomUtil.create("canvas","leaflet-layer"),this.tiles={};var e=this._map.getSize();this._canvas.width=e.x,this._canvas.height=e.y;var n=this._map.options.zoomAnimation&&L.Browser.any3d;L.DomUtil.addClass(this._canvas,"leaflet-zoom-"+(n?"animated":"hide")),this.options.pane.appendChild(this._canvas),t.on(this.getEvents(),this);var i=this._delegate||this;i.onLayerDidMount&&i.onLayerDidMount(),this.needRedraw();var o=this;setTimeout(function(){o._onLayerDidMove()},0)},onRemove:function(t){var e=this._delegate||this;e.onLayerWillUnmount&&e.onLayerWillUnmount(),this.options.pane.removeChild(this._canvas),t.off(this.getEvents(),this),this._canvas=null},addTo:function(t){return t.addLayer(this),this},drawLayer:function(){var t=this._map.getSize(),e=this._map.getBounds(),n=this._map.getZoom(),i=this._map.options.crs.project(this._map.getCenter()),o=this._map.options.crs.project(this._map.containerPointToLatLng(this._map.getSize())),a=this._delegate||this;a.onDrawLayer&&a.onDrawLayer({layer:this,canvas:this._canvas,bounds:e,size:t,zoom:n,center:i,corner:o}),this._frame=null},_setTransform:function(t,e,n){var i=e||new L.Point(0,0);t.style[L.DomUtil.TRANSFORM]=(L.Browser.ie3d?"translate("+i.x+"px,"+i.y+"px)":"translate3d("+i.x+"px,"+i.y+"px,0)")+(n?" scale("+n+")":"")},_animateZoom:function(t){var e=this._map.getZoomScale(t.zoom),n=L.Layer?this._map._latLngToNewLayerPoint(this._map.getBounds().getNorthWest(),t.zoom,t.center):this._map._getCenterOffset(t.center)._multiplyBy(-e).subtract(this._map._getMapPanePos());L.DomUtil.setTransform(this._canvas,n,e)}}),L.canvasLayer=function(t){return new L.CanvasLayer(t)},L.Control.Velocity=L.Control.extend({options:{position:"bottomleft",emptyString:"Unavailable",angleConvention:"bearingCCW",showCardinal:!1,speedUnit:"m/s",directionString:"Direction",speedString:"Speed",onAdd:null,onRemove:null},onAdd:function(t){return this._container=L.DomUtil.create("div","leaflet-control-velocity"),L.DomEvent.disableClickPropagation(this._container),t.on("mousemove",this._onMouseMove,this),this._container.innerHTML=this.options.emptyString,this.options.leafletVelocity.options.onAdd&&this.options.leafletVelocity.options.onAdd(),this._container},onRemove:function(t){t.off("mousemove",this._onMouseMove,this),this.options.leafletVelocity.options.onRemove&&this.options.leafletVelocity.options.onRemove()},vectorToSpeed:function(t,e,n){var i=Math.sqrt(Math.pow(t,2)+Math.pow(e,2));return"k/h"===n?this.meterSec2kilometerHour(i):"kt"===n?this.meterSec2Knots(i):"mph"===n?this.meterSec2milesHour(i):i},vectorToDegrees:function(t,e,n){n.endsWith("CCW")&&(e=0<e?e=-e:Math.abs(e));var i=Math.sqrt(Math.pow(t,2)+Math.pow(e,2)),o=180*Math.atan2(t/i,e/i)/Math.PI+180;return"bearingCW"!==n&&"meteoCCW"!==n||360<=(o+=180)&&(o-=360),o},degreesToCardinalDirection:function(t){var e="";return 0<=t&&t<11.25||348.75<=t?e="N":11.25<=t&&t<33.75?e="NNW":33.75<=t&&t<56.25?e="NW":56.25<=t&&t<78.75?e="WNW":78.25<=t&&t<101.25?e="W":101.25<=t&&t<123.75?e="WSW":123.75<=t&&t<146.25?e="SW":146.25<=t&&t<168.75?e="SSW":168.75<=t&&t<191.25?e="S":191.25<=t&&t<213.75?e="SSE":213.75<=t&&t<236.25?e="SE":236.25<=t&&t<258.75?e="ESE":258.75<=t&&t<281.25?e="E":281.25<=t&&t<303.75?e="ENE":303.75<=t&&t<326.25?e="NE":326.25<=t&&t<348.75&&(e="NNE"),e},meterSec2Knots:function(t){return t/.514},meterSec2kilometerHour:function(t){return 3.6*t},meterSec2milesHour:function(t){return 2.23694*t},_onMouseMove:function(t){var e=this.options.leafletVelocity._map.containerPointToLatLng(L.point(t.containerPoint.x,t.containerPoint.y)),n=this.options.leafletVelocity._windy.interpolatePoint(e.lng,e.lat),i="";if(n&&!isNaN(n[0])&&!isNaN(n[1])&&n[2]){var o=this.vectorToDegrees(n[0],n[1],this.options.angleConvention),a=this.options.showCardinal?" (".concat(this.degreesToCardinalDirection(o),") "):"";i="<strong> ".concat(this.options.velocityType," ").concat(this.options.directionString,": </strong> ").concat(o.toFixed(2),"°").concat(a,", <strong> ").concat(this.options.velocityType," ").concat(this.options.speedString,": </strong> ").concat(this.vectorToSpeed(n[0],n[1],this.options.speedUnit).toFixed(2)," ").concat(this.options.speedUnit)}else i=this.options.emptyString;this._container.innerHTML=i}}),L.Map.mergeOptions({positionControl:!1}),L.Map.addInitHook(function(){this.options.positionControl&&(this.positionControl=new L.Control.MousePosition,this.addControl(this.positionControl))}),L.control.velocity=function(t){return new L.Control.Velocity(t)},L.VelocityLayer=(L.Layer?L.Layer:L.Class).extend({options:{displayValues:!0,displayOptions:{velocityType:"Velocity",position:"bottomleft",emptyString:"No velocity data"},maxVelocity:10,colorScale:null,data:null},_map:null,_canvasLayer:null,_windy:null,_context:null,_timer:0,_mouseControl:null,initialize:function(t){L.setOptions(this,t)},onAdd:function(t){this._paneName=this.options.paneName||"overlayPane";var e=t._panes.overlayPane;t.getPane&&(e=(e=t.getPane(this._paneName))||t.createPane(this._paneName)),this._canvasLayer=L.canvasLayer({pane:e}).delegate(this),this._canvasLayer.addTo(t),this._map=t},onRemove:function(t){this._destroyWind()},setData:function(t){this.options.data=t,this._windy&&(this._windy.setData(t),this._clearAndRestart()),this.fire("load")},setOpacity:function(t){this._canvasLayer.setOpacity(t)},setOptions:function(t){this.options=Object.assign(this.options,t),t.hasOwnProperty("displayOptions")&&(this.options.displayOptions=Object.assign(this.options.displayOptions,t.displayOptions),this._initMouseHandler(!0)),t.hasOwnProperty("data")&&(this.options.data=t.data),this._windy&&(this._windy.setOptions(t),t.hasOwnProperty("data")&&this._windy.setData(t.data),this._clearAndRestart()),this.fire("load")},onDrawLayer:function(t,e){var n=this;this._windy?this.options.data&&(this._timer&&clearTimeout(n._timer),this._timer=setTimeout(function(){n._startWindy()},750)):this._initWindy(this)},_startWindy:function(){var t=this._map.getBounds(),e=this._map.getSize();this._windy.start([[0,0],[e.x,e.y]],e.x,e.y,[[t._southWest.lng,t._southWest.lat],[t._northEast.lng,t._northEast.lat]])},_initWindy:function(t){var e=Object.assign({canvas:t._canvasLayer._canvas,map:this._map},t.options);this._windy=new Windy(e),this._context=this._canvasLayer._canvas.getContext("2d"),this._canvasLayer._canvas.classList.add("velocity-overlay"),this.onDrawLayer(),this._map.on("dragstart",t._windy.stop),this._map.on("dragend",t._clearAndRestart),this._map.on("zoomstart",t._windy.stop),this._map.on("zoomend",t._clearAndRestart),this._map.on("resize",t._clearWind),this._initMouseHandler(!1)},_initMouseHandler:function(t){if(t&&(this._map.removeControl(this._mouseControl),this._mouseControl=!1),!this._mouseControl&&this.options.displayValues){var e=this.options.displayOptions||{};(e.leafletVelocity=this)._mouseControl=L.control.velocity(e).addTo(this._map)}},_clearAndRestart:function(){this._context&&this._context.clearRect(0,0,3e3,3e3),this._windy&&this._startWindy()},_clearWind:function(){this._windy&&this._windy.stop(),this._context&&this._context.clearRect(0,0,3e3,3e3)},_destroyWind:function(){this._timer&&clearTimeout(this._timer),this._windy&&this._windy.stop(),this._context&&this._context.clearRect(0,0,3e3,3e3),this._mouseControl&&this._map.removeControl(this._mouseControl),this._mouseControl=null,this._windy=null,this._map.removeLayer(this._canvasLayer)}}),L.velocityLayer=function(t){return new L.VelocityLayer(t)};var Windy=function(S){function o(t,e,n,i,o,a){var r=1-t,s=1-e,l=r*s,h=t*s,c=r*e,d=t*e,p=n[0]*l+i[0]*h+o[0]*c+a[0]*d,u=n[1]*l+i[1]*h+o[1]*c+a[1]*d;return[p,u,Math.sqrt(p*p+u*u)]}function d(t){var e=null,n=null;return t.forEach(function(t){switch(t.header.parameterCategory+","+t.header.parameterNumber){case"1,2":case"2,2":e=t;break;case"1,3":case"2,3":n=t;break;default:t}}),function(t,e){var n=t.data,i=e.data;return{header:t.header,data:function(t){return[n[t],i[t]]},interpolate:o}}(e,n)}function a(i,o,t){function a(t,e){var n=i[Math.round(t)];return n&&n[Math.round(e)]||h}a.release=function(){i=[]},a.randomize=function(t){for(var e,n,i=0;null===a(e=Math.round(Math.floor(Math.random()*o.width)+o.x),n=Math.round(Math.floor(Math.random()*o.height)+o.y))[2]&&i++<30;);return t.x=e,t.y=n,t},t(o,a)}function r(t){return t/180*Math.PI}function s(i,s){var e,n,l=(e=x,n=C,R.indexFor=function(t){return Math.max(0,Math.min(R.length-1,Math.round((t-e)/(n-e)*(R.length-1))))},R),h=l.map(function(){return[]}),t=Math.round(i.width*i.height*D);/android|blackberry|iemobile|ipad|iphone|ipod|opera mini|webos/i.test(navigator.userAgent)&&(t*=T);for(var o="rgba(0, 0, 0, ".concat(O,")"),a=[],r=0;r<t;r++)a.push(s.randomize({age:Math.floor(Math.random()*P)+0}));var c=S.canvas.getContext("2d");c.lineWidth=b,c.fillStyle=o,c.globalAlpha=.6;var d=Date.now();!function t(){M=requestAnimationFrame(t);var e=Date.now(),n=e-d;W<n&&(d=e-n%W,h.forEach(function(t){t.length=0}),a.forEach(function(t){t.age>P&&(s.randomize(t).age=0);var e=t.x,n=t.y,i=s(e,n),o=i[2];if(null===o)t.age=P;else{var a=e+i[0],r=n+i[1];null!==s(a,r)[2]?(t.xt=a,t.yt=r,h[l.indexFor(o)].push(t)):(t.x=a,t.y=r)}t.age+=1}),c.globalCompositeOperation="destination-in",c.fillRect(i.x,i.y,i.width,i.height),c.globalCompositeOperation="lighter",c.globalAlpha=0===O?0:.9*O,h.forEach(function(t,e){0<t.length&&(c.beginPath(),c.strokeStyle=l[e],t.forEach(function(t){c.moveTo(t.x,t.y),c.lineTo(t.xt,t.yt),t.x=t.xt,t.y=t.yt}),c.stroke())}))}()}var u,m,p,y,_,f,v,g,w,M,x=S.minVelocity||0,C=S.maxVelocity||10,l=(S.velocityScale||.005)*(Math.pow(window.devicePixelRatio,1/3)||1),P=S.particleAge||90,b=S.lineWidth||1,D=S.particleMultiplier||1/300,T=Math.pow(window.devicePixelRatio,1/3)||1.6,e=S.frameRate||15,W=1e3/e,O=.97,R=S.colorScale||["rgb(36,104, 180)","rgb(60,157, 194)","rgb(128,205,193 )","rgb(151,218,168 )","rgb(198,231,181)","rgb(238,247,217)","rgb(255,238,159)","rgb(252,217,125)","rgb(255,182,100)","rgb(252,150,75)","rgb(250,112,52)","rgb(245,64,32)","rgb(237,45,28)","rgb(220,24,32)","rgb(180,0,35)"],h=[NaN,NaN,null],c=S.data,N=function(t,e){if(!m)return null;var n,i=z(t-y,360)/f,o=(_-e)/v,a=Math.floor(i),r=a+1,s=Math.floor(o),l=s+1;if(n=m[s]){var h=n[a],c=n[r];if(A(h)&&A(c)&&(n=m[l])){var d=n[a],p=n[r];if(A(d)&&A(p))return u.interpolate(i-a,o-s,h,c,d,p)}}return null},A=function(t){return null!=t},z=function(t,e){return t-e*Math.floor(t/e)},E=function(t,e,n,i,o){var a=2*Math.PI,r=e<0?5:-5,s=n<0?5:-5,l=V(n,e+r),h=V(n+s,e),c=Math.cos(n/360*a);return[(l[0]-i)/r/c,(l[1]-o)/r/c,(h[0]-i)/s,(h[1]-o)/s]},V=function(t,e,n){var i=S.map.latLngToContainerPoint(L.latLng(t,e));return[i.x,i.y]},U=function(){F.field&&F.field.release(),M&&cancelAnimationFrame(M)},F={params:S,start:function(e,n,i,t){var o={south:r(t[0][1]),north:r(t[1][1]),east:r(t[1][0]),west:r(t[0][0]),width:n,height:i};U(),function(t,e){var n=!0;t.length<2&&(n=!1),n||console.log("Windy Error: data must have at least two components (u,v)");var i=(u=d(t)).header;if(i.hasOwnProperty("gridDefinitionTemplate")&&0!=i.gridDefinitionTemplate&&(n=!1),n||console.log("Windy Error: Only data with Latitude_Longitude coordinates is supported"),n=!0,y=i.lo1,_=i.la1,f=i.dx,v=i.dy,g=i.nx,w=i.ny,i.hasOwnProperty("scanMode")){var o=i.scanMode.toString(2),a=(o=("0"+o).slice(-8)).split("").map(Number).map(Boolean);a[0]&&(f=-f),a[1]&&(v=-v),a[2]&&(n=!1),a[3]&&(n=!1),a[4]&&(n=!1),a[5]&&(n=!1),a[6]&&(n=!1),a[7]&&(n=!1),n||console.log("Windy Error: Data with scanMode: "+i.scanMode+" is not supported.")}(p=new Date(i.refTime)).setHours(p.getHours()+i.forecastTime),m=[];for(var r=0,s=360<=Math.floor(g*f),l=0;l<w;l++){for(var h=[],c=0;c<g;c++,r++)h[c]=u.data(r);s&&h.push(h[0]),m[l]=h}e({date:p,interpolate:N})}(c,function(t){!function(w,M,t,n){var x={},e=(t.south-t.north)*(t.west-t.east),C=l*Math.pow(e,.4),P=[],i=M.x;function o(t){for(var e,n,i,o,a,r,s,l,h,c,d,p,u,m=[],y=M.y;y<=M.yMax;y+=2){var _=(d=t,p=y,void 0,[(u=S.map.containerPointToLatLng(L.point(d,p))).lng,u.lat]),f=_[0],v=_[1];if(isFinite(f)){var g=w.interpolate(f,v);g&&(e=x,n=f,i=v,o=t,a=y,r=C,void 0,l=(s=g)[0]*r,h=s[1]*r,c=E(e,n,i,o,a),s[0]=c[0]*l+c[2]*h,s[1]=c[1]*l+c[3]*h,g=s,m[y+1]=m[y]=g)}}P[t+1]=P[t]=m}!function t(){for(var e=Date.now();i<M.width;)if(o(i),i+=2,1e3<Date.now()-e)return void setTimeout(t,25);a(P,M,n)}()}(t,function(t,e,n){var i=t[0],o=t[1],a=Math.round(i[0]),r=Math.max(Math.floor(i[1],0),0);Math.min(Math.ceil(o[0],e),e-1);return{x:a,y:r,xMax:e,yMax:Math.min(Math.ceil(o[1],n),n-1),width:e,height:n}}(e,n,i),o,function(t,e){F.field=e,s(t,e)})})},stop:U,createField:a,interpolatePoint:N,setData:function(t){c=t},setOptions:function(t){t.hasOwnProperty("minVelocity")&&(x=t.minVelocity),t.hasOwnProperty("maxVelocity")&&(C=t.maxVelocity),t.hasOwnProperty("velocityScale")&&(l=(t.velocityScale||.005)*(Math.pow(window.devicePixelRatio,1/3)||1)),t.hasOwnProperty("particleAge")&&(P=t.particleAge),t.hasOwnProperty("lineWidth")&&(b=t.lineWidth),t.hasOwnProperty("particleMultiplier")&&(D=t.particleMultiplier),t.hasOwnProperty("opacity")&&(O=+t.opacity),t.hasOwnProperty("frameRate")&&(e=t.frameRate),W=1e3/e}};return F};window.cancelAnimationFrame||(window.cancelAnimationFrame=function(t){clearTimeout(t)});
+}
 </script>
 <style>
 /* ============================================================
@@ -1902,6 +1934,14 @@ button.mp-src{background:none;border-top:0;border-left:0;border-right:0;cursor:p
   animation:pinpulse 2.2s ease-out infinite}
 @keyframes pinpulse{0%{transform:scale(.55);opacity:.9}75%{transform:scale(1.6);opacity:0}100%{opacity:0}}
 @media (prefers-reduced-motion:reduce){.pin-fresh::before{animation:none;opacity:.35;transform:scale(1.25)}}
+/* label wilayah per zoom di Leaflet (informatif saja, non-interaktif, selaras gaya globe) */
+.reg-lbl-ic{pointer-events:none!important;background:none;border:0}
+.reg-lbl{
+  display:inline-flex;align-items:center;gap:4px;height:13px;padding:0 3px;box-sizing:border-box;
+  background:rgba(10,10,10,.72);border:1px solid rgba(255,255,255,.09);
+  font:600 8px/1 var(--mono);color:#d4d4d4;white-space:nowrap;
+  pointer-events:none;user-select:none;
+}
 
 /* marker bencana — meniru visual globe: gempa ripple ring, gunung segitiga */
 .mk-gempa,.mk-gunung{position:relative;width:100%;height:100%;overflow:visible;transform:scale(var(--gs,1));transform-origin:50% 50%}
@@ -3861,7 +3901,11 @@ function drawGlobe(now){
     for (const L of labels) {
       const text = L.name + ' ' + L.c;
       const tw = ctx.measureText(text).width;
-      const box = { x: L.x + 11, y: L.y - 6, w: tw + 6, h: 13 };
+      const bw = tw + 6, bh = 13;
+      let bx = L.x + 11;
+      if (bx + bw > w - 4 && L.x - 11 - bw >= 4) bx = L.x - 11 - bw;
+      const box = { x: bx, y: L.y - 6, w: bw, h: bh };
+      if (box.x < 2 || box.x + box.w > w - 2 || box.y < 2 || box.y + box.h > h - 2) continue;   // label di luar viewport jangan makan kuota maxLab
       if (placed.length >= maxLab) break;
       const clash = placed.some(p => p.x < box.x + box.w && p.x + p.w > box.x && p.y < box.y + box.h && p.y + p.h > box.y);
       if (clash) continue;
@@ -6026,7 +6070,7 @@ function leadHtml(h, imageUrl = '', isLatest = true, video = null){
   const rawDesc = descForItem(h) || h.desc || '';
   const desc = rawDesc && rawDesc.length > 200 ? rawDesc.slice(0, 200).replace(/\s+\S*$/, '') + '…' : rawDesc;
   const mediaHtml = imageUrl
-    ? `<div class="lead-img"><img src="${esc(imageUrl)}" alt="" loading="eager" decoding="async" referrerpolicy="no-referrer" onerror="this.parentNode.remove()"></div>`
+    ? `<div class="lead-img"><img src="${esc(imageUrl)}" data-orig="${esc(imageUrl)}" alt="" loading="eager" decoding="async" referrerpolicy="no-referrer" onerror="rdLeadImgFb(this)"></div>`
     : (video ? leadVidWrapHtml(video, h && h.url) : '');
   return `<a class="lead" data-cat="${cat}" href="${esc(h.url)}" target="_blank" rel="noopener">
     ${mediaHtml}
@@ -6089,7 +6133,7 @@ function attachLeadImage(url, imageUrl){
   const staleVid = el.querySelector('.lead-vid');
   if (staleVid) staleVid.remove();
   el.insertAdjacentHTML('afterbegin',
-    `<div class="lead-img nw-reveal"><img src="${esc(imageUrl)}" alt="" loading="eager" decoding="async" referrerpolicy="no-referrer" onerror="this.parentNode.remove()"></div>`);
+    `<div class="lead-img nw-reveal"><img src="${esc(imageUrl)}" data-orig="${esc(imageUrl)}" alt="" loading="eager" decoding="async" referrerpolicy="no-referrer" onerror="rdLeadImgFb(this)"></div>`);
 }
 function attachLeadVideo(url, video){
   if (!video || !video.url || leadRenderURL !== url) return;
@@ -6103,12 +6147,19 @@ function attachLeadVideo(url, video){
 // Semua gambar Lead Wire wajib melewati canonical media resolver di backend (/api/thumb).
 // Frontend tidak pernah mengizinkan RSS image mentah mem-bypass validasi backend.
 const thumbPending = new Map();   // url -> Promise<string[]>
+function rdProxyImgUrl(u){
+  if (!u || typeof API === 'undefined' || API == null || /^data:|\/img\?/i.test(u)) return u;
+  return tokQ(API + '/img?u=' + encodeURIComponent(u));
+}
+function rdMediaImgSrc(u, needProxy){
+  return (needProxy && typeof API !== 'undefined' && API != null) ? rdProxyImgUrl(u) : u;
+}
 function pickVerifiedMediaImg(d){
   if (!d) return '';
-  if (d.img && d.imgVerified !== false) return d.img;
+  if (d.img && d.imgVerified !== false) return rdMediaImgSrc(d.img, d.imgProxy);
   if (d.imgStatus !== 'rejected' && d.media && Array.isArray(d.media.bodyImages)) {
     const b = d.media.bodyImages.find(x => x && x.verified && x.url && x.width >= 360);
-    if (b) return b.url;
+    if (b) return rdMediaImgSrc(b.url, b.proxy);
   }
   return '';
 }
@@ -6132,7 +6183,7 @@ function fetchThumbInfo(url, h){
       const imgs = [];
       if (API != null) {
         if (h && h.imgVerified && h.img) {
-          imgs.push(h.img);
+          imgs.push(rdMediaImgSrc(h.img, h.imgProxy));
         } else if (h && h.imgRejected && !needVideoProbe) {
           leadImgRejected.add(url);
           if (leadImgRejected.size > 300) leadImgRejected.delete(leadImgRejected.keys().next().value);
@@ -6143,7 +6194,7 @@ function fetchThumbInfo(url, h){
             if (d && d.ok) {
               if (Array.isArray(d.videos) && d.videos.length) rememberLeadVideos([url, d.canonicalUrl, d.src], d.videos);
               if (d.img && d.verified !== false) {
-                imgs.push(d.img);
+                imgs.push(rdMediaImgSrc(d.img, d.proxy));
                 leadImgRejected.delete(url);
               } else if (!d.transient && d.status === 'rejected') {
                 leadImgRejected.add(url);
@@ -6183,6 +6234,10 @@ async function resolveLeadImage(h, isStale){
     for (const src of candidates) {
       imageUrl = await tryLoad(src);
       if (imageUrl) return imageUrl;
+      if (API != null && src && !/\/img\?/i.test(src)) {
+        imageUrl = await tryLoad(rdProxyImgUrl(src));
+        if (imageUrl) return imageUrl;
+      }
     }
     // Cek reader cache / background read hanya jika belum ditolak oleh backend
     if (!imageUrl && API != null && !isStale() && !leadImgRejected.has(h.url)) {
@@ -6700,13 +6755,14 @@ function rdSyncWireDesc(d, fallbackUrl) {
   if (!urls.length) return;
 
   // Backfill gambar hero HANYA jika hero/body kanonik backend terverifikasi; hapus jika ditolak backend
-  const rdImg = (d.img && d.imgVerified !== false) ? d.img : pickVerifiedMediaImg(d);
-  const rdRejected = !rdImg && d.imgStatus === 'rejected';
+  const rdImg = (d.img && d.imgVerified !== false) ? d.img : '';
+  const rdSrc = rdImg ? rdMediaImgSrc(rdImg, d.imgProxy) : pickVerifiedMediaImg(d);
+  const rdRejected = !rdSrc && d.imgStatus === 'rejected';
   const rdVids = Array.isArray(d.videos) && d.videos.length
     ? d.videos
     : (Array.isArray(d.blocks) ? d.blocks.filter(b => b && b.k === 'v' && b.v).map(b => b.v) : []);
   rememberLeadVideos(urls, rdVids);
-  if (curLead && (rdImg || rdRejected || rdVids.length)) {
+  if (curLead && (rdSrc || rdRejected || rdVids.length)) {
     const leadEl = $('#lead .lead');
     const leadHref = leadEl && leadEl.getAttribute('href');
     const leadAlts = curLead.alt instanceof Set ? [...curLead.alt] : (curLead.alt || []);
@@ -6720,15 +6776,18 @@ function rdSyncWireDesc(d, fallbackUrl) {
         if (staleBox) staleBox.remove();
         const vid = pickPlayableVideo(rdVids);
         if (vid && !leadEl.querySelector('.lead-vid')) attachLeadVideo(targetUrl, vid);
-      } else if (rdImg && !leadEl.querySelector('.lead-img')) {
+      } else if (rdSrc && !leadEl.querySelector('.lead-img')) {
         leadImgRejected.delete(targetUrl);
-        preloadLeadImage(rdImg, 8000).then(ok => {
+        preloadLeadImage(rdSrc, 8000).then(ok => {
+          if (ok || typeof API === 'undefined' || API == null || /\/img\?/i.test(rdSrc)) return ok;
+          return preloadLeadImage(rdProxyImgUrl(rdSrc), 8000);
+        }).then(ok => {
           if (!ok) return;
           leadImgFailAt.delete(targetUrl);
           leadThumbs.set(targetUrl, [ok]);
           attachLeadImage(targetUrl, ok);
         });
-      } else if (!rdImg && !leadEl.querySelector('.lead-img') && !leadEl.querySelector('.lead-vid')) {
+      } else if (!rdSrc && !leadEl.querySelector('.lead-img') && !leadEl.querySelector('.lead-vid')) {
         const vid = pickPlayableVideo(rdVids);
         if (vid) attachLeadVideo(targetUrl, vid);
       }
@@ -7223,24 +7282,30 @@ const camStream = c => c.s;   // semua host kirim ACAO:* → direct dari browser
 const camProxy = u => tokQ(API + '/hls?u=' + encodeURIComponent(u));
 const camSteps = c => CctvCore.playSteps(c, API != null ? camProxy : null).map(x => x.url);
 // jakcctv butuh ?proto=hls di SEMUA request (playlist & segmen) — loader nambahin otomatis
-const JakLoader = (window.Hls && Hls.DefaultLoader) ? class extends Hls.DefaultLoader {
-  load(ctx, cfg, cb){
-    try {
-      const uObj = new URL(ctx.url, location.href);
-      if (uObj.pathname === '/hls' && uObj.searchParams.has('u')) {
-        const inner = uObj.searchParams.get('u');
-        if (/jakcctv\.jakarta\.go\.id/i.test(inner) && !/[?&]proto=/.test(inner)) {
-          uObj.searchParams.set('u', inner + (inner.includes('?') ? '&' : '?') + 'proto=hls');
-          ctx.url = uObj.pathname + uObj.search;
+let _JakLoader = null;
+function getJakLoader(){
+  if (_JakLoader) return _JakLoader;
+  if (!(window.Hls && Hls.DefaultLoader)) return null;
+  _JakLoader = class extends Hls.DefaultLoader {
+    load(ctx, cfg, cb){
+      try {
+        const uObj = new URL(ctx.url, location.href);
+        if (uObj.pathname === '/hls' && uObj.searchParams.has('u')) {
+          const inner = uObj.searchParams.get('u');
+          if (/jakcctv\.jakarta\.go\.id/i.test(inner) && !/[?&]proto=/.test(inner)) {
+            uObj.searchParams.set('u', inner + (inner.includes('?') ? '&' : '?') + 'proto=hls');
+            ctx.url = uObj.pathname + uObj.search;
+          }
+        } else if (/jakcctv\.jakarta\.go\.id/i.test(ctx.url) && !/[?&]proto=/.test(ctx.url)) {
+          ctx.url += (ctx.url.includes('?') ? '&' : '?') + 'proto=hls';
         }
-      } else if (/jakcctv\.jakarta\.go\.id/i.test(ctx.url) && !/[?&]proto=/.test(ctx.url)) {
-        ctx.url += (ctx.url.includes('?') ? '&' : '?') + 'proto=hls';
-      }
-    } catch (e) {}
-    return super.load(ctx, cfg, cb);
-  }
-} : null;
-const hlsJak = cfg => JakLoader ? Object.assign({loader:JakLoader}, cfg) : cfg;
+      } catch (e) {}
+      return super.load(ctx, cfg, cb);
+    }
+  };
+  return _JakLoader;
+}
+const hlsJak = cfg => { const jl = getJakLoader(); return jl ? Object.assign({loader:jl}, cfg) : cfg; };
 let aliveMap = null, district = 'Semua', camList = [];
 /* Batas beban. Dulu MAXL=4 global (satu host lambat memonopoli semua slot) dan MAXP=24 decoder
    sekaligus. Sekarang: maks 6 load paralel, tapi 2 per host + round-robin antar host;
@@ -7308,6 +7373,10 @@ function startCell(cell){
   const steps = p.steps || (p.steps = camSteps(c));
   if (!p.step && hostMode.get(p.host) === 'proxy') { const pi = proxyIdx(steps); if (pi > 0) p.step = pi; }
   const url = steps[Math.min(p.step || 0, steps.length - 1)];
+  if (!window.Hls && !v.canPlayType('application/vnd.apple.mpegurl')) {
+    ensureHls().then(() => { const st = P.get(cell); if (st && !st.dead && !st.h) startCell(cell); }).catch(() => kill(cell));
+    return;
+  }
   if (window.Hls && Hls.isSupported()) {
     const h = new Hls(hlsJak({ startLevel:0, capLevelToPlayerSize:true, maxBufferLength:6, maxMaxBufferLength:12,
       backBufferLength:10, liveBackBufferLength:10,
@@ -7776,6 +7845,10 @@ function glbPlay(){
   const v = $('#glb-video'), url = glbSteps[glbStep];
   if (glbHls) { try { glbHls.destroy(); } catch (e) {} glbHls = null; }
   try { v.pause(); v.removeAttribute('src'); v.load(); } catch (e) {}
+  if (!window.Hls && !v.canPlayType('application/vnd.apple.mpegurl')) {
+    ensureHls().then(() => { const lb = $('#lightbox'); if (lb && !lb.hidden) glbPlay(); }).catch(() => {});
+    return;
+  }
   if (window.Hls && Hls.isSupported()) {
     glbHls = new Hls(hlsJak({ liveSyncDurationCount:1, maxLiveSyncPlaybackRate:1.15, capLevelToPlayerSize:true, maxBufferLength:8,
       manifestLoadingTimeOut:25000, levelLoadingTimeOut:20000, fragLoadingTimeOut:15000,
@@ -7872,7 +7945,7 @@ const ttIcon = (inc, sz = 20) => L.divIcon({ className: 'mk-tt-ic', iconSize: [s
 // badge ikut zoom — floor besar supaya tetap kebaca di zoom-out (pola sama dgn wxSize)
 const ttPtSize = () => { const s = Math.pow(1.3, (map ? map.getZoom() : 10) - 10); return Math.max(22, Math.min(48, Math.round(26 * s))); };
 const ttLnSize = () => { const s = Math.pow(1.3, (map ? map.getZoom() : 10) - 10); return Math.max(17, Math.min(36, Math.round(20 * s))); };
-let map = null, heat = null, pinLayer = null, camLayer = null, mapReady = false, mapOpen = false, mapBusy = false, mapData = [], esriRefLayer = null;
+let map = null, heat = null, pinLayer = null, regLabelLayer = null, camLayer = null, mapReady = false, mapOpen = false, mapBusy = false, mapData = [], esriRefLayer = null;
 let ttFlowLayer = null, ttIncTileLayer = null, ttIncDataLayer = null, routeLayer = null, measureLayer = null;
 let flightLayer = null, shipLayer = null, transitLayer = null;
 let gempaLayer = null, gunungLayer = null, wxLayer = null, radarLayer = null, radarBmkgLayer = null, peringatanLayer = null, warnRenderer = null;
@@ -8002,6 +8075,15 @@ function syncLayers(){
   if (esriRefLayer) {
     if (layerOn.ttflow && map.hasLayer(esriRefLayer)) map.removeLayer(esriRefLayer);
     if (!layerOn.ttflow && !map.hasLayer(esriRefLayer)) map.addLayer(esriRefLayer);
+  }
+  if (regLabelLayer) {
+    const showReg = !!(layerOn.pins || layerOn.heat);
+    if (showReg && !map.hasLayer(regLabelLayer)) {
+      map.addLayer(regLabelLayer);
+      paintMapRegLabels();
+    } else if (!showReg && map.hasLayer(regLabelLayer)) {
+      map.removeLayer(regLabelLayer);
+    }
   }
 }
 
@@ -8386,6 +8468,60 @@ function paintMap(){
     map._framed = true;
   }
   syncLayers();
+  paintMapRegLabels();
+}
+let _regMeasureCtx = null;
+function regTextWidth(txt){
+  if (!_regMeasureCtx) {
+    const cv = document.createElement('canvas');
+    _regMeasureCtx = cv.getContext('2d');
+    if (_regMeasureCtx) _regMeasureCtx.font = '600 8px "IBM Plex Mono", ui-monospace, monospace';
+  }
+  return _regMeasureCtx ? _regMeasureCtx.measureText(txt).width : txt.length * 5.2;
+}
+function paintMapRegLabels(){
+  if (!mapReady || !map || !regLabelLayer) return;
+  if (!mapOpen || !(layerOn.pins || layerOn.heat)) { regLabelLayer.clearLayers(); return; }
+  const sz = map.getSize();
+  if (!sz || sz.x < 40 || sz.y < 40) return;
+  const groups = new Map();
+  for (const it of mapData) {
+    if (it.fixed || typeof it.la !== 'number' || typeof it.lo !== 'number') continue;
+    const raw = (deEmoji(it.name) || '').trim();
+    if (!raw) continue;
+    const key = raw.toUpperCase();
+    let g = groups.get(key);
+    if (!g) { g = { name: key, la: 0, lo: 0, c: 0 }; groups.set(key, g); }
+    g.la += it.la; g.lo += it.lo; g.c++;
+  }
+  const labels = [...groups.values()]
+    .map(g => ({ name: g.name, la: g.la / g.c, lo: g.lo / g.c, c: g.c }))
+    .sort((a, b) => b.c - a.c || (a.name < b.name ? -1 : 1));
+  const z = map.getZoom();
+  const maxLab = z <= 4 ? 6 : z <= 5 ? 14 : z <= 6 ? 28 : z <= 7 ? 45 : z <= 8 ? 65 : z <= 9 ? 80 : Math.max(10, Math.round(80 / (1 << Math.min(4, z - 9))));
+  const placed = [];
+  regLabelLayer.clearLayers();
+  for (const lab of labels) {
+    if (placed.length >= maxLab) break;
+    const pt = map.latLngToContainerPoint([lab.la, lab.lo]);
+    if (!isFinite(pt.x) || !isFinite(pt.y)) continue;
+    const text = lab.name + ' ' + lab.c;
+    const bw = Math.ceil(regTextWidth(text)) + 10, bh = 13;
+    let bx = pt.x + 10, flipLeft = false;
+    if (bx + bw > sz.x - 6 && pt.x - 10 - bw >= 6) { bx = pt.x - 10 - bw; flipLeft = true; }
+    const by = pt.y - 6;
+    if (bx < 4 || bx + bw > sz.x - 4 || by < 4 || by + bh > sz.y - 4) continue;
+    const clash = placed.some(p => p.x < bx + bw + 2 && p.x + p.w + 2 > bx && p.y < by + bh + 2 && p.y + p.h + 2 > by);
+    if (clash) continue;
+    placed.push({ x: bx, y: by, w: bw, h: bh });
+    const ic = L.divIcon({
+      className: 'reg-lbl-ic',
+      iconSize: [bw, bh],
+      iconAnchor: [flipLeft ? bw + 10 : -10, 6],
+      html: `<div class="reg-lbl">${esc(text)}</div>`
+    });
+    regLabelLayer.addLayer(L.marker([lab.la, lab.lo], { pane: 'regLabels', interactive: false, keyboard: false, icon: ic }));
+  }
 }
 function ttFlowPopup(lat, lon){
   if (API == null) return '<div class="mp-m">TomTom butuh API server.</div>';
@@ -8551,12 +8687,17 @@ function ensureMap(){
     heat = L.heatLayer([], { radius: 38, blur: 24, maxZoom: 13, max: 1, minOpacity: .2,
       gradient: { 0.15:'#3d0d0f', 0.35:'#6e1418', 0.55:'#9c181e', 0.75:'#c11c24', 0.9:'#e02830', 1:'#ff4d54' } });
   }
+  const regPane = map.createPane('regLabels');
+  regPane.style.zIndex = 620;
+  regPane.style.pointerEvents = 'none';
   pinLayer = L.layerGroup();
+  regLabelLayer = L.layerGroup();
   camLayer = L.layerGroup();
   ttIncDataLayer = L.layerGroup();
   routeLayer = L.layerGroup();
   mapReady = true;
   map.on('moveend', debounce(pullTomTomIncidents, 500));
+  map.on('moveend resize', paintMapRegLabels);
   map.on('zoomend', () => {
     for (const [k, m] of flMarkers) if (m._hdg != null) m.setIcon(dirIc('plane', m._hdg, '#7cc7ff'));
     for (const [k, m] of shMarkers) if (m._hdg != null) m.setIcon(dirIc('ship', m._hdg, '#4dd0e1'));
@@ -8723,7 +8864,7 @@ async function pullIncidents(fresh){
     renderGeoTelemetry();
     $('#map-meta').textContent = 'butuh server';
     $('#map-src').textContent = 'tanpa API';
-    if (mapOpen) { ensureMap(); paintMap(); }   // Leaflet lazy — jangan instantiate saat panel tertutup
+    if (mapOpen && typeof L !== 'undefined') { ensureMap(); paintMap(); }   // Leaflet lazy — jangan instantiate saat panel tertutup
     return;
   }
   mapBusy = true;
@@ -8756,7 +8897,7 @@ async function pullIncidents(fresh){
       wireSrcText = 'wire ' + (d.total || nReal) + (d.raw && d.raw > d.total ? ' · ' + d.raw + ' artikel' : '') + ' · kamera ' + CAMS.length;
       paintMapSrc();
       drawGlobe(performance.now());
-      if (mapOpen) { ensureMap(); paintMap(); }   // data globe tetap update; DOM Leaflet hanya saat panel kebuka
+      if (mapOpen && typeof L !== 'undefined') { ensureMap(); paintMap(); }   // data globe tetap update; DOM Leaflet hanya saat panel kebuka
       if (layerOn.peringatan && mapOpen) pullAlerts();
     } else if (!geoIncLoaded) {
       geoIncLoaded = true;
@@ -8778,17 +8919,11 @@ function sizeMap(){
     wrap.style.width = '';
   }
 }
-function openMap(){
-  ensureMap();   // lazy-init: Leaflet baru dibuat saat panel pertama dibuka
-  sizeMap();
-  const wrap = $('#mapwrap');
-  wrap.classList.add('on');
-  wrap.inert = false;   // panel kembali interaktif/focusable
-  wrap.setAttribute('aria-hidden', 'false');
-  $('#btn-map').setAttribute('aria-expanded', 'true');
-  mapOpen = true;
-  lastGestEnd = performance.now();   // buka panel ≠ gesture globe — tahan auto-focus/home ~25dtk supaya toast tidak muncul tepat saat user melihat peta
-  setTimeout(() => { if (map) map.invalidateSize(); }, 380);
+function hydrateMapLayers(){
+  ensureMap();
+  if (!map) return;
+  map.invalidateSize();
+  paintMap();
   pullIncidents();
   pullTomTomIncidents();
   clearInterval(ttIncInterval);
@@ -8808,6 +8943,24 @@ function openMap(){
   if (layerOn.ship) pullShips();
   if (layerOn.transit) pullTransit();
   pullDisaster();   // marker gempa/gunung di layer peta butuh data terbaru
+}
+function openMap(){
+  sizeMap();
+  const wrap = $('#mapwrap');
+  wrap.classList.add('on');
+  wrap.inert = false;   // panel kembali interaktif/focusable
+  wrap.setAttribute('aria-hidden', 'false');
+  $('#btn-map').setAttribute('aria-expanded', 'true');
+  mapOpen = true;
+  lastGestEnd = performance.now();   // buka panel ≠ gesture globe — tahan auto-focus/home ~25dtk supaya toast tidak muncul tepat saat user melihat peta
+  ensureLeaflet().then(() => {
+    if (!mapOpen) return;
+    hydrateMapLayers();
+    setTimeout(() => { if (map && mapOpen) map.invalidateSize(); }, 380);
+  }).catch(() => {
+    const mEl = $('#map');
+    if (mEl && !map) mEl.innerHTML = '<div class="empty">Leaflet gagal dimuat. Cek koneksi ke CDN.</div>';
+  });
   setTimeout(() => $('#map-close').focus(), 60);
 }
 addEventListener('resize', () => { if (mapOpen) { sizeMap(); if (map) map.invalidateSize(); } });
@@ -9742,6 +9895,10 @@ function tvPlay(){
     return true;
   };
   let h = null;
+  if (!window.Hls && !v.canPlayType('application/vnd.apple.mpegurl')) {
+    ensureHls().then(() => { if (tvOn) tvPlay(); }).catch(() => tvFail('HLS gagal dimuat'));
+    return;
+  }
   if (window.Hls && Hls.isSupported()) {
     h = new Hls(hlsJak({ liveSyncDurationCount: 2, maxBufferLength: 6, capLevelToPlayerSize: true }));
     tvHls = h;
@@ -10272,11 +10429,38 @@ function rdError(url, msg) {
   $('#rd-state').textContent = 'gagal';
   $('#rd-open').href = url;
 }
+function rdImgProxyFallback(img) {
+  if (!img) return false;
+  const orig = img.dataset && img.dataset.orig;
+  if (orig && !/\/img\?/i.test(orig) && !img.dataset.pxTried && typeof API !== 'undefined' && API != null) {
+    img.dataset.pxTried = '1';
+    img.src = rdProxyImgUrl(orig);
+    return true;
+  }
+  return false;
+}
+function rdLeadImgFb(img) {
+  if (rdImgProxyFallback(img)) return;
+  if (img) {
+    img.onerror = null;
+    if (img.parentNode) img.parentNode.remove();
+  }
+}
 function rdHeroFb(img) {
-  // Jangan ganti hero yang gagal load dengan gambar tak terverifikasi — hapus saja
+  // Jangan ganti hero yang gagal load dengan gambar tak terverifikasi — coba proxy URL yang sama sekali, lalu hapus
+  if (rdImgProxyFallback(img)) return;
   if (img) {
     img.onerror = null;
     img.remove();
+  }
+}
+function rdFigFb(img) {
+  if (rdImgProxyFallback(img)) return;
+  if (img) {
+    img.onerror = null;
+    const fig = img.closest('figure');
+    if (fig) fig.remove();
+    else img.remove();
   }
 }
 function rdArticle(d, url) {
@@ -10293,7 +10477,8 @@ function rdArticle(d, url) {
   for (const v of (d.videos || [])) if (v && v.poster && v.kind !== 'probe') posters.add(v.poster);
   for (const b of (d.blocks || [])) if (b.k === 'v' && b.v && b.v.poster && b.v.kind !== 'probe') posters.add(b.v.poster);
   const hero = (d.img && d.imgVerified !== false && !posters.has(d.img)) ? d.img : '';
-  const img = hero ? `<img class="rd-hero" src="${esc(hero)}" alt="" loading="eager" referrerpolicy="no-referrer" onerror="rdHeroFb(this)">` : '';
+  const heroSrc = hero ? rdMediaImgSrc(hero, d.imgProxy) : '';
+  const img = heroSrc ? `<img class="rd-hero" src="${esc(heroSrc)}" data-orig="${esc(hero)}" alt="" loading="eager" referrerpolicy="no-referrer" onerror="rdHeroFb(this)">` : '';
   const rdVidHtml = v => mediaVidHtml(v);
   const emptyFb = (d.wireFallback || d.textSource === 'none') && !(d.paras && d.paras.length);
   const note = d.videoPage
@@ -10313,7 +10498,10 @@ function rdArticle(d, url) {
       const b = d.blocks[i];
       if (b.k === 'v') { if (b.v && b.v.kind !== 'probe') chunks.push(rdVidHtml(b.v)); continue; }
       if (b.k === 'i') {
-        if (b.img && b.img.url) chunks.push(`<figure class="rd-fig"><img src="${esc(b.img.url)}" alt="${esc(b.img.cap || '')}" loading="lazy" referrerpolicy="no-referrer" onerror="this.closest('figure').remove()">${b.img.cap ? `<figcaption>${esc(b.img.cap)}</figcaption>` : ''}</figure>`);
+        if (b.img && b.img.url) {
+          const figSrc = rdMediaImgSrc(b.img.url, b.img.proxy);
+          chunks.push(`<figure class="rd-fig"><img src="${esc(figSrc)}" data-orig="${esc(b.img.url)}" alt="${esc(b.img.cap || '')}" loading="lazy" referrerpolicy="no-referrer" onerror="rdFigFb(this)">${b.img.cap ? `<figcaption>${esc(b.img.cap)}</figcaption>` : ''}</figure>`);
+        }
         continue;
       }
       if (b.k === 'h') { chunks.push(`<h2 class="rd-h">${esc(b.t)}</h2>`); continue; }
@@ -10357,6 +10545,10 @@ function rdArticle(d, url) {
 // video langsung: m3u8 butuh hls.js di Chrome (Safari native); mp4 langsung jalan
 function rdMountVideo(v) {
   if (!v.hasAttribute('data-hls')) return;
+  if (!window.Hls && !v.canPlayType('application/vnd.apple.mpegurl')) {
+    ensureHls().then(() => { if (v.isConnected && !v._hls) rdMountVideo(v); }).catch(() => {});
+    return;
+  }
   if (window.Hls && Hls.isSupported()) {
     const h = new Hls({ maxBufferLength: 30 });
     v._hls = h;   // simpan di elemen — rdStopMedia butuh handle ini untuk destroy

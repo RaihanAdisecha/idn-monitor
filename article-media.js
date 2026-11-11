@@ -885,6 +885,7 @@ async function resolveArticleMedia({
         fingerprint: fp,
         source: item.cand.source,
         verified: true,
+        ...(item.probe.viaBot || item.probe.viaWeserv ? { proxy: true } : {}),
         pos: item.cand.pos ?? 0,
       });
       if (bodyImages.length >= 8) break;
@@ -908,6 +909,7 @@ async function resolveArticleMedia({
     bytes: selectedHero.probe.bytes,
     mime: selectedHero.probe.mime,
     verified: true,
+    ...(selectedHero.probe.viaBot || selectedHero.probe.viaWeserv ? { proxy: true } : {}),
     status: 'verified',
     fingerprint: selectedHero.probe.fingerprint,
     caption: selectedHero.cand.cap || '',
