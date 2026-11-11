@@ -10255,7 +10255,7 @@ function tvOpen(forceBottomLeft = false){
   const mob = innerWidth <= 820;
   const footEl = document.querySelector('.foot');
   const footH = (footEl && footEl.offsetHeight) || 36;
-  const defY = Math.max(6, innerHeight - hh - (mob ? 8 : footH + 12));
+  const defY = Math.max(6, innerHeight - hh - (mob ? 96 : footH + 104));
   if (saved && Number.isFinite(saved.x) && Number.isFinite(saved.y)) tvPlace(saved.x, saved.y);
   else tvPlace(mob ? 8 : 18, defY);
   tvPlay();
