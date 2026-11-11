@@ -3088,6 +3088,8 @@ if (!SITREP_USER && !SITREP_PUBLIC && !SITREP_TOKEN) console.warn('[SITREP] No A
 const cityLabel = s => {
   let t = String(s == null ? '' : s).trim();
   if (!t) return 'Lainnya';
+  if (/^pantau\s+banjir/i.test(t)) return 'Pantau Banjir';
+  if (/^(?:kota\s+)?jakarta/i.test(t)) return 'Kota Jakarta';
   if (t === t.toUpperCase()) t = t.toLowerCase().replace(/(^|\s)(\S)/g, (m, a, b) => a + b.toUpperCase());
   return t.replace(/^Kota\s+/i, '');
 };
@@ -7778,7 +7780,7 @@ function layout(){
 function wantList(){
   const q = ($('#cq').value || '').toLowerCase();
   const l = CAMS.map((c, i) => ({ ...c, _i:i })).filter(c =>
-    (district === 'Semua' || c.c === district) && (!q || c.n.toLowerCase().includes(q))
+    (district === 'Semua' || c.c === district || (district === 'Pantau Banjir' && /^pantau\s+banjir/i.test(c.c)) || (district === 'Kota Jakarta' && /^(?:kota\s+)?jakarta/i.test(c.c))) && (!q || c.n.toLowerCase().includes(q))
     && c._hide !== true && !(aliveMap && aliveMap[c._i] === false));
   if (aliveMap) l.sort((a, b) => (aliveMap[b._i] !== false) - (aliveMap[a._i] !== false));
   return l;
@@ -7835,7 +7837,13 @@ function renderCams(){
 function drawCityBar(){
   const cnt = {};
   CAMS.forEach(c => { cnt[c.c] = (cnt[c.c] || 0) + 1; });
-  const ds = ['Semua', ...Object.keys(cnt).sort((a, b) => cnt[b] - cnt[a])];
+  const otherCities = Object.keys(cnt)
+    .filter(k => k !== 'Pantau Banjir' && k !== 'Kota Jakarta')
+    .sort((a, b) => cnt[b] - cnt[a]);
+  const ds = ['Semua'];
+  if (cnt['Pantau Banjir']) ds.push('Pantau Banjir');
+  if (cnt['Kota Jakarta']) ds.push('Kota Jakarta');
+  ds.push(...otherCities);
   $('#citybar').innerHTML = ds.map((d, idx) => {
     const n = CAMS.filter(c => d === 'Semua' || c.c === d).length;
     const num = String(idx).padStart(2, '0');
@@ -8080,9 +8088,9 @@ function mapPopup(it){
     ${it.url ? `<button type="button" class="mp-src mp-read" data-read="${esc(it.url)}">Baca${ic('out')}</button>` : ''}`;
 }
 function camPopup(c){
-  const isWater = c.c === 'Pantau Banjir & Kali' || /Kali|Pintu Air|Bendungan|Drain/i.test(c.n);
+  const isWater = /^pantau\s+banjir/i.test(c.c) || /Kali|Pintu Air|Bendungan|Drain/i.test(c.n);
   const tag = isWater ? '<span style="color:#00e5ff;font-weight:700">PANTAU BANJIR & KALI</span> · ' : '';
-  return `<div class="mp-k"${isWater ? ' style="color:#00e5ff"' : ''}>${tag}CCTV · ${esc(c.c || 'Jakarta')}</div>
+  return `<div class="mp-k"${isWater ? ' style="color:#00e5ff"' : ''}>${tag}CCTV · ${esc(c.c || 'Kota Jakarta')}</div>
     <div class="mp-t">${esc(deEmoji(c.n))}</div>
     <div style="margin-top:6px;display:flex;gap:6px">
       <button type="button" class="mp-src" style="cursor:pointer" data-cam-open="${esc(c.s)}">Tonton CCTV${ic('out')}</button>
@@ -8572,7 +8580,7 @@ function paintMap(){
   camLayer.clearLayers();
   for (const c of CAMS) {
     if (!c.la || !c.lo) continue;
-    const isWater = c.c === 'Pantau Banjir & Kali' || /Kali|Pintu Air|Bendungan|Drain/i.test(c.n);
+    const isWater = /^pantau\s+banjir/i.test(c.c) || /Kali|Pintu Air|Bendungan|Drain/i.test(c.n);
     const m = L.circleMarker([c.la, c.lo], {
       radius: isWater ? 5 : 2,
       color: isWater ? '#00e5ff' : '#8d8d8d',
