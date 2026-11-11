@@ -31,7 +31,7 @@ test('isSameOriginPost enforces strict origin/referer/sec-fetch-site and proxy s
 test('revokeToken keeps >1000 revocations effective against jti un-revocation attack', () => {
   const auth = SEC.createAuthManager({
     usersSpec: 'op1:verysecretpass123:operator',
-    authSecret: '0123456789abcdef0123456789abcdef',
+    authSecret: '00000000000000000000000000000000',
     sessionTtlSec: 3600,
   });
   const tokens = [];
