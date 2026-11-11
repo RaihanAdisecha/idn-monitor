@@ -1,12 +1,10 @@
 #!/usr/bin/env node
-/* Uji geocoder: (1) semua koordinat yang dipakai harus di daratan, (2) set judul emas (lokasi benar / harus null).
-   node tests/geo.test.js   -> exit 1 bila ada yang gagal. Tambah kasus baru tiap ketemu false positive. */
+
 const GEO = require('../geocode'), { onLand, nearestLand } = require('../scripts/geo-audit');
 const G = require('../geo/gazetteer.json');
 let fail = 0; const bad = (m) => { fail++; console.log('GAGAL  ' + m); };
 
-// 1. koordinat di daratan (pulau kecil yang tak ada di poligon dikecualikan eksplisit)
-const ISLAND_OK = ['Kepulauan Seribu'];   // juga: gunung api pulau mungil (Ruang, dll) memakai koordinat PVMBG asli, tidak diuji terhadap poligon
+const ISLAND_OK = ['Kepulauan Seribu'];
 for (const n of GEO.NODES) {
   if (ISLAND_OK.some(x => n.name.includes(x))) continue;
   if (!onLand(n.lo, n.la)) bad(`node di laut: ${n.name} (${nearestLand(n.lo, n.la).km.toFixed(1)} km dari pantai)`);
@@ -21,7 +19,6 @@ for (const t of ['Banjir di Flores', 'Gempa di Lombok', 'Banjir di Sumba', 'Banj
   if (!onLand(r.lo, r.la)) bad(`POI/region di laut: ${t} -> ${r.name} (${nearestLand(r.lo, r.la).km.toFixed(1)} km)`);
 }
 
-// 2. set emas: [judul, nama yang diharapkan | null, (opsional) daftar multi]
 const GOLD = [
   ['BPBD: Semua Kecamatan di Kota Malang Rawan Terdampak Bencana', 'Malang'],
   ['Atap Aula Kelurahan Limusnunggal Sukabumi Ambruk', 'Kelurahan Limusnunggal, Kecamatan Cibeureum, Sukabumi, Jawa Barat'],
@@ -32,15 +29,15 @@ const GOLD = [
   ['Aktivitas Erupsi Gunung Ile Lewotolok di NTT Masih Tinggi', 'Gunung Lewotolok'],
   ['Demo Buruh di Kantor Gubernur Jawa Barat Tuntut UMP Naik', 'Jawa Barat'],
   ['Gempa M5,2 Guncang Cilacap, Warga Panik', 'Cilacap'],
-  ['Kecelakaan Bus di Tol Cipali Tewaskan 5 Orang', null],            // nama jalan tol bukan kab
-  ['Metro TV Gelar Diskusi Soal Ekonomi', null],                      // institusi, bukan Kota Metro
-  ['Harga Batu Bara Naik di Pasar Global', null],                     // Batu Bara bukan kabupaten di sini
-  ['Serangan Balik Pemain Persija Bikin Gol', null],                  // "serang" bukan Kota Serang
-  ['Jenazah korban kecelakaan helikopter dipulangkan ke Jawa Tengah', null],        // tujuan, bukan kejadian
-  ['Korban dilarikan ke RSUD Bandung usai kecelakaan di Cilegon', 'Cilegon'],       // RS tujuan diabaikan
+  ['Kecelakaan Bus di Tol Cipali Tewaskan 5 Orang', null],
+  ['Metro TV Gelar Diskusi Soal Ekonomi', null],
+  ['Harga Batu Bara Naik di Pasar Global', null],
+  ['Serangan Balik Pemain Persija Bikin Gol', null],
+  ['Jenazah korban kecelakaan helikopter dipulangkan ke Jawa Tengah', null],
+  ['Korban dilarikan ke RSUD Bandung usai kecelakaan di Cilegon', 'Cilegon'],
   ['Gerak Cepat Pemerintah Tangani Banjir di Aceh dan Sumatra Utara', 'Aceh', ['Aceh', 'Sumatera Utara']],
   ['Longsor di Aceh, Jawa Tengah dan Jawa Timur Telan Korban', 'Aceh', ['Aceh', 'Jawa Tengah', 'Jawa Timur']],
-  ['Pria Asal Bogor Ditangkap di Cilegon karena Curanmor', 'Cilegon'],             // asal bukan lokasi
+  ['Pria Asal Bogor Ditangkap di Cilegon karena Curanmor', 'Cilegon'],
   ['Gempa di NTB', 'Nusa Tenggara Barat'],
   ['Banjir di DIY', 'DI Yogyakarta'],
   ['Gempa di DKI', 'Jakarta'],
@@ -56,7 +53,7 @@ for (const [t, exp, multi] of GOLD) {
   if (got !== exp) bad(`"${t}" -> ${got} (harusnya ${exp})`);
   if (multi) { const all = (r && r.all || []).map(x => x.name); if (JSON.stringify(all) !== JSON.stringify(multi)) bad(`multi "${t}" -> ${JSON.stringify(all)} (harusnya ${JSON.stringify(multi)})`); }
 }
-// 3. BIG desa/kelurahan: centroids, parent disambiguation, POI precedence, and no arbitrary duplicate-name pick.
+
 const stats = GEO.stats();
 if (GEO.NODES.length !== 514) bad(`NODES memuat ${GEO.NODES.length} titik tetap, seharusnya hanya 514 kab/kota`);
 if (stats.villages !== 83529 || stats.desa !== 75034 || stats.kelurahan !== 8495) bad(`statistik BIG tidak sesuai: ${JSON.stringify(stats)}`);

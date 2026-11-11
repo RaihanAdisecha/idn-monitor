@@ -1,7 +1,5 @@
 #!/usr/bin/env node
-/* Bangun geo/gazetteer.json dari cahyadsn/wilayah (Kepmendagri 300.2.2-2138/2025, MIT).
-   Isi: provinsi (centroid = rata-rata pusat kab/kota), 514 kab/kota (koordinat pusat pemerintahan),
-   dan kecamatan unik → kab induk. Jalankan: node scripts/build-gazetteer.js */
+
 const fs = require('fs'), path = require('path');
 const BASE = 'https://raw.githubusercontent.com/cahyadsn/wilayah/master/db/';
 const norm = s => String(s).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, ' ').trim();
@@ -20,16 +18,16 @@ const norm = s => String(s).toLowerCase().normalize('NFD').replace(/[\u0300-\u03
       kab.push({ code, name: name.replace(/^(Kabupaten|Kota Administrasi|Kota) /, ''), kota, ibukota: m[3].replace(/''/g, "'"), la, lo, prov: code.split('.')[0] });
     }
   }
-  // koreksi manual untuk anomali sumber (diverifikasi: Wakatobi ~ -5.33,123.54)
+
   const FIX = { 'Wakatobi': { lo: 123.54 } };
   for (const k of kab) if (FIX[k.name]) Object.assign(k, FIX[k.name]);
-  // sanity: semua titik harus di dalam bbox Indonesia
+
   for (const k of kab) if (k.la > 6.2 || k.la < -11.1 || k.lo < 94.9 || k.lo > 141.1) throw new Error('koordinat di luar Indonesia: ' + k.name);
-  // centroid provinsi = rata-rata pusat kab/kota di dalamnya
+
   const acc = {};
   for (const k of kab) { const a = acc[k.prov] || (acc[k.prov] = { la: 0, lo: 0, n: 0 }); a.la += k.la; a.lo += k.lo; a.n++; }
   for (const p of Object.values(prov)) { const a = acc[p.code]; if (a) { p.la = +(a.la / a.n).toFixed(4); p.lo = +(a.lo / a.n).toFixed(4); } }
-  // kecamatan: nama unik → daftar kab induk
+
   const kec = {};
   for (const line of all.split('\n')) {
     const m = /^\('(\d\d\.\d\d\.\d\d)','((?:[^']|'')*)'\)/.exec(line); if (!m) continue;

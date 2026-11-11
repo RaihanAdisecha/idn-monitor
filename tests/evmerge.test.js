@@ -1,6 +1,5 @@
 'use strict';
-/* Uji mergeEvents: satu token langka tidak cukup, butuh >=2 (atau sameHazard),
-   dan klaster tidak boleh merantai secara transitif (A-B + B-C != A,C satu pin). */
+
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { mergeEvents } = require('../evmerge');
@@ -26,7 +25,7 @@ test('dua artikel dengan >=2 token langka sama menjadi satu pin', () => {
 });
 
 test('rantai transitif A-B-C tidak menggabungkan A dan C', () => {
-  // A~B berbagi senja+anggrek; B~C berbagi melati+cempaka; A~C tidak berbagi apa pun.
+
   const out = mergeEvents([
     pin('Kebakaran rumah senja anggrek di Bandung'),
     pin('Kebakaran rumah senja anggrek melati di Bandung'),

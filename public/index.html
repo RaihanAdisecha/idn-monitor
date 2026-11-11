@@ -2686,7 +2686,6 @@ button.mp-src{background:none;border-top:0;border-left:0;border-right:0;cursor:p
 
 <main class="console">
 
-  <!-- 01 SITUASI -->
   <section class="pane" aria-label="Situasi nasional">
     <div class="ph"><span class="ph-k">[01]</span><h2 class="ph-t">Situasi</h2><span class="ph-m" id="dmeta">sync —</span></div>
     <div class="pb sit-body">
@@ -2726,7 +2725,6 @@ button.mp-src{background:none;border-top:0;border-left:0;border-right:0;cursor:p
     </div>
   </section>
 
-  <!-- 02 MARKET -->
   <section class="pane mkt" aria-label="Pasar saham Indonesia">
     <div class="ph"><span class="ph-k">[02]</span><h2 class="ph-t">Market · IDX</h2>
       <span class="ph-m" id="stk-meta">—</span></div>
@@ -2755,7 +2753,6 @@ button.mp-src{background:none;border-top:0;border-left:0;border-right:0;cursor:p
     </div>
   </section>
 
-  <!-- 03 SOCIAL -->
   <section class="pane" aria-label="Social live">
     <div class="ph soc-ph">
       <span class="ph-k">[03]</span>
@@ -2783,7 +2780,6 @@ button.mp-src{background:none;border-top:0;border-left:0;border-right:0;cursor:p
     </div>
   </section>
 
-  <!-- 04 NEWS -->
   <section class="pane" aria-label="Wire berita">
     <div class="ph"><span class="ph-k">[04]</span><h2 class="ph-t">News Wire</h2><span class="ph-m" id="nmeta">Memuat…</span></div>
     <div class="pb">
@@ -2816,7 +2812,6 @@ button.mp-src{background:none;border-top:0;border-left:0;border-right:0;cursor:p
     </div>
   </section>
 
-  <!-- 05 CCTV -->
   <section class="pane" aria-label="CCTV Regional">
     <div class="ph"><span class="ph-k">[05]</span><h2 class="ph-t">CCTV · Regional</h2><span class="ph-m" id="ccount">—</span></div>
     <div class="pb">
@@ -7300,12 +7295,19 @@ function showSnap(cell, p){
 }
 function dropSnap(cell){ const im = cell.querySelector('img.snap'); if (im) im.remove(); const p = P.get(cell); if (p) { p.snapAt = 0; p.snapMode = false; } }
 
+function cleanVid(v){
+  if (!v) return;
+  v.onerror = v.onloadeddata = v.onplaying = v.onwaiting = null;
+  try { v.pause(); } catch (e) {}
+  v.removeAttribute('src');
+  try { v.load(); } catch (e) {}
+}
 function releaseCell(cell){
   const p = P.get(cell); if (!p || p.dead) return;
   if (p.h && p.h !== 'native') { try { p.h.destroy(); } catch (e) {} }
-  const v = vid(cell); if (v) { try { v.pause(); } catch (e) {} v.removeAttribute('src'); try { v.load(); } catch (e) {} v.remove(); }
+  const v = vid(cell); if (v) { cleanVid(v); v.remove(); }
   p.h = null; p.loading = p.loaded = p.playing = p.stopped = false; p.visAt = 0;
-  badge(cell, 'wait', 'Antre'); upd();
+  badge(cell, p.snapMode ? 'live' : 'wait', p.snapMode ? 'Live Snap' : 'Antre'); upd();
 }
 function cols(){ return Math.max(1, Math.min(4, Math.round(camGrid.clientWidth / 165))); }
 function badge(cell, cls, txt){ const b = cell.querySelector('.badge'); if (b) { b.className = 'badge ' + cls; b.textContent = txt; } }
@@ -7326,24 +7328,26 @@ function startCell(cell){
   if (p.h) {
     if (p.h !== 'native') { try { p.h.startLoad(-1); } catch (e) {} }
     p.stopped = false; p.loading = !p.loaded; p.nerr = p.merr = 0;
-    if (!p.loaded) { p.t0 = Date.now(); badge(cell, 'wait', 'Memuat'); }
+    if (!p.loaded) { p.t0 = Date.now(); badge(cell, p.snapMode ? 'live' : 'wait', p.snapMode ? 'Live Snap' : 'Memuat'); }
     else { dropSnap(cell); if (p.vis) badge(cell, 'live', 'Live'); }
     v.play().catch(() => {}); return;
   }
-  p.snapMode = false;
-  p.loading = true; p.t0 = Date.now();
   const c = camList[+cell.dataset.i];
+  const keepSnapLive = Boolean(c && c.snap && p.snapOk && p.snapMode);
+  if (!keepSnapLive) p.snapMode = false;
+  p.loading = true; p.t0 = Date.now();
   if (c && c.snap && !p.loaded) showSnap(cell, p);
-  badge(cell, 'wait', 'Memuat');
+  badge(cell, keepSnapLive ? 'live' : 'wait', keepSnapLive ? 'Live Snap' : 'Memuat');
   const steps = p.steps || (p.steps = camSteps(c));
   if (!p.step && hostMode.get(p.host) === 'proxy') { const pi = proxyIdx(steps); if (pi > 0) p.step = pi; }
   const url = steps[Math.min(p.step || 0, steps.length - 1)];
   if (/\.mp4($|\?)/i.test(url)) {
     p.h = 'native'; v.src = url;
-    v.addEventListener('error', () => {
+    v.onerror = () => {
+      v.onerror = null;
       if ((p.step = (p.step || 0) + 1) < steps.length) { p.h = null; startCell(cell); }
       else kill(cell);
-    }, { once:true });
+    };
     v.play().catch(() => {});
   } else if (needHlsLib(v)) {
     ensureHls().then(() => { const st = P.get(cell); if (st && !st.dead && !st.h) startCell(cell); })
@@ -7368,17 +7372,18 @@ function startCell(cell){
     });
   } else if (v.canPlayType('application/vnd.apple.mpegurl')) {
     p.h = 'native'; v.src = url;
-    v.addEventListener('error', () => {
+    v.onerror = () => {
+      v.onerror = null;
       if ((p.step = (p.step || 0) + 1) < steps.length) { const old = p.h; p.h = null; try { old && old !== 'native' && old.destroy(); } catch (e) {} startCell(cell); }
       else kill(cell);
-    }, { once:true });
+    };
     v.play().catch(() => {});
   } else { kill(cell); return; }
   v.onloadeddata = () => {
     if (p.loaded) return;
     rumPush({ h: p.host, t: Date.now() - (p.visAt || p.t0), s: p.stl || 0 }); p.stl = 0; p.visAt = 0;
     if (p.hedged) { p.hedged = false; const st = p.steps && p.steps[p.step || 0]; if (st && proxyIdx([st]) === 0) { const n = (hostWin.get(p.host) || 0) + 1; hostWin.set(p.host, n); if (n >= 2) hostMode.set(p.host, 'proxy'); } }
-    p.loaded = true; p.loading = false; p.dem = 0; p.nerr = p.merr = p.tries = p.step = p.rest = 0;
+    p.loaded = true; p.loading = false; p.snapMode = false; p.dem = 0; p.nerr = p.merr = p.tries = p.step = p.rest = 0;
     const rc = camList[p.idx]; if (rc) { const cc = CAMS[rc._i]; if (cc) { cc.fails = 0; camReport(cc.s, true); camBad.delete(camKey(cc.s)); } }
     if (p.bad) { p.bad = false; orderCams(); }
     p.vis = isCellVisible(cell);
@@ -7423,7 +7428,7 @@ function orderCams(){
 function kill(cell){
   const p = P.get(cell); if (!p) return;
   if (p.h && p.h !== 'native') { try { p.h.destroy(); } catch (e) {} }
-  const v = vid(cell); if (v) { try { v.pause(); } catch (e) {} v.removeAttribute('src'); v.load(); }
+  const v = vid(cell); if (v) cleanVid(v);
   p.h = null; p.loading = p.loaded = p.playing = p.stopped = false;
   rumPush({ h: p.host, f: 1 }); p.hedged = false;
   p.dead = true; p.tries = (p.tries || 0) + 1; p.step = 0; p.rest = 0;
@@ -7446,16 +7451,18 @@ function kill(cell){
     badge(cell, 'off', 'Offline');
   }
   clearTimeout(p.retry);
-  const backoff = Math.min(300000, 5000 * Math.pow(2, Math.min(p.tries - 1, 6)));
+  const backoff = p.snapMode ? 30000 : Math.min(300000, 5000 * Math.pow(2, Math.min(p.tries - 1, 6)));
   p.retry = setTimeout(() => { p.dead = false; if (!p.snapMode) badge(cell, 'wait', 'Antre'); pump(); },
     backoff * (0.7 + Math.random() * 0.6));
   pump(); upd();
 }
 function hideCell(cell){
   const p = P.get(cell); if (!p) return;
-  clearTimeout(p.retry); clearTimeout(p.t);
+  clearTimeout(p.retry); clearTimeout(p.t); clearTimeout(p.rel);
+  p.t = 0; p.rel = 0;
   if (p.h && p.h !== 'native') { try { p.h.destroy(); } catch (e) {} }
-  const v = vid(cell); if (v) { try { v.pause(); } catch (e) {} v.removeAttribute('src'); v.load(); }
+  const v = vid(cell); if (v) cleanVid(v);
+  try { vio && vio.unobserve(cell); } catch (e) {}
   P.delete(cell); cell.remove();
   layout(); upd();
 }
@@ -7497,9 +7504,9 @@ function isCellVisible(cell, vr){
 function dropLoadingCell(cell){
   const p = P.get(cell); if (!p || !p.loading || p.loaded) return;
   if (p.h && p.h !== 'native') { try { p.h.destroy(); } catch (e) {} }
-  const v = vid(cell); if (v) { try { v.pause(); } catch (e) {} v.removeAttribute('src'); try { v.load(); } catch (e) {} }
+  const v = vid(cell); if (v) cleanVid(v);
   p.h = null; p.loading = false; p.visAt = 0;
-  badge(cell, 'wait', 'Antre'); upd();
+  badge(cell, p.snapMode ? 'live' : 'wait', p.snapMode ? 'Live Snap' : 'Antre'); upd();
 }
 function pump(){
   const vr = camVisRect();
@@ -7583,6 +7590,7 @@ function pump(){
   cands.forEach(x => { if (!picked.has(x.key)) { const p = P.get(x.key); if (p) showSnap(x.key, p); } });
   wait.forEach(c => { const p = P.get(c); if (p) showSnap(c, p); });
   if (wake) setTimeout(pump, Math.max(500, wake - Date.now() + 300));
+  upd();
 }
 let pumpT = 0, pumpMaxT = 0, pumpAt = 0;
 function runPump(){
@@ -7680,7 +7688,7 @@ function initVio(){
     const fr = c.querySelector('.frame');
     const m = CctvCore.measureCell(c.getBoundingClientRect(), fr ? fr.getBoundingClientRect() : null, vr);
     p.vis = m.inView;
-    clearTimeout(p.t); clearTimeout(p.rel);
+    clearTimeout(p.t); clearTimeout(p.rel); p.t = 0; p.rel = 0;
     const isOffTop = m.topClip > 8;
     const isCompletelyOff = m.visH === 0;
 
@@ -7691,7 +7699,7 @@ function initVio(){
 
       if (p.loaded || p.playing) stopCell(c);
       else if (p.loading) dropLoadingCell(c);
-      p.rel = setTimeout(() => { if (!isCellVisible(c)) releaseCell(c); }, OFF_FREE_MS);
+      p.rel = setTimeout(() => { p.rel = 0; if (!isCellVisible(c)) releaseCell(c); }, OFF_FREE_MS);
       refreshCamVis();
     } else {
 
@@ -7719,10 +7727,10 @@ setInterval(() => {
   P.forEach((p, c) => {
     if (CctvCore.shouldDemote(p, Date.now(), waitingOthers, SOFT_MS)) {
       if (p.h && p.h !== 'native') { try { p.h.destroy(); } catch (e) {} }
-      const dv = vid(c); if (dv) { try { dv.pause(); } catch (e) {} dv.removeAttribute('src'); try { dv.load(); } catch (e) {} }
+      const dv = vid(c); if (dv) cleanVid(dv);
       p.h = null; p.loading = false; p.dem = (p.dem || 0) + 1;
       if (p.dem >= 2 && p.steps && (p.step || 0) < p.steps.length - 1) p.step = (p.step || 0) + 1;
-      badge(c, 'wait', 'Antre'); pumpSoon(); return;
+      badge(c, p.snapMode ? 'live' : 'wait', p.snapMode ? 'Live Snap' : 'Antre'); pumpSoon(); return;
     }
     if (p.loading && !p.loaded && !p.hedged && p.steps && API != null && Date.now() - p.t0 > HEDGE_MS && proxyIdx([p.steps[p.step || 0]]) !== 0) {
       const pi = proxyIdx(p.steps);
@@ -7799,7 +7807,7 @@ function renderCams(){
     if (keepUrls.has(url)) continue;
     clearTimeout(p.t); clearTimeout(p.retry); clearTimeout(p.rel);
     if (p.h && p.h !== 'native') { try { p.h.destroy(); } catch (e) {} }
-    const v = vid(el); if (v) { try { v.pause(); } catch (e) {} v.removeAttribute('src'); try { v.load(); } catch (e) {} }
+    const v = vid(el); if (v) cleanVid(v);
     try { vio.unobserve(el); } catch (e) {}
     P.delete(el);
     el.remove();
@@ -7919,7 +7927,15 @@ function glbPlay(){
       if (++glbStep < glbSteps.length) glbPlay();
       else glbFallbackEmbed();
     });
-  } else { v.src = url; v.play().catch(() => {}); }
+  } else {
+    v.src = url;
+    v.onerror = () => {
+      v.onerror = null;
+      if (++glbStep < glbSteps.length) glbPlay();
+      else glbFallbackEmbed();
+    };
+    v.play().catch(() => {});
+  }
 }
 function openLightbox(url, nama, kota, embed, steps, trigger){
   const lb = $('#lightbox'), sim = $('#glb-snap');
@@ -7927,17 +7943,28 @@ function openLightbox(url, nama, kota, embed, steps, trigger){
   lbTrigger = trigger || null;
   if (glbSnapTimer) { clearInterval(glbSnapTimer); glbSnapTimer = 0; }
   const camObj = CAMS.find(x => x.s === url || (steps && steps.includes(x.s)));
+  const trigP = trigger ? P.get(trigger) : null;
   glbSnapUrl = (camObj && camObj.snap) || '';
-  glbSnapProxy = false;
+  glbSnapProxy = Boolean(trigP && trigP.snapProxy);
   if (sim) {
+    sim.style.display = 'none';
     if (glbSnapUrl) {
       sim.onerror = () => {
-        if (!glbSnapProxy && API != null) { glbSnapProxy = true; glbSetSnapSrc(); }
+        if (!glbSnapProxy && API != null) {
+          glbSnapProxy = true;
+          if (trigP) trigP.snapProxy = true;
+          glbSetSnapSrc();
+        } else {
+          if (glbSnapTimer) { clearInterval(glbSnapTimer); glbSnapTimer = 0; }
+          glbSnapUrl = '';
+          sim.style.display = 'none';
+          const v = $('#glb-video');
+          if (!v || v.style.display === 'none') glbFallbackEmbed();
+        }
       };
       glbSetSnapSrc();
       glbSnapTimer = setInterval(glbSetSnapSrc, 15000);
     } else {
-      sim.style.display = 'none';
       sim.removeAttribute('src');
     }
   }

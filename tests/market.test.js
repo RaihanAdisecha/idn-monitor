@@ -76,20 +76,18 @@ test('3. Multi-provider closes() serves CNBC charts when Yahoo returns 429 and a
   assert.equal(out.closes['COMEX:GC1!'].length, 4);
   assert.equal(out.closes['IDX:COMPOSITE'][3], 5125.7);
 
-  // Simulate cache expiry + transient upstream failure: valid cached series must still be preserved!
   const prevEntry = SRV.closeMemo.get('IDX:COMPOSITE');
   prevEntry.at = Date.now() - 20 * 60000;
   failMode = true;
   const fallbackOut = await SRV.fetchSymbolCloses('IDX:COMPOSITE');
   assert.equal(fallbackOut.length, 4, 'Must retain stale valid series instead of poisoning with []');
 
-  // On cold failure without stale data, cache entry uses short retry backoff (at: 0, closes: [])
   const cold = await SRV.fetchSymbolCloses('IDX:COLDTEST');
   assert.deepEqual(cold, []);
   const coldMeta = SRV.closeMemo.get('IDX:COLDTEST');
   assert.equal(coldMeta.at, 0);
   assert.ok(coldMeta.failAt > 0);
-  // Once retry cooldown clears & upstream recovers, it must fetch successfully (not locked for 10m!)
+
   coldMeta.failAt = Date.now() - 60000;
   failMode = false;
   const recovered = await SRV.fetchSymbolCloses('IDX:COLDTEST');

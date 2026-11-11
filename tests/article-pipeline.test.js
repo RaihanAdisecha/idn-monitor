@@ -27,16 +27,12 @@ function readBackendSrc() {
   return parts.join('\n');
 }
 
-// ---------------------------------------------------------------------------
-// Synthetic Binary Image Fixtures (PNG / JPEG / WebP / GIF / SVG / ICO)
-// ---------------------------------------------------------------------------
-
 function makePngBuffer(width, height, totalBytes = 9200, seed = 1) {
   const ihdr = Buffer.alloc(13);
   ihdr.writeUInt32BE(width, 0);
   ihdr.writeUInt32BE(height, 4);
-  ihdr[8] = 8; // bit depth
-  ihdr[9] = 2; // color type RGB
+  ihdr[8] = 8;
+  ihdr[9] = 2;
   const prefix = Buffer.concat([
     Buffer.from([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]),
     Buffer.from([0x00, 0x00, 0x00, 0x0D]),
@@ -92,10 +88,6 @@ function inspectAndMakeProbe(routes) {
   };
 }
 
-// ---------------------------------------------------------------------------
-// 1-9. Strict Image Validation & Canonical Priority Resolution Scenarios
-// ---------------------------------------------------------------------------
-
 test('01. RSS image is publisher logo -> Reject cleanly', async () => {
   const tracker = new MEDIA.AssetReuseTracker();
   const logoBuf = makePngBuffer(180, 60, 7500, 11);
@@ -104,7 +96,6 @@ test('01. RSS image is publisher logo -> Reject cleanly', async () => {
     'https://cdn.portal.id/static/brandmark.png': { buf: makePngBuffer(800, 450, 9500, 12), ct: 'image/png' },
   });
 
-  // Explicit logo URL pattern + small logo dimensions rejected
   const res1 = await MEDIA.resolveArticleMedia({
     requestedUrl: 'https://portal.id/nasional/banjir-bandung-1',
     rssImgs: ['https://cdn.portal.id/brand/logo-portal.png'],
@@ -116,14 +107,12 @@ test('01. RSS image is publisher logo -> Reject cleanly', async () => {
   assert.equal(res1.hero.status, 'rejected');
   assert.ok(res1.diagnostics.rejected.some(r => /junk_url_pattern|non_editorial_filename|non_editorial_path|dimensions_too_small/.test(r.reason)));
 
-  // Single-item RSS resolves relative URL cleanly while hiding raw unverified img from public wire item
   const singleRss = `<rss><channel><item><title>Berita Tunggal</title><link>https://portal.id/a0</link><enclosure url="/assets/editorial-photo.jpg" type="image/jpeg"/></item></channel></rss>`;
   const singleItems = SRV.parseFeed(singleRss, 'https://portal.id/rss.xml');
   assert.equal(singleItems.length, 1);
   assert.equal(singleItems[0].img, '', 'parseFeed must never expose unverified RSS img onto wire item');
   assert.equal(singleItems[0].rssImg, 'https://portal.id/assets/editorial-photo.jpg', 'relative RSS enclosure URL must resolve against feedUrl');
 
-  // Feed-level repeated site asset detection even if URL filename looks generic (site-cover.jpg reused across >=2 items)
   const rssXml = `
     <rss><channel>
       <item><title>Berita Satu</title><link>https://portal.id/a1</link><enclosure url="/assets/site-cover.jpg" type="image/jpeg"/></item>
@@ -331,10 +320,6 @@ test('09. Article has no valid image -> Return no hero image and ignore Organiza
   assert.ok(['rejected', 'no_candidates'].includes(res.hero.status));
 });
 
-// ---------------------------------------------------------------------------
-// 10. Reader & News Wire Same Canonical Hero + End-to-End Backend Routes
-// ---------------------------------------------------------------------------
-
 test('10. Reader and News Wire display same canonical hero image and frontend never overrides backend rejection', async () => {
   const verifiedHero = 'https://cdn.news.id/2026/11/jembatan-ambruk-hero.jpg';
   const rssRawLogo = 'https://cdn.news.id/assets/logo-news-id.png';
@@ -344,7 +329,6 @@ test('10. Reader and News Wire display same canonical hero image and frontend ne
 
   const blockedUrl = 'https://news.id/daerah/tanpa-foto-valid';
 
-  // Seed wire cache for all configured NEWS sources (offline — zero outbound RSS network calls)
   SRV.cache.clear();
   SRV.bodyCache.clear();
   SRV.thumbCache.clear();
@@ -386,13 +370,12 @@ test('10. Reader and News Wire display same canonical hero image and frontend ne
     });
   }
 
-  // Start SITREP_SERVER on ephemeral port cleanly and shut down in finally
   const port = await new Promise((resolve) => {
     const s = SRV.SITREP_SERVER.listen(0, '127.0.0.1', () => resolve(s.address().port));
   });
   const hdrs = { 'x-sitrep-token': process.env.SITREP_TOKEN };
   try {
-    // Pass 1: Before canonical resolution, /api/news must NEVER leak rssImg logo
+
     let rNews = await fetch(`http://127.0.0.1:${port}/api/news`, { headers: hdrs });
     assert.equal(rNews.status, 200);
     let newsJson = await rNews.json();
@@ -403,7 +386,6 @@ test('10. Reader and News Wire display same canonical hero image and frontend ne
     assert.equal(itemA.imgVerified, false);
     assert.equal(itemA.rssImg, undefined, 'internal rssImg field must be stripped from public JSON');
 
-    // Now simulate canonical resolution populating canonical media & read caches for A (verified) and B (rejected)
     const mediaA = await MEDIA.resolveArticleMedia({
       requestedUrl: rawArticleUrl,
       canonicalUrl: canonUrl,
@@ -446,7 +428,6 @@ test('10. Reader and News Wire display same canonical hero image and frontend ne
     assert.equal(mediaB.hero.status, 'rejected');
     SRV.mediaCacheSet([blockedUrl], mediaB);
 
-    // Clear cached /api/news response to verify updated canonical media parity on next wire fetch
     SRV.cache.delete('newsresp:v' + SRV.PIPELINE_VERSION);
     SRV.bodyCache.delete('newsresp:v' + SRV.PIPELINE_VERSION);
 
@@ -458,7 +439,6 @@ test('10. Reader and News Wire display same canonical hero image and frontend ne
     const wireA = newsAfter.sources.find(s => s.id === primaryFeedId).items.find(x => x.url === rawArticleUrl);
     const wireB = newsAfter.sources.find(s => s.id === primaryFeedId).items.find(x => x.url === blockedUrl);
 
-    // Identical canonical hero across News Wire card, /api/thumb, and Reader (/api/read)
     assert.equal(wireA.img, verifiedHero);
     assert.equal(wireA.imgVerified, true);
     assert.equal(rThumbA.img, verifiedHero);
@@ -467,13 +447,11 @@ test('10. Reader and News Wire display same canonical hero image and frontend ne
     assert.equal(rReadA.imgVerified, true);
     assert.equal(rReadA.canonicalUrl, wireA.canonicalUrl);
 
-    // Rejected article B: wire & thumb both return empty img and imgRejected/rejected status
     assert.equal(wireB.img, '');
     assert.equal(wireB.imgRejected, true);
     assert.equal(rThumbB.img, '');
     assert.equal(rThumbB.status, 'rejected');
 
-    // Verify frontend index.html enforces backend rejection and never leaks rdHero fallback or body block into hero
     const indexHtml = fs.readFileSync(path.join(__dirname, '../public/index.html'), 'utf8');
     assert.ok(indexHtml.includes('if (leadImgRejected.has(h.url)) return \'\';'),
       'resolveLeadImage must abort fallback chain when backend rejected image');
@@ -489,10 +467,6 @@ test('10. Reader and News Wire display same canonical hero image and frontend ne
     SRV.readCache.clear();
   }
 });
-
-// ---------------------------------------------------------------------------
-// 11-14. Body Order, Redirect Validation, Lazy-Loading, Srcset Handling
-// ---------------------------------------------------------------------------
 
 test('11. Article has multiple valid body images -> Preserve original document order & deduplicate vs hero', async () => {
   const hero = 'https://cdn.pub.id/g/hero-banjir.jpg';
@@ -525,8 +499,6 @@ test('11. Article has multiple valid body images -> Preserve original document o
     probeFn,
   });
 
-  // b1 is body_lead -> becomes canonical hero, b2 & b3 remain bodyImages in order (AND hero og wasn't a body image!)
-  // Wait: explicitly validate order of extracted images inside blocks as well as when og:image + distinct body images assemble
   assert.equal(mediaRes.hero.url, b1);
   assert.deepEqual(mediaRes.bodyImages.map(x => x.url), [b2, b3]);
 
@@ -540,7 +512,6 @@ test('12. Image URL redirects to another host -> Validate redirect target & enfo
   const publicDest = 'https://assets-partner.cdn-global.net/editorial/kebakaran-pabrik.jpg';
   const junkDest = 'https://cdn-static.pub.id/assets/logo-brand-dark.png';
 
-  // Valid cross-host public redirect passes after validating destination URL + real bytes
   const okRes = await MEDIA.resolveArticleMedia({
     requestedUrl: 'https://pub.id/kebakaran-1',
     html: `<html><head><meta property="og:image" content="${redirStart}"></head><body><article><p>Kebakaran pabrik tekstil berlangsung tiga jam di kawasan industri timur.</p></article></body></html>`,
@@ -551,7 +522,6 @@ test('12. Image URL redirects to another host -> Validate redirect target & enfo
   assert.equal(okRes.hero.url, publicDest);
   assert.equal(okRes.hero.verified, true);
 
-  // Redirect landing on publisher logo URL is rejected post-redirect
   const badRes = await MEDIA.resolveArticleMedia({
     requestedUrl: 'https://pub.id/kebakaran-2',
     html: `<html><head><meta property="og:image" content="${redirStart}"></head><body><article><p>Kebakaran pabrik tekstil berlangsung tiga jam.</p></article></body></html>`,
@@ -562,7 +532,6 @@ test('12. Image URL redirects to another host -> Validate redirect target & enfo
   assert.equal(badRes.hero.url, '');
   assert.ok(badRes.diagnostics.rejected.some(r => /_after_redirect$/.test(r.reason)));
 
-  // SSRF protection intact on private IPs / metadata endpoints
   await assert.rejects(() => SEC.rdAssertPublic('http://127.0.0.1/secret.jpg'));
   await assert.rejects(() => SEC.rdAssertPublic('http://169.254.169.254/latest/meta-data/'));
   await assert.rejects(() => SRV.rdRead('http://127.0.0.1:8080/internal-admin'));
@@ -621,10 +590,6 @@ test('14. Image uses srcset (including comma-containing Cloudinary/Kumparan URLs
   assert.equal(res.hero.url, expectedBest);
 });
 
-// ---------------------------------------------------------------------------
-// 15-17. Text Extraction Quality, Challenges, Metadata Fallback, Off-Topic
-// ---------------------------------------------------------------------------
-
 test('15. Article extraction returns CAPTCHA / Cloudflare challenge page -> Reject cleanly', () => {
   const cfHtml = `<!doctype html><html><head><title>Just a moment...</title></head><body>
     <div id="cf-wrapper"><h1>Verify you are human</h1><p>Please wait while we verify your browser with cf-turnstile challenge-platform.</p></div>
@@ -657,12 +622,10 @@ test('16. Article extraction returns only metadata description -> Identify fallb
   assert.equal(ext.extraction.quality.isFullArticle, false);
   assert.equal(ext.paras.length, 1);
 
-  // Also ensure server.js wire-fallback never injects fake boilerplate article text
   const serverJs = readBackendSrc();
   assert.ok(!serverJs.includes('Laporan lengkap berada di situs sumber. Akses server dibatasi oleh proteksi bot penerbit.'),
     'wire-fallback must not fabricate synthetic Indonesian prose inside article paragraphs');
 
-  // Verify JSON-LD NewsArticle.articleBody wins over noisy thin DOM when DOM lacks body paragraphs
   const ldHtml = `<html><head>
     <title>Stok Pangan Nasional Aman Jelang Akhir Tahun Menurut Kementan</title>
     <script type="application/ld+json">${JSON.stringify({
@@ -692,10 +655,6 @@ test('17. Article extraction returns unrelated text -> Reject off-topic hijacked
   assert.equal(ext.extraction.quality.isOnTopic, false);
 });
 
-// ---------------------------------------------------------------------------
-// 18-19. Transient Upstream Failures, Schema Caching, & Cross-CDN Dedup
-// ---------------------------------------------------------------------------
-
 test('18. Transient upstream failure does not permanently poison cache and recovers cleanly on retry', async () => {
   const imgUrl = 'https://cdn.pub.id/2026/foto-sempat-503.jpg';
   let calls = 0;
@@ -715,20 +674,17 @@ test('18. Transient upstream failure does not permanently poison cache and recov
   assert.equal(first.hero.status, 'probe_transient_failure');
   assert.equal(first.transientFailure, true);
 
-  // Put transient failure into server mediaCache, then rewind its timestamp by >15s to confirm short transient TTL expiry
   SRV.mediaCacheSet([articleUrl], first);
   assert.ok(SRV.mediaCacheGet(articleUrl), 'short transient entry exists immediately within 15s');
   const ck = 'v' + SRV.PIPELINE_VERSION + ':' + MEDIA.canonicalArticleUrl(articleUrl);
   SRV.thumbCache.get(ck).at -= 20000;
   assert.equal(SRV.mediaCacheGet(articleUrl), null, 'transient failure cache must expire within <=20s rather than poisoning for 15 minutes');
 
-  // Retry succeeds and persists cleanly
   const second = await MEDIA.resolveArticleMedia({ requestedUrl: articleUrl, html, probeFn: flakyProbe });
   assert.equal(second.hero.url, imgUrl);
   assert.equal(second.hero.verified, true);
   assert.equal(second.transientFailure, false);
 
-  // Also test versioned schema rejection in readCache & thumbCache
   SRV.thumbCache.set(ck, { v: second, at: Date.now(), schemaVersion: SRV.PIPELINE_VERSION - 1 });
   assert.equal(SRV.mediaCacheGet(articleUrl), null, 'stale prior pipeline schemaVersion must be ignored automatically');
 });
@@ -763,16 +719,11 @@ test('19. Duplicate image via different CDN URLs -> Deduplicate cleanly using SH
     }),
   });
 
-  // Notice bodyProxyDup is first image in body ('body_lead') -> chosen as hero OR if distinct/og, shared fingerprint prevents duplicate!
   assert.ok(res.hero.verified);
   assert.equal(res.bodyImages.length, 1, 'duplicate SHA-1 CDN image must never appear in both hero and bodyImages');
   assert.equal(res.bodyImages[0].url, distinctBodyImg);
   assert.equal(res.bodyImages[0].cap, 'Suasana diskusi komisi anggaran.');
 });
-
-// ---------------------------------------------------------------------------
-// Bonus: Canonical URL Normalization + Balanced Semantic HTML Preservation
-// ---------------------------------------------------------------------------
 
 test('20. Canonical URL preserves distinguishing params (?id, ?page) while stripping tracking params, and preserves headings/lists/blockquotes', () => {
   assert.equal(
@@ -807,7 +758,7 @@ test('20. Canonical URL preserves distinguishing params (?id, ?page) while strip
 });
 
 test('21. Comment reCAPTCHA scripts inside >=45KB full articles do not false-trigger challenge rejection, and 2-story archive photo reuse is preserved while >=3-story feed logos are rejected', async () => {
-  // A) Full >45KB Indonesian article with comment-box reCAPTCHA script must extract cleanly
+
   const padding = '<!-- layout-pad -->'.repeat(2400);
   const fullWithRecaptcha = `<html><head>
     <title>KAI Pastikan Jalur Rel Lintas Selatan Aman Dilalui Pasca Perbaikan</title>
@@ -822,7 +773,6 @@ test('21. Comment reCAPTCHA scripts inside >=45KB full articles do not false-tri
   assert.equal(ext.extraction.quality.isChallengeOrError, false);
   assert.equal(ext.paras.length, 2);
 
-  // B) Archival portrait reused across 2 breaking follow-up stories in a feed must NOT be falsely rejected as a site logo
   const followUpRss = `
     <rss><channel>
       <item><title>Pejabat A Diperiksa KPK</title><link>https://media.id/news/1</link><enclosure url="https://cdn.media.id/photos/pejabat-a-archive.jpg" type="image/jpeg"/></item>
@@ -844,7 +794,6 @@ test('21. Comment reCAPTCHA scripts inside >=45KB full articles do not false-tri
   assert.equal(r2.hero.url, sharedPhoto, '2nd follow-up article sharing archival portrait must keep verified hero');
   assert.equal(r3.hero.url, '', '3rd+ distinct article reusing same image triggers site-wide reuse rejection');
 
-  // C) Frontend desc retry & fallback cache rules present in public/index.html
   const indexHtml = fs.readFileSync(path.join(__dirname, '../public/index.html'), 'utf8');
   assert.ok(indexHtml.includes('retryMap[u]'), 'runDescEnrich must honor backend transient retryable flag instead of 12m dead-locking');
   assert.ok(indexHtml.includes('!d.wireFallback && !d.upstreamBlocked && !d.isFallback'), 'rdOpen/rdPrefetch must not permanently cache transient fallback responses');
@@ -874,17 +823,16 @@ test('22. BANNED_SRC filters paid koran.tempo.co / majalah.tempo.co / plus.tempo
 });
 
 test('23. Related-article card links & 15+ body thumbnails never starve og:image hero selection, and upgradeImage leaves .svg icons untouched', async () => {
-  // SVG URLs on detik CDN must not receive raster query params
+
   assert.equal(
     MEDIA.upgradeImage('https://cdn.detik.net.id/20detik4/images/close-button.svg?v=123'),
     'https://cdn.detik.net.id/20detik4/images/close-button.svg?v=123'
   );
 
-  // Sindo-style layout: 15 related-article 228x152 cards + 15 small bare body_lead thumbs inside container alongside valid 850x567 og:image
   const relatedCards = Array.from({ length: 15 }, (_, i) =>
     `<a href="https://sports.media.id/read/100${i}/artikel-lama-${i}"><div class="img-article"><img width="228" height="152" class="lazyload" src="https://cdn.media.id/pre.png" data-src="https://pict.media.id/webp/228/old-${i}.webp"></div><div class="title-article news-title">Artikel Terkait Lama Nomor ${i} yang Sudah Tayang</div></a>`
   ).join('\n');
-  // Also simulate 15 non-linked small thumbnails inside body to verify pickProbeQueue slot reservation independently
+
   const smallBodyLead = Array.from({ length: 15 }, (_, i) =>
     `<div class="detail-image"><img width="228" height="152" src="https://pict.media.id/webp/228/widget-${i}.webp" alt="foto ${i}"></div>`
   ).join('\n');
@@ -923,7 +871,7 @@ test('23. Related-article card links & 15+ body thumbnails never starve og:image
 });
 
 test('24. Rolling 24h news history retains rotated RSS tail items, keeps 01 Globe / situation parity (>400 pins), and fixes dead CNA/GNEWS Kesehatan feeds & sync', async () => {
-  // A) Feed URL fixes verified in SRV.NEWS
+
   const cnaEntry = SRV.NEWS.find(([id]) => id === 'CNA INDONESIA');
   const kesEntry = SRV.NEWS.find(([id]) => id === 'GNEWS · KESEHATAN');
   assert.ok(cnaEntry && !/category=3321/.test(cnaEntry[1]), 'CNA INDONESIA feed must use active main endpoint without stale category=3321');
@@ -931,7 +879,6 @@ test('24. Rolling 24h news history retains rotated RSS tail items, keeps 01 Glob
   const serverSrc = readBackendSrc();
   assert.ok(serverSrc.includes("if (id === 'VOI')") && serverSrc.includes('site:voi.id when:2d'), 'VOI feed must fall back fast to Google News site:voi.id when direct RSS is Cloudflare 403');
 
-  // B) Rolling 24h mergeNewsHist preserves older <24h events pushed off short RSS tails while pruning >24h and deduping rotating GNews links
   const feedId = '__TEST_HIST__';
   const now = Date.now();
   try {
@@ -944,7 +891,6 @@ test('24. Rolling 24h news history retains rotated RSS tail items, keeps 01 Glob
     const m1 = SRV.mergeNewsHist(feedId, firstBatch, now, { persist: false });
     assert.equal(m1.length, 2, 'expired >24h and banned paid items must be pruned');
 
-    // Second fetch pushes out 'bekasi-1' from RSS XML and rotates GNews URL for 'Banjir Merendam Demak'
     const secondBatch = [
       { title: 'Banjir Merendam Demak', url: 'https://news.google.com/rss/articles/CBMiRotatedToken2', ts: now - 4 * 3600e3, pub: 'Kompas', desc: 'Air setinggi 50 cm merendam Demak.' },
       { title: 'Gempa Dangkal Guncang Garut', url: 'https://news.example.id/garut-2', ts: now - 15 * 60e3, pub: 'Antara', desc: 'Gempa dirasakan warga Garut.' },
@@ -953,7 +899,6 @@ test('24. Rolling 24h news history retains rotated RSS tail items, keeps 01 Glob
     assert.equal(m2.length, 3, 'bekasi-1 (10h ago) must survive XML rotation and rotated GNews duplicate must collapse into 1');
     assert.equal(m2.find(i => i.title === 'Banjir Merendam Demak').desc, 'Air setinggi 50 cm merendam Demak.');
 
-    // C) Parity between incidents() (>400 pins supported via 800 cap) and situation().located
     SRV.cache.clear();
     SRV.bodyCache.clear();
     const seededEvents = Array.from({ length: 420 }, (_, i) => ({
@@ -975,7 +920,6 @@ test('24. Rolling 24h news history retains rotated RSS tail items, keeps 01 Glob
     assert.equal(inc.items.filter(x => !x.fixed).length, inc.total, 'incidents() items must not clip at 400');
     assert.equal(sit.located, inc.total, 'situation().located (#sit-total) must match incidents().total');
 
-    // invalidateDerivedFromNews clears both situation & incidents derived caches
     SRV.invalidateDerivedFromNews();
     assert.equal(SRV.cache.has('situation'), false);
     assert.equal(SRV.cache.has('incidents'), false);
@@ -985,7 +929,6 @@ test('24. Rolling 24h news history retains rotated RSS tail items, keeps 01 Glob
     SRV.bodyCache.clear();
   }
 
-  // D) Frontend sync wiring: syncGlobeSoon pulls situation, refreshAll passes fresh, and 60s pullIncidents runs on closed-map dashboard
   const indexHtml = fs.readFileSync(path.join(__dirname, '../public/index.html'), 'utf8');
   assert.ok(indexHtml.includes('pullIncidents(); pullSituation();'), 'syncGlobeSoon must refresh both globe pins and #sit-total KPI');
   assert.ok(indexHtml.includes('schedulePoll(() => pullIncidents(), 60000,'), '60s globe incident refresh must run even when fullscreen map is closed');
@@ -1032,14 +975,11 @@ test('26. bsinews.id: extracts body lead image with width="100%", upgrades CDN i
   const cdnUpgraded = 'https://cdn.bsinews.id/media/images/2026/11/3VWhGUgKQg.jpeg?location=1&width=1200&height=674&quality=80&fit=1';
   const ogImg = 'https://cdn.bsinews.id/media/images/2026/11/3VWhGUgKQg.jpeg?location=1&width=1200&height=674&quality=80&watermark=1';
 
-  // Verify attribute percentage width does not trigger small_html_attr_dimensions rejection
   const attrCheck = MEDIA.classifyCandidateAttrs({ width: '100%', alt: 'Foto Olah TKP' });
   assert.equal(attrCheck.ok, true);
 
-  // Verify upgradeImage sets 1200x674 for cdn.bsinews.id
   assert.equal(MEDIA.upgradeImage(cdnRaw), cdnUpgraded);
 
-  // Verify cleanArticleTitle cleans redaksional prefix and bsinews suffix
   const rawTitle = 'Breaking News - Polisi Kantongi Calon Tersangka Pembunuhan Perempuan di Lombok Tengah - bsinews.id';
   const cleanT = EXTRACT.cleanArticleTitle(rawTitle, 'BSI News', url);
   assert.equal(cleanT, 'Polisi Kantongi Calon Tersangka Pembunuhan Perempuan di Lombok Tengah');

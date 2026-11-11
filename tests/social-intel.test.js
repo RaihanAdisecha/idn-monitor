@@ -26,7 +26,7 @@ test('socPhraseScan: <3 author unik tidak lolos', () => {
   const posts = [
     mk('Longsor Susulan Guncang Desa', { user: 'x' }),
     mk('Longsor Susulan Guncang Desa lagi', { user: 'y' }),
-    mk('Longsor Susulan Guncang Desa juga', { user: 'x' }),   // author sama -> tetap 2 unik
+    mk('Longsor Susulan Guncang Desa juga', { user: 'x' }),
   ];
   const out = socPhraseScan(posts, { now: NOW });
   assert.ok(!out.some(r => r.id === 'longsor susulan guncang desa'));
@@ -119,11 +119,11 @@ test('socKeywordMine: post tanpa topik / di luar window tidak dihitung', () => {
   const posts = [
     mk('kios warung mobil', { topics: ['kebakaran'], user: 'x1' }),
     mk('kios warung mobil', { topics: ['kebakaran'], user: 'x2' }),
-    mk('kios warung mobil', { topics: [], user: 'x3' }),               // bukan topik
-    mk('kios warung mobil', { topics: ['kebakaran'], user: 'x4', ts: NOW - 8 * 3600e3 }), // basi
+    mk('kios warung mobil', { topics: [], user: 'x3' }),
+    mk('kios warung mobil', { topics: ['kebakaran'], user: 'x4', ts: NOW - 8 * 3600e3 }),
   ];
   const out = socKeywordMine(posts, 'kebakaran', { now: NOW });
-  assert.equal(out.length, 0);   // hanya 2 post kena -> df < ambang
+  assert.equal(out.length, 0);
 });
 
 test('socKeywordMine: topik tak dikenal -> []', () => {

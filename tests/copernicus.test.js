@@ -49,11 +49,10 @@ function makeFakeFetch(opts = {}) {
   };
 }
 
-// Jakarta ~ (-6.2, 106.8) at z=8: x=203, y=132
 const JKT_Z8 = { z: 8, x: 203, y: 132 };
-// Darwin Australia ~ (-12.5, 130.8) at z=8: x=221, y=137 (outside Indonesia ROI)
+
 const DRW_Z8 = { z: 8, x: 221, y: 137 };
-// London ~ (51.5, -0.1) at z=8: x=127, y=85
+
 const LON_Z8 = { z: 8, x: 127, y: 85 };
 
 test('ROI filter rejects out-of-Indonesia tiles without hitting upstream', () => {
@@ -99,7 +98,6 @@ test('Shared cache deduplicates concurrent fetches and persists across restart f
       dailyCap: 10,
     });
 
-    // 10 concurrent users requesting the exact same tile -> only 1 upstream process call
     const burst = await Promise.all(
       Array.from({ length: 10 }, () => p1.getTile(JKT_Z8.z, JKT_Z8.x, JKT_Z8.y))
     );
@@ -111,7 +109,6 @@ test('Shared cache deduplicates concurrent fetches and persists across restart f
     assert.equal(fake.counts().processCalls, 1);
     assert.equal(p1.getStatus().dailyUsed, 1);
 
-    // Restart simulation: fresh instance with empty RAM reads disk cache & quota
     const p2 = createCopernicusProxy({
       dataDir: dir,
       clientId: 'cid',
@@ -145,7 +142,6 @@ test('Daily cap enforces strict ceiling under concurrent bursts and keeps servin
       cacheTtlMs: 86400000,
     });
 
-    // Fire 4 distinct adjacent tiles concurrently when dailyCap=1 -> MUST spend at most 1!
     const burst = await Promise.all([
       proxy.getTile(JKT_Z8.z, JKT_Z8.x, JKT_Z8.y),
       proxy.getTile(JKT_Z8.z, JKT_Z8.x + 1, JKT_Z8.y),
@@ -157,10 +153,6 @@ test('Daily cap enforces strict ceiling under concurrent bursts and keeps servin
     assert.equal(fake.counts().processCalls, 1);
     assert.equal(proxy.getStatus().dailyUsed, 1);
 
-    // Advance clock 25h within SAME or NEXT day check:
-    // First advance +24h+1m WITHOUT hitting next UTC day if clock started early in day,
-    // wait: use deterministic same-day expire test? +25h guarantees next UTC day!
-    // To test STALE-CAP specifically, set cacheTtlMs short inside a separate proxy instance
     const pShort = createCopernicusProxy({
       dataDir: dir,
       clientId: 'cid',
@@ -170,14 +162,13 @@ test('Daily cap enforces strict ceiling under concurrent bursts and keeps servin
       dailyCap: 1,
       cacheTtlMs: 60000,
     });
-    now += 120000; // same UTC day unless exactly 23:59Z, safely expires 60s TTL
+    now += 120000;
     const staleHit = await pShort.getTile(JKT_Z8.z, JKT_Z8.x, JKT_Z8.y);
     assert.equal(staleHit.status, 200);
     assert.equal(staleHit.cacheState, 'STALE-CAP');
     assert.equal(staleHit.stale, true);
     assert.equal(fake.counts().processCalls, 1);
 
-    // Advance +25h -> guarantees new UTC day rollover -> quota resets -> refreshes stale tile
     now += 25 * 3600000;
     const refreshed = await pShort.getTile(JKT_Z8.z, JKT_Z8.x, JKT_Z8.y);
     assert.equal(refreshed.status, 200);

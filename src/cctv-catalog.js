@@ -8,6 +8,7 @@ function createCctvCatalog({
   CFG,
   GW,
   cache,
+  bodyCache,
   memo,
   mediaGet,
   mediaGetRaw,
@@ -72,7 +73,7 @@ function createCctvCatalog({
     return 'Lainnya';
   }
   async function cctvFetch(url, ms, headers) {
-    try { await rdAssertPublic(url); } catch (e) {}
+    await rdAssertPublic(url);
     const customProxy = process.env.CUSTOM_PROXY_URL || process.env.PROXY_URL || CFG.custom_proxy;
     const attempts = [url,
       ...(customProxy ? [(customProxy.endsWith('/') ? customProxy : customProxy + '/') + encodeURIComponent(url)] : []),
@@ -251,10 +252,11 @@ function createCctvCatalog({
         next.done.add(c.s);
         cctvProbe.done.add(c.s);
         if (ok) { next.alive.add(c.s); cctvProbe.alive.add(c.s); }
-        if (++completed % 30 === 0) cache.delete('cctvcat');
+        if (++completed % 30 === 0) { cache.delete('cctvcat'); if (bodyCache) bodyCache.delete('cctv'); }
       } }));
       cctvProbe.alive = next.alive; cctvProbe.done = next.done;
       cache.delete('cctvcat');
+      if (bodyCache) bodyCache.delete('cctv');
       console.log('[cctv] probe selesai:', next.alive.size, '/', cams.length, 'cam playable');
     } catch (e) {} finally { cctvProbe.running = false; }
   }

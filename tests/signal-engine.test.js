@@ -238,7 +238,6 @@ test('reconcile filters invalid assessments, dedupes latest posts, supports keyO
   assert.equal(signals.reconcile(map, payload([latest], NOW + 1), { now: NOW, max: 0 }).posts.length, 0);
 });
 
-
 test('latest current excluded copy prevents an older eligible URL from resurfacing', () => {
   const older = post({ ts: NOW - 2 * MINUTE });
   const newer = { ...older, ts: NOW - MINUTE, assessment: { ...older.assessment, signalEligible: false } };
@@ -249,7 +248,6 @@ test('account identity preserves handle punctuation', () => {
   const group = signals.buildGroups([distinct(1, { handle: '@a.b' }), distinct(2, { handle: '@a_b' })], NOW)[0];
   assert.equal(group.accounts, 2);
 });
-
 
 test('standalone short eligible report stays unverified but cannot corroborate another', () => {
   const a = distinct(1, {}, { evidence: 'Banjir di Bekasi', location: { name: 'Bekasi' } });

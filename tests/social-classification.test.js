@@ -56,7 +56,6 @@ test('1. Curated Indonesian evaluation corpus (>=100 fixtures + 20 mandatory cas
     console.log('[eval-corpus] failures:', JSON.stringify(report.failures, null, 2));
   }
 
-  // Every single mandatory case m01..m20 must match signal eligibility, lane, and intent expectations
   const mandatory = CORPUS.filter(fx => String(fx.id).startsWith('m'));
   assert.equal(mandatory.length, 20, 'All 20 mandatory test cases must be present');
   for (const fx of mandatory) {
@@ -92,7 +91,6 @@ test('1. Curated Indonesian evaluation corpus (>=100 fixtures + 20 mandatory cas
     }
   }
 
-  // Quality thresholds across the full 139-fixture corpus
   assert.ok(report.precision >= 0.94, `Precision too low: ${report.precision}`);
   assert.ok(report.recall >= 0.90, `Recall too low: ${report.recall}`);
   assert.ok(report.falsePositiveRate <= 0.04, `FPR too high: ${report.falsePositiveRate}`);
@@ -113,7 +111,6 @@ test('2. Dynamic & ad-hoc location hardening: generic cities never become ad-hoc
     'socAdhoc must strip all generic location phrases'
   );
 
-  // Even if a caller forcefully injects a poisoned ad-hoc topic matching Jakarta, noise must NEVER leak into signals or situational feed!
   const poisonedAdhoc = [{
     id: 'jakarta',
     label: 'JAKARTA',
@@ -151,13 +148,11 @@ test('3. Layer 2 Indonesian social media normalization preserves raw text and de
   assert.ok(norm.normalized.includes('banjir bekasi'), `Expected hashtag #BanjirBekasi segmented, got: ${norm.normalized}`);
   assert.ok(/\bbanjir\b/.test(norm.normalized), `Expected elongated "banjiiir" normalized -> "banjir", got: ${norm.normalized}`);
 
-  // Reduplication distinction
   const pluralRedup = NLP.normalizeIndonesian('Rumah-rumah warga di Dayeuhkolot kebanjiran');
   const leisureRedup = NLP.normalizeIndonesian('Jalan-jalan sore di Jakarta');
   assert.ok(pluralRedup.reduplication.collective.length > 0);
   assert.ok(leisureRedup.reduplication.leisure.length > 0);
 
-  // Regional Javanese / Sundanese / Code-switch triggers
   for (const regional of [
     'barusan kerasa lindhu gede banget di jogja',
     'caah gede pisan di bandung selatan caina geus asup ka imah',
@@ -169,7 +164,7 @@ test('3. Layer 2 Indonesian social media normalization preserves raw text and de
 });
 
 test('4. Layer 4-6 Word-sense disambiguation, clause negation, unknown impact honesty, and geo role disambiguation', () => {
-  // Word-sense pairs: same keyword, opposite real/figurative sense
+
   const literalExplosion = SOC.socAssess('Tabung gas elpiji meledak di ruko Tangerang, dua korban luka');
   const priceExplosion = SOC.socAssess('Harga tiket pesawat Jakarta Bali makin meledak jelang liburan');
   assert.equal(literalExplosion.signalEligible, true);
@@ -191,14 +186,12 @@ test('4. Layer 4-6 Word-sense disambiguation, clause negation, unknown impact ho
   assert.equal(cyberLeak.signalEligible, true);
   assert.equal(roofLeak.signalEligible, false);
 
-  // Clause-level negation: denied banjir in Bekasi must NOT suppress actual kebakaran in Depok
   const mixedClause = SOC.socAssess('Banjir tidak terjadi di Bekasi, tapi kebakaran hebat melanda pasar di Depok');
   assert.equal(mixedClause.signalEligible, true);
   assert.equal(mixedClause.geographicContext && mixedClause.geographicContext.name, 'Depok');
   assert.ok(!mixedClause.topics.includes('banjir'), 'Negated banjir clause should not activate banjir topic');
   assert.ok(mixedClause.topics.includes('kebakaran'), 'Real kebakaran clause should activate kebakaran topic');
 
-  // Impact & time extraction: never fabricate missing fields
   const noImpactMention = SOC.socAssess('Banjir merendam rumah warga di Bekasi');
   assert.equal(noImpactMention.event.impact.fatalities, null);
   assert.equal(noImpactMention.event.impact.injuries, null);
@@ -208,14 +201,12 @@ test('4. Layer 4-6 Word-sense disambiguation, clause negation, unknown impact ho
   assert.equal(injuredMention.event.impact.injuries, 3);
   assert.equal(injuredMention.event.impact.fatalities, null);
 
-  // Reader location vs Event location
   const readerDistinction = SOC.socAssess('Saya membaca berita banjir Jakarta dari Bandung');
   assert.equal(readerDistinction.signalEligible, false);
   assert.equal(readerDistinction.feedLane, 'situational_context');
   assert.equal(readerDistinction.geographicContext.name, 'Jakarta');
   assert.equal(readerDistinction.geographicContext.role, 'event_location');
 
-  // Geocode fix: Polres Metro Bekasi Kota resolves to Bekasi, NOT Metro Lampung
   const polresPlace = GEO.locate('Polsek Rawalumbu, Polres Metro Bekasi Kota evakuasi korban kecelakaan di Jalan Cut Mutia');
   assert.equal(polresPlace && polresPlace.name, 'Bekasi');
 });
@@ -232,7 +223,6 @@ test('5. Deduplication, corroboration provenance, engagement exclusion & same-ci
     };
   };
 
-  // Provenance hierarchy ignores viral likes/reposts
   const viralAnon = makePost({
     handle: '@random_viral',
     text: 'Banjir merendam permukiman warga di Bekasi Barat malam ini',
@@ -261,7 +251,6 @@ test('5. Deduplication, corroboration provenance, engagement exclusion & same-ci
     'Authority hierarchy official_agency > eyewitness > anonymous must hold regardless of viral engagement'
   );
 
-  // Near-duplicate repost folding (1 RT copy + 1 cross-platform copy -> 1 independent claim, 3 total copies)
   const orig = makePost({
     from: 'X',
     handle: '@detikcom',
@@ -278,7 +267,6 @@ test('5. Deduplication, corroboration provenance, engagement exclusion & same-ci
     text: 'Kebakaran hebat melalap 20 kios di Pasar Baru Bekasi pagi ini, tim damkar berjibaku padamkan api #viral via @detikcom',
   });
 
-  // Distinct second incident in the SAME city (Bekasi): flood vs market fire!
   const floodBekasi1 = makePost({
     from: 'X',
     handle: '@warga_pondok',
@@ -303,7 +291,6 @@ test('5. Deduplication, corroboration provenance, engagement exclusion & same-ci
   assert.equal(floodCluster.independentClaims, 2, 'Two independent descriptions of the Pondok Gede flood should corroborate');
   assert.equal(floodCluster.corroborationLevel, 'multi_source_corroborated');
 
-  // Public UMD signals.js compatibility & provenance summary
   assert.equal(SIGNALS.VERSION, '2026-11-07.3', 'Must preserve client UMD default VERSION contract');
   assert.equal(
     CLUSTER.stripBoilerplateForSimilarity(orig.text),
@@ -312,7 +299,6 @@ test('5. Deduplication, corroboration provenance, engagement exclusion & same-ci
   );
   assert.equal(CLUSTER.isNearDuplicate(orig.text, thCopy.text), true, 'Cross-platform variant must be detected as near-duplicate');
 
-  // Adopt version explicitly on isolated test posts and verify buildGroups keeps distinct events separate with provenanceSummary
   SIGNALS.adoptClassifierVersion(SOC.CLASSIFIER_VERSION);
   const sigGroups = SIGNALS.buildGroups([orig, floodBekasi1, floodBekasi2], now);
   assert.equal(sigGroups.length, 2, 'signals.buildGroups should keep fire and flood groups separate');
@@ -324,7 +310,6 @@ test('6. social-history.js tag() and retag() purge stale ad-hoc location noise u
   const now = Date.now();
   const map = new Map();
 
-  // Simulate legacy v1 polluted history loaded from disk
   map.set('stale_ad', {
     url: 'https://x.com/user1/status/1',
     text: 'Dijual rumah 2 lantai di Jakarta Selatan dekat stasiun harga nego',
@@ -367,7 +352,7 @@ test('6. social-history.js tag() and retag() purge stale ad-hoc location noise u
 });
 
 test('7. nlp-adapter.js redacts PII, stays deterministic offline, and never turns errors into signals', async () => {
-  // PII redaction
+
   const redacted = ADAPTER.redactPII('Hubungi @admin_budi 081234567890 atau budi@example.com NIK 3275011234567890 https://x.com/a/1');
   assert.ok(!redacted.includes('081234567890'));
   assert.ok(!redacted.includes('budi@example.com'));
@@ -376,7 +361,6 @@ test('7. nlp-adapter.js redacts PII, stays deterministic offline, and never turn
   assert.ok(!redacted.includes('https://x.com/a/1'));
   assert.ok(redacted.includes('[PHONE]') && redacted.includes('[EMAIL]') && redacted.includes('[USER]') && redacted.includes('[URL]'));
 
-  // Offline disabled fallback
   const localQ = SOC.socAssess('Ada yang dengar ledakan di daerah Jakarta?');
   const offline = ADAPTER.createNlpAdapter({ env: {} });
   assert.equal(offline.isAvailable(), false);
@@ -384,7 +368,6 @@ test('7. nlp-adapter.js redacts PII, stays deterministic offline, and never turn
   assert.equal(offRes.usedExternal, false);
   assert.equal(offRes.assessment.signalEligible, false);
 
-  // Failing external provider opens circuit after 3 failures and NEVER promotes signalEligible
   let fetchCalls = 0;
   const failing = ADAPTER.createNlpAdapter({
     env: {
@@ -610,13 +593,13 @@ test('10. Foreign cognate leak defense vs. Jaksel Indo-English code-switching pr
     'Gaat het kabinet vallen?',
     'Het #kabinet staat op vallen hè..? #VVD',
     'Kan het ook zo zijn dat morgen voor het belasting wordt gestemd en de VVD dan na die stemming uit het kabinet stapt , de wet toch door gaat ? En misschien de VVD ook wel ?',
-    `Dus als vanavond door toedoen van de Brutus-aanval op de VVD door CDA en D66 het kabinet valt, dan komen er geen nieuwe verkiezingen maar gaan ze 'tussenformeren'. 
+    `Dus als vanavond door toedoen van de Brutus-aanval op de VVD door CDA en D66 het kabinet valt, dan komen er geen nieuwe verkiezingen maar gaan ze 'tussenformeren'.
 
-Mijn conclusie: we hebben vorig jaar verkiezingen gehad, dan mag de grootste partij de formatie oppakken. Nu dat kabinet lijkt te vallen, zou de één na grootste partij, de PVV, dus het voortouw mogen nemen. 
+Mijn conclusie: we hebben vorig jaar verkiezingen gehad, dan mag de grootste partij de formatie oppakken. Nu dat kabinet lijkt te vallen, zou de één na grootste partij, de PVV, dus het voortouw mogen nemen.
 
-Maar die conclusie trekt men in Den Haag natuurlijk niet! De regerende partijen minus VVD (zo lijkt het) gaan op zoek naar één of twee nieuwe kandidaat-coalitieleden. 
+Maar die conclusie trekt men in Den Haag natuurlijk niet! De regerende partijen minus VVD (zo lijkt het) gaan op zoek naar één of twee nieuwe kandidaat-coalitieleden.
 
-Met andere woorden: uit de verkiezingsuitslag van vorig jaar bleek dat er een meerderheid op rechts lag, maar na dit debacle-kabinet gaan we een links kabinet krijgen. Dus: de kiezer stemt in meerderheid rechts maar we slaan linksaf. 
+Met andere woorden: uit de verkiezingsuitslag van vorig jaar bleek dat er een meerderheid op rechts lag, maar na dit debacle-kabinet gaan we een links kabinet krijgen. Dus: de kiezer stemt in meerderheid rechts maar we slaan linksaf.
 
 Hoezo democratie?`,
     'Wann zerbricht die Koalition im Bundestag und wann tritt das Kabinett von Scholz endlich zurück?',

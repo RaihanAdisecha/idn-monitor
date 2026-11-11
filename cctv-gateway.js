@@ -246,9 +246,9 @@ function createGateway(d) {
     }
     const buf = e.buf;
     const cc = e.pl ? plCacheHdr : segCacheHdr;
+    chargeBytes(ip, buf.length);
     res.writeHead(200, { ...base, 'cache-control': cc, 'content-type': e.ct, 'content-length': buf.length });
     res.end(buf);
-    chargeBytes(ip, buf.length);
   };
   const waitDrain = res => new Promise(ok => {
     if (!res || res.destroyed || res.writableEnded) return ok();
@@ -343,11 +343,11 @@ function createGateway(d) {
         if (sub.closed || sub.res.destroyed || sub.res.writableEnded) continue;
         sub.queue = sub.queue.then(async () => {
           if (sub.closed || sub.res.destroyed || sub.res.writableEnded) return;
+          chargeBytes(sub.ip, b.length);
           if (!sub.headersSent) {
             sub.res.writeHead(200, { ...base, 'cache-control': segCacheHdr, 'content-type': fl.ct });
             sub.headersSent = true;
           }
-          chargeBytes(sub.ip, b.length);
           if (!sub.res.write(b)) await waitDrain(sub.res);
         }).catch(() => {});
       }

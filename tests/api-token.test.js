@@ -1,9 +1,5 @@
 'use strict';
-// Contract tests for the SITREP API token gate.
-// Spawns the real server on an ephemeral high port with a fixed SITREP_TOKEN,
-// then drives it exclusively through global fetch. No endpoint here performs
-// upstream network I/O: a rejected request is answered with 403 before routing,
-// and an unknown /api/* path with a valid token falls straight through to 404.
+
 const { test, after } = require('node:test');
 const assert = require('node:assert/strict');
 const { spawn } = require('node:child_process');
@@ -21,13 +17,11 @@ let child = null;
 
 function killChild() {
   if (!child || !child.pid) return;
-  // detached:true makes the child a process-group leader, so this also reaps any
-  // python worker grandchildren the server may have spawned during warm-up.
-  try { process.kill(-child.pid, 'SIGKILL'); } catch { /* already gone */ }
-  try { child.kill('SIGKILL'); } catch { /* already gone */ }
+
+  try { process.kill(-child.pid, 'SIGKILL'); } catch {  }
+  try { child.kill('SIGKILL'); } catch {  }
 }
 
-// Global hook: runs no matter what happens inside the top-level test.
 after(() => killChild());
 
 async function waitForPing() {
@@ -37,7 +31,7 @@ async function waitForPing() {
     try {
       const r = await fetch(`${BASE}/api/ping`, withTimeout(1000));
       if (r.status === 200) return;
-    } catch { /* server not listening yet */ }
+    } catch {  }
     await new Promise((resolve) => setTimeout(resolve, 200));
   }
   throw new Error('server did not answer /api/ping within ~10s');
@@ -50,7 +44,7 @@ test('API token gate (spawned server.js)', { timeout: 90000 }, async (t) => {
     stdio: ['ignore', 'pipe', 'pipe'],
     detached: true,
   });
-  // Drain the pipes so the child never blocks on a full stdout/stderr buffer.
+
   child.stdout.on('data', () => {});
   child.stderr.on('data', () => {});
 
@@ -71,8 +65,7 @@ test('API token gate (spawned server.js)', { timeout: 90000 }, async (t) => {
   });
 
   await t.test('a valid x-sitrep-token header passes the gate (404/unknown is fine)', async () => {
-    // Unknown path: with the gate passed it falls through to the instant 404 at
-    // the end of routing, so no slow upstream sweep is ever triggered.
+
     const r = await fetch(`${BASE}/api/no-such-endpoint`, {
       ...withTimeout(9000),
       headers: { 'x-sitrep-token': TOKEN },
@@ -96,7 +89,7 @@ test('API token gate (spawned server.js)', { timeout: 90000 }, async (t) => {
   });
 
   await t.test('GET /img without a token is 403 (gate covers proxy endpoints)', async () => {
-    // An unauthenticated /img must be rejected BEFORE the proxy fetches anything.
+
     const r = await fetch(`${BASE}/img?u=` + encodeURIComponent('https://example.com/a.png'), withTimeout(9000));
     assert.equal(r.status, 403);
   });

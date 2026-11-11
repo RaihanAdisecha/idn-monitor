@@ -1,6 +1,5 @@
-// Audit instreader: image/video/link noise per news source
-// Usage: node scripts/audit-reader.js [maxPerSource] [baseUrl]
-// If server not running, spawns one on 8799.
+
+
 const fs = require('fs');
 const path = require('path');
 const { spawn } = require('child_process');
@@ -12,23 +11,18 @@ const SRC = path.join(__dirname, '..', 'server.js');
 const OUT = path.join(__dirname, 'audit-output.json');
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36';
 
-// F2: gate token. Diisi dari process.env.SITREP_TOKEN bila ada; kalau tidak,
-// resolveToken() mengambilnya dari <meta name="sitrep-token"> yang di-inject
-// server di GET / (token acak per-boot). Server hasil spawn mewarisi process.env,
-// jadi SITREP_TOKEN yang diset eksplisit otomatis berlaku juga di server itu.
 let TOKEN = process.env.SITREP_TOKEN || '';
 
 function reqHeaders(extra) {
   return { ...(extra || {}), ...(TOKEN ? { 'x-sitrep-token': TOKEN } : {}) };
 }
-// Query param paling aman untuk URL proxy-style yang lewat gate token
-// (/img, /hls, /vhs, /api/thumb, /api/read): header saja bisa hilang saat redirect.
+
 function gateUrl(url) {
   if (!TOKEN) return url;
   return url + (url.includes('?') ? '&' : '?') + 'token=' + encodeURIComponent(TOKEN);
 }
 async function resolveToken() {
-  if (TOKEN) return TOKEN;                       // sudah dari env
+  if (TOKEN) return TOKEN;
   const home = BASE.replace(/\/+$/, '') + '/';
   const c = new AbortController(); const t = setTimeout(() => c.abort(), 10000);
   try {
@@ -37,7 +31,7 @@ async function resolveToken() {
     const m = html.match(/<meta[^>]*name=["']sitrep-token["'][^>]*content=["']([^"']+)["']/i)
            || html.match(/<meta[^>]*content=["']([^"']+)["'][^>]*name=["']sitrep-token["']/i);
     if (m && m[1]) TOKEN = m[1];
-  } catch (e) { /* gagal → ditangani pemanggil */ }
+  } catch (e) {  }
   finally { clearTimeout(t); }
   return TOKEN;
 }
@@ -101,7 +95,7 @@ async function auditOne(item, srcId) {
   const tRead = Date.now() - t0;
   try { thumb = await fetchJson(gateUrl(BASE + '/api/thumb?u=' + encodeURIComponent(u)), 30000); } catch (e) { thumbErr = String(e.message || e); }
   let raw = null, rawErr = '';
-  // resolve google news? server does it; for raw we fetch original (may fail on GN) and skip raw analysis gracefully
+
   try { raw = await fetchHtml(u, 20000); } catch (e) { rawErr = String(e.message || e).slice(0, 120); }
 
   const blocks = (read && read.blocks) || [];
@@ -152,8 +146,7 @@ async function auditOne(item, srcId) {
   if (!up) {
     BASE = 'http://localhost:8799';
     console.log('[audit] server not on 8787, spawning on 8799');
-    // env proses ini diwariskan → SITREP_TOKEN (bila diset) ikut ke server,
-    // sehingga token yang dipakai server == token audit (lihat TOKEN di atas).
+
     child = spawn('node', ['server.js'], { env: { ...process.env, PORT: '8799' }, stdio: ['ignore', 'pipe', 'pipe'] });
     child.stdout.on('data', d => process.stdout.write('[srv] ' + d));
     child.stderr.on('data', d => process.stderr.write('[srv] ' + d));
@@ -161,7 +154,7 @@ async function auditOne(item, srcId) {
     if (!ok) { console.error('server failed to start'); if (child) child.kill(); process.exit(1); }
   }
   console.log('[audit] base', BASE);
-  // F2: pastikan token ada sebelum ada request /api/* (semua bakal 403 tanpanya).
+
   if (!await resolveToken()) {
     console.error('[audit] ERROR: tidak bisa memperoleh token SITREP — semua /api/* akan ditolak 403.');
     console.error('[audit] Tanpa SITREP_TOKEN di env, server memakai token acak per-boot yang hanya');

@@ -41,22 +41,18 @@ test('createXPool round-robins across healthy accounts and fails over cleanly on
   assert.equal(p2.auth_token, 'a2');
   assert.equal(p3.auth_token, 'a1');
 
-  // Account 1 hits 429; pool stays operational using Account 2
   pool.markRateLimit(p1, now + 600_000, now);
   assert.equal(pool.allCooling(now), false);
   assert.equal(pool.pick(now).auth_token, 'a2');
   assert.equal(pool.pick(now).auth_token, 'a2');
 
-  // Request-scoped exclude returns null when only healthy account is excluded
   assert.equal(pool.pick(now, new Set([p2])), null);
 
-  // Account 2 hits 429 with an earlier reset; allCooling becomes true and earliestReset matches
   pool.markRateLimit(p2, now + 120_000, now);
   assert.equal(pool.allCooling(now), true);
   assert.equal(pool.earliestReset(now), now + 120_000);
   assert.equal(pool.pick(now), null);
 
-  // Once Account 2 resets, picking resumes automatically on Account 2
   assert.equal(pool.pick(now + 120_001).auth_token, 'a2');
 });
 
@@ -81,8 +77,8 @@ test('createXPool isolates 401/403 auth errors and omits secrets from status()',
 });
 
 test('formatWibTime converts UTC timestamps deterministically to UTC+7 WIB', () => {
-  // 2026-11-10T05:54:00Z -> 12:54 WIB
+
   assert.equal(formatWibTime(Date.parse('2026-11-10T05:54:00Z')), '12:54');
-  // 2026-11-10T17:05:00Z -> 00:05 WIB next day
+
   assert.equal(formatWibTime(Date.parse('2026-11-10T17:05:00Z')), '00:05');
 });

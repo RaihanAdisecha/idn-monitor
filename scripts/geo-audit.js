@@ -1,9 +1,5 @@
 #!/usr/bin/env node
-/* Audit + perbaikan koordinat gazetteer terhadap daratan Indonesia (public/idn.geo.json, Natural Earth 10m).
-   node scripts/geo-audit.js          -> laporan titik di laut (kab, provinsi, POI, region)
-   node scripts/geo-audit.js --write  -> tulis geo/coord-fixes.json (dipakai geocode.js saat load)
-   Aturan: pulau-pulau kecil yang memang tidak ada di poligon (ISLAND_OK) dibiarkan; selain itu titik <= 12 km dari
-   pantai digeser ke daratan terdekat (+ dorongan ~200 m ke dalam); provinsi yang centroid-nya di laut pindah ke ibukota provinsi. */
+
 const fs = require('fs'), path = require('path');
 const root = path.join(__dirname, '..');
 const G = require(path.join(root, 'geo', 'gazetteer.json'));
@@ -15,7 +11,7 @@ for (const f of land.features) { const g = f.geometry; for (const p of (g.type =
 const inRing = (r, x, y) => { let c = false; for (let i = 0, j = r.length - 1; i < r.length; j = i++) { const [xi, yi] = r[i], [xj, yj] = r[j]; if ((yi > y) !== (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi) c = !c; } return c; };
 const onLand = (lo, la) => polys.some(({ p, bb }) => lo >= bb[0] && lo <= bb[2] && la >= bb[1] && la <= bb[3] && inRing(p[0], lo, la) && !p.slice(1).some(h => inRing(h, lo, la)));
 const km = (lo1, la1, lo2, la2) => Math.hypot((lo1 - lo2) * 111.32 * Math.cos(la1 * Math.PI / 180), (la1 - la2) * 110.57);
-function nearestLand(lo, la) {   // titik terdekat pada garis pantai (proyeksi ke segmen, bukan cuma vertex)
+function nearestLand(lo, la) {
   let best = null, m = 1e9;
   for (const { p, bb } of polys) {
     if (lo < bb[0] - 1 || lo > bb[2] + 1 || la < bb[1] - 1 || la > bb[3] + 1) continue;
@@ -25,14 +21,14 @@ function nearestLand(lo, la) {   // titik terdekat pada garis pantai (proyeksi k
       if (d < m) { m = d; best = [px, py]; } } }
   return { pt: best, km: m };
 }
-function pushInland(pt) {   // geser ~200 m ke arah yang masih daratan
+function pushInland(pt) {
   const [x, y] = pt;
   for (const r of [0.0018, 0.003, 0.006]) for (let a = 0; a < 16; a++) {
     const lo = x + Math.cos(a * Math.PI / 8) * r, la = y + Math.sin(a * Math.PI / 8) * r;
     if (onLand(lo, la)) return [lo, la]; }
   return null;
 }
-const ISLAND_OK = ['Kepulauan Seribu'];   // ibukota di pulau kecil yang tidak muncul di poligon
+const ISLAND_OK = ['Kepulauan Seribu'];
 const PROV_CAP = { '11': 'Banda Aceh', '12': 'Medan', '13': 'Padang', '14': 'Pekanbaru', '15': 'Jambi', '16': 'Palembang', '17': 'Bengkulu', '18': 'Bandar Lampung',
   '19': 'Pangkal Pinang', '21': 'Tanjung Pinang', '31': 'Jakarta Pusat', '32': 'Bandung', '33': 'Semarang', '34': 'Yogyakarta', '35': 'Surabaya', '36': 'Serang',
   '51': 'Denpasar', '52': 'Mataram', '53': 'Kupang', '61': 'Pontianak', '62': 'Palangka Raya', '63': 'Banjar Baru', '64': 'Samarinda', '65': 'Bulungan',
@@ -56,7 +52,7 @@ function run() {
   console.table(report.map(r => ({ jenis: r[0], nama: r[1], km: r[2], aksi: r[3] })));
 
   if (process.argv.includes('--write')) { fs.writeFileSync(path.join(root, 'geo', 'coord-fixes.json'), JSON.stringify(fixes, null, 1)); console.log('ditulis geo/coord-fixes.json'); }
-  
+
 }
 module.exports = { onLand, nearestLand, km };
 if (require.main === module) run();

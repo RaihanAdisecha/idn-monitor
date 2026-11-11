@@ -64,7 +64,6 @@ test('singleFlight serves stale value immediately (SWR) and schedules single bac
   });
   assert.deepEqual(r1, { ok: true, v: 1 });
 
-  // Concurrent second caller during background refresh must also hit stale data and not trigger second upstream
   const r2 = await SRV.singleFlight(box, 10000, async () => {
     calls++;
     return { ok: true, v: 99 };
@@ -196,7 +195,7 @@ test('security: getClientIp handles Cloudflare CF-Connecting-IP fallback and str
     SEC.getClientIp({ headers: { 'cf-connecting-ip': '203.0.113.50' }, socket: { remoteAddress: '127.0.0.1' } }, true),
     '203.0.113.50'
   );
-  // Default: rightmost untrusted XFF wins over CF-Connecting-IP unless SITREP_TRUST_CF=1
+
   assert.equal(
     SEC.getClientIp({ headers: { 'cf-connecting-ip': '198.51.100.2', 'x-forwarded-for': '1.1.1.1, 203.0.113.99' }, socket: { remoteAddress: '127.0.0.1' } }, true),
     '203.0.113.99'
@@ -237,7 +236,7 @@ test('cctv-gateway: allowPublicCache allows edge-cached /api/cctv/snap while kee
     }),
   });
   const srv = http.createServer((req, res) => gw.hls('https://cam.example/live/index.m3u8', req, res));
-  await new Promise(r => srv.listen(0, r));
+  await new Promise(r => srv.listen(0, '127.0.0.1', r));
   try {
     const r = await fetch(`http://127.0.0.1:${srv.address().port}/`, {
       headers: { 'cf-connecting-ip': '203.0.113.77' },
@@ -245,6 +244,7 @@ test('cctv-gateway: allowPublicCache allows edge-cached /api/cctv/snap while kee
     assert.equal(r.status, 200);
     assert.equal(r.headers.get('access-control-allow-origin'), null);
     assert.equal(r.headers.get('cache-control'), 'no-store');
+    await r.arrayBuffer();
   } finally {
     srv.closeAllConnections && srv.closeAllConnections();
     await new Promise(r => srv.close(r));
@@ -274,21 +274,21 @@ test('cctv-gateway: global egress byte budget and IPv6 /64 rateKey limit multi-I
     }),
   });
   const srv = http.createServer((req, res) => gw.hls('https://cam.example/live/seg1.ts', req, res));
-  await new Promise(r => srv.listen(0, r));
+  await new Promise(r => srv.listen(0, '127.0.0.1', r));
   try {
     const port = srv.address().port;
-    // Different IPv6 addresses inside the same /64 share 1 reqRl bucket (burst=2)
     const r1 = await fetch(`http://127.0.0.1:${port}/`, { headers: { 'x-forwarded-for': '2001:db8:1:2::1' } });
+    await r1.arrayBuffer();
     const r2 = await fetch(`http://127.0.0.1:${port}/`, { headers: { 'x-forwarded-for': '2001:db8:1:2::2' } });
+    await r2.arrayBuffer();
     const r3 = await fetch(`http://127.0.0.1:${port}/`, { headers: { 'x-forwarded-for': '2001:db8:1:2::3' } });
     assert.equal(r1.status, 200);
     assert.equal(r2.status, 200);
     assert.equal(r3.status, 429, 'rotating IPv6 suffix inside /64 must still hit shared reqRl bucket');
 
-    // First IPv4 brings total charged bytes from 2048 -> 3072 (> 2500 globalByteBurst)
     const r4 = await fetch(`http://127.0.0.1:${port}/`, { headers: { 'x-forwarded-for': '198.51.100.88' } });
+    await r4.arrayBuffer();
     assert.equal(r4.status, 200);
-    // Subsequent distinct IPv4 must fail on exhausted global egress cap
     const r5 = await fetch(`http://127.0.0.1:${port}/`, { headers: { 'x-forwarded-for': '198.51.100.89' } });
     assert.equal(r5.status, 429, 'global egress byte cap must throttle cross-IP flood');
     assert.ok(gw.stats().globalRl >= 1);
@@ -357,7 +357,6 @@ test('server: /api/news?rev= serves CDN-cacheable delta responses and Brotli JSO
     assert.equal(rSame.unchanged, true);
     assert.equal(rSame.rev, parsed.rev);
 
-    // Mutate one feed & bump rev -> delta returns only the changed source
     SRV.cache.set('n:' + feedId, {
       at: Date.now(),
       v: {
@@ -385,10 +384,8 @@ test('P0/P1/P2 production hardening: loopback bind, HLS queue+abort, no s-maxage
   const html = fs.readFileSync(path.join(REPO, 'public/index.html'), 'utf8');
   const serverJs = fs.readFileSync(SERVER, 'utf8');
 
-  // P0: SITREP_SERVER.listen passes BIND_HOST
   assert.ok(serverJs.includes('SITREP_SERVER.listen({ host: BIND_HOST, port: Number(PORT) || 8787'), 'listen must bind explicit BIND_HOST');
 
-  // P1: makeLane enforces maxQueue=503 and removes aborted queued jobs before execution
   const lane = makeLane(1, 1, 2);
   let release0;
   const p0 = lane.run('cam-a', () => new Promise(r => { release0 = r; }));
@@ -404,7 +401,6 @@ test('P0/P1/P2 production hardening: loopback bind, HLS queue+abort, no s-maxage
   assert.equal(await p2, 'ran-2');
   assert.equal(lane.stats().cancelled, 1);
 
-  // P1: Static assets versioned immutable + lazy-load hls.js & Leaflet (inline L.VelocityLayer wrapped)
   assert.equal(html.includes('cdn.jsdelivr.net/npm/hls.js@1.5.13/dist/hls.min.js"></script>'), false, 'hls.min.js must be lazy-loaded');
   assert.equal(html.includes('cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>'), false, 'leaflet.js must be lazy-loaded');
   assert.ok(html.includes('function ensureHls()') && html.includes('function ensureLeaflet()') && html.includes('function initLeafletVelocity()') && html.includes('function initLeafletWms()'));
@@ -418,7 +414,6 @@ test('P0/P1/P2 production hardening: loopback bind, HLS queue+abort, no s-maxage
   const htmlEntry = SRV.staticEntry('/');
   assert.ok(htmlEntry && htmlEntry.buf.toString('utf8').includes(sigInfo.versioned));
 
-  // P2: docCache tracks combined HTML + jinaTxt bytes and enforces aggregate budget
   const hugeTxt = 'x'.repeat(300 * 1024);
   SRV.docCache.clear();
   for (let i = 0; i < 6; i++) {
@@ -428,7 +423,6 @@ test('P0/P1/P2 production hardening: loopback bind, HLS queue+abort, no s-maxage
   assert.ok(SRV.getDocCacheBytes() > 0);
   SRV.docCache.clear();
 
-  // P2: session mode requires >=32-char SITREP_AUTH_SECRET; public/session disable ?token= query param
   assert.throws(
     () => SEC.createAuthManager({ usersSpec: 'op:strongpass123:operator', authSecret: 'short-secret' }),
     /minimal 32 karakter/
@@ -438,7 +432,6 @@ test('P0/P1/P2 production hardening: loopback bind, HLS queue+abort, no s-maxage
   assert.equal(pubAuth.authenticate({ headers: {} }, new URL('http://x/api/metrics?token=tok-abc-123')).role, 'viewer', 'query token must be ignored in publicMode');
   assert.equal(pubAuth.authenticate({ headers: { 'x-sitrep-token': 'tok-abc-123' } }, new URL('http://x/api/metrics')).role, 'operator');
 
-  // P1 & P2 HTTP check: no s-maxage on /api/news & /api/nodes, plus enriched /api/metrics fields
   const port = await new Promise((resolve) => {
     SRV.SITREP_SERVER.listen(0, '127.0.0.1', () => resolve(SRV.SITREP_SERVER.address().port));
   });

@@ -148,12 +148,6 @@ function prewarmJson(cacheKey, obj, opts = {}) {
 const memoRetry = new Map();
 const MEMO_CAP = 800;
 const lruCap = (m, cap) => { while (m.size > cap) m.delete(m.keys().next().value); };
-const READ_CAP = 500;
-const pruneReads = () => {
-  const ks = [];
-  for (const k of cache.keys()) if (k.startsWith('read:')) ks.push(k);
-  for (let i = 0; i < ks.length - READ_CAP; i++) cache.delete(ks[i]);
-};
 const userQueryCache = new Map();
 const USER_QUERY_CAP = 400;
 const isUserQueryKey = k => /^(?:tt:|xq:|thq:|xth:|thth:|yt:)/.test(k);
@@ -186,7 +180,6 @@ const memo = (k, ttl, fn, good) => {
       memoRetry.set(k, n); lruCap(memoRetry, MEMO_CAP);
       if (n <= 5) setTimeout(kick, Math.min(90000, 15000 * n)).unref();
     } else memoRetry.delete(k);
-    if (k.startsWith('read:')) pruneReads();
     return v;
   };
   const c = store.get(k);
@@ -200,7 +193,6 @@ const memo = (k, ttl, fn, good) => {
   const p = fn().then(v => accept(v),
     e => { store.delete(k); memoRetry.delete(k); throw e; });
   store.set(k, { at: 0, v: undefined, p }); lruCap(store, cap);
-  if (k.startsWith('read:')) pruneReads();
   return p;
 };
 
@@ -417,6 +409,7 @@ const socialSvc = require('./src/social-service').createSocialService({
   XPOOL,
   nlpAdapter,
   cache,
+  userQueryCache,
   memo,
   makeSem,
   get,
@@ -678,6 +671,7 @@ const {
   CFG,
   GW,
   cache,
+  bodyCache,
   memo,
   mediaGet,
   mediaGetRaw,

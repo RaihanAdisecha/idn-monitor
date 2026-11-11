@@ -104,7 +104,7 @@ test('social-history retag fast-paths current _tagSig and invalidates when regis
   HISTORY.retag(map, () => true, [], now);
   assert.equal(map.size, 1);
   assert.equal(p.assessment.version, verBefore);
-  // Corrupt assessment + change extra topic signature -> must recompute
+
   p.assessment.feedEligible = false;
   HISTORY.retag(map, () => true, [{ id: 'custom-topic', pos: /custom/i }], now);
   assert.equal(map.size, 1);
@@ -177,14 +177,12 @@ describe('SITREP_SERVER HTTP audit P0 contracts', () => {
       v: { ok: true, items: bigItems, total: 60, raw: 60, places: 1, at: Date.now(), newest: Date.now(), stale: false }
     });
 
-    // Warm first with plain identity encoding (must not lock gz: null for subsequent gzip clients)
     const plainRes = await fetch(baseUrl + '/api/incidents?nodes=0', { headers: { ...hdrs, 'accept-encoding': 'identity' } });
     assert.equal(plainRes.status, 200);
     const plainJson = await plainRes.json();
     assert.equal(plainJson.nodesOmitted, true);
     assert.ok(plainJson.items.every(i => !i.fixed), 'nodes=0 must omit fixed nodes');
 
-    // Concurrent gzip clients must receive valid gzip + same ETag
     const gzReqs = await Promise.all(Array.from({ length: 8 }, () =>
       fetch(baseUrl + '/api/incidents?nodes=0', { headers: { ...hdrs, 'accept-encoding': 'gzip' } })
     ));

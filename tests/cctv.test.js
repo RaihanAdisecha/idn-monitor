@@ -5,7 +5,6 @@ const http = require('http');
 const C = require('../public/cctv-core');
 const { createGateway, makeLane, makeBucket, makeLru } = require('../cctv-gateway');
 
-/* ---------- cctv-core ---------- */
 test('streamKey/dedupe: stream pantau/molecool/path sama dianggap satu kamera', () => {
   const list = [
     { n: 'A', s: 'https://pantaucctv.com/api/stream?id=molecool-8' },
@@ -59,7 +58,6 @@ test('shouldDemote: hanya saat ada antrean host lain dan lewat batas lunak', () 
   assert.equal(C.shouldDemote({ ...p, dem: 3 }, 20000, true, 12000), false);
 });
 
-/* ---------- primitif gateway ---------- */
 test('makeLane: batas total dan per host', async () => {
   const lane = makeLane(3, 2);
   let cur = 0, maxCur = 0; const perCur = {}; let maxPer = 0;
@@ -93,7 +91,6 @@ test('makeLru: evict berdasar byte dan hormati TTL', () => {
   assert.equal(c.get('b'), null, 'kadaluarsa');
 });
 
-/* ---------- gateway end-to-end dengan upstream palsu ---------- */
 function fakeUpstream() {
   const calls = { n: 0, byUrl: {} };
   const seg = Buffer.alloc(50000, 7);
@@ -317,7 +314,6 @@ test('pickLiveKeys: hindari sel yang terpotong/ketutupan di atas saat ada sel ut
     return out;
   };
 
-  // Desktop: pb=[316..834], row 0 sebagian terpotong di atas (top=239..361), row 1..3 utuh
   const deskVr = { top: 316, bot: 834 };
   const deskCells = [
     ...mkRow(0, 239),
@@ -328,8 +324,6 @@ test('pickLiveKeys: hindari sel yang terpotong/ketutupan di atas saat ada sel ut
   ];
   assert.deepEqual(C.pickLiveKeys(deskCells, deskVr, 6), ['c2', 'c3', 'c4', 'c5', 'c6', 'c7']);
 
-  // Mobile: sticky header 0..48; row 0 di belakang header (-90..36 -> offscreen),
-  // row 1 kepotong header (37..159), row 2..4 utuh di bawah header
   const mobVr = { top: 48, bot: 844 };
   const mobCells = [
     ...mkRow(0, -90),
@@ -346,29 +340,29 @@ test('pickLiveKeys: hindari sel yang terpotong/ketutupan di atas saat ada sel ut
 test('pickLiveKeys: viewport pendek memprioritaskan sel dengan fraksi terlihat lebih besar & sehat', () => {
   const vr = { top: 528, bot: 702 };
   const cells = [
-    // row 0: hanya 45% frame terlihat (terlalu terpotong di atas) → tidak dipilih
+
     { key: 'r0a', idx: 0, bad: false, rect: { top: 452, bottom: 574, left: 0, width: 170, height: 122 }, frameRect: { top: 452, bottom: 556, left: 0, width: 170, height: 104 } },
-    // row 1: 100% utuh
+
     { key: 'r1a', idx: 1, bad: false, rect: { top: 575, bottom: 697, left: 0, width: 170, height: 122 }, frameRect: { top: 575, bottom: 679, left: 0, width: 170, height: 104 } },
-    // row 2: 75% terlihat di bawah (bot=728 vs vr.bot=702, visH=78/104)
+
     { key: 'r2a', idx: 2, bad: false, rect: { top: 624, bottom: 746, left: 180, width: 170, height: 122 }, frameRect: { top: 624, bottom: 728, left: 180, width: 170, height: 104 } },
-    // row 3: bad cam utuh harus kalah dari healthy
+
     { key: 'r3bad', idx: 3, bad: true, rect: { top: 575, bottom: 697, left: 360, width: 170, height: 122 }, frameRect: { top: 575, bottom: 679, left: 360, width: 170, height: 104 } },
   ];
   assert.deepEqual(C.pickLiveKeys(cells, vr, 6), ['r1a', 'r2a', 'r3bad']);
 });
 
 test('pickLiveKeys: sel yang bagian atasnya sudah tertutup scroll area dilarang mencuri slot LIVE', () => {
-  // Desktop: scroll container vr.top=300, vr.bot=800
+
   const vr = { top: 300, bot: 800 };
   const cells = [
-    // Top-clipped: video frame terpotong 25px di atas (top=275..379)
+
     { key: 'topClipped', idx: 0, bad: false, rect: { top: 275, bottom: 397, left: 0, width: 170, height: 122 }, frameRect: { top: 275, bottom: 379, left: 0, width: 170, height: 104 } },
-    // Utuh: 100% di dalam scroll area
+
     { key: 'clean1', idx: 1, bad: false, rect: { top: 400, bottom: 522, left: 0, width: 170, height: 122 }, frameRect: { top: 400, bottom: 504, left: 0, width: 170, height: 104 } },
     { key: 'clean2', idx: 2, bad: false, rect: { top: 530, bottom: 652, left: 0, width: 170, height: 122 }, frameRect: { top: 530, bottom: 634, left: 0, width: 170, height: 104 } },
   ];
-  // Meskipun cap=6, 'topClipped' TIDAK boleh dipilih karena bagian atasnya tertutup scroll area
+
   const picked = C.pickLiveKeys(cells, vr, 6);
   assert.deepEqual(picked, ['clean1', 'clean2']);
   assert.equal(picked.includes('topClipped'), false, 'kartu terpotong di atas tidak boleh mendapat slot Live');
@@ -385,7 +379,7 @@ test('pickLiveKeys: saat user scroll ke dasar (atBottom), kartu terbawah diprior
     }
     return out;
   };
-  // 5 rows = 10 cells (c0..c9). Container vr=[300..800]. Cap = 6.
+
   const vrBottom = { top: 300, bot: 800, atBottom: true };
   const cells = [
     ...mkRow(0, 320),
@@ -394,7 +388,7 @@ test('pickLiveKeys: saat user scroll ke dasar (atBottom), kartu terbawah diprior
     ...mkRow(3, 680),
     ...mkRow(4, 740),
   ];
-  // Saat atBottom=true, kartu terbawah (row 4, row 3, row 2) harus dipilih duluan, bukan row 0 dan row 1!
+
   const picked = C.pickLiveKeys(cells, vrBottom, 6);
   assert.equal(picked.includes('c8'), true, 'kartu c8 di baris terbawah harus dapat slot LIVE');
   assert.equal(picked.includes('c9'), true, 'kartu c9 di baris terbawah harus dapat slot LIVE');
@@ -412,28 +406,27 @@ test('pickLiveKeys: skenario Serpong Balaraja 3-kolom saat scroll mentok bawah t
     frameRect: { top, bottom: top + fH, left, width: w, height: fH },
   });
   const cells = [
-    // Row 1: terpotong di atas (top=250 < vr.top=316, topClip=66)
+
     mk('16+650 A', 0, 250, 110, 93, 0, false),
     mk('16+650 B', 1, 250, 110, 93, 166, false),
     mk('17+150 A', 2, 250, 110, 93, 332, false),
-    // Row 2: utuh, bad=false
+
     mk('18+150 A', 3, 341, 110, 93, 0, false),
     mk('18+150 B', 4, 341, 110, 93, 166, false),
     mk('19+600 A', 5, 341, 110, 93, 332, false),
-    // Row 3: utuh, bad=false
+
     mk('19+600 B', 6, 452, 110, 93, 0, false),
     mk('GT BSD Barat 1', 7, 452, 110, 93, 166, false),
     mk('GT BSD Timur 1', 8, 452, 110, 93, 332, false),
-    // Row 4: di-sink ke bawah oleh orderCams (bad=true), utuh di layar
+
     mk('Jalan Akses On Ramp BSD Timur', 9, 563, 110, 93, 0, true),
     mk('17+150 B', 10, 563, 110, 93, 166, true),
     mk('17+700 B', 11, 563, 110, 93, 332, true),
-    // Row 5 (paling bawah): 18+700 A span 2 kolom (tinggi 204px, botClip=12px) & 18+700 B (1 kolom)
+
     mk('18+700 A', 12, 674, 204, 187, 0, true, 331),
     mk('18+700 B', 13, 674, 204, 93, 332, true, 165),
   ];
 
-  // Bahkan dengan cap=6 sekalipun, Row 5 dan Row 4 WAJIB menang di urutan 1..5
   const top6 = C.pickLiveKeys(cells, vrBottom, 6);
   assert.deepEqual(top6.slice(0, 5), [
     '18+700 A',
@@ -443,7 +436,6 @@ test('pickLiveKeys: skenario Serpong Balaraja 3-kolom saat scroll mentok bawah t
     '17+700 B',
   ]);
 
-  // Dengan LIVE_CAP=12, seluruh 11 kamera utuh (Row 5, 4, 3, 2) masuk LIVE dan Row 1 yang terpotong di atas ditolak
   const top12 = C.pickLiveKeys(cells, vrBottom, 12);
   assert.equal(top12.length, 11);
   assert.equal(top12.includes('16+650 A'), false);
@@ -461,13 +453,11 @@ test('River and flood monitoring cameras: Kali Ciliwung, BKB, Cengkareng Drain &
   const riverCams = cams.filter(c => c.c === 'Pantau Banjir & Kali');
   assert.ok(riverCams.length >= 20, 'Must have at least 20 flood / river monitoring cameras');
 
-  // Verify critical Ciliwung Bidara Cina points exist in flood category
   const ciliwung = riverCams.find(c => c.n.includes('Bidara Cina'));
   assert.ok(ciliwung, 'Bidara Cina (Kali Ciliwung) must exist');
   assert.ok(ciliwung.s.includes('jakcctv.jakarta.go.id'), 'Must use active JakCCTV stream');
   assert.ok(Number.isFinite(ciliwung.la) && Number.isFinite(ciliwung.lo), 'Coordinates must be valid');
 
-  // Verify SiPantau Kota Tangerang river & sluice gate cameras exist in flood category
   const sarakan = riverCams.find(c => c.n.includes('Sarakan'));
   assert.ok(sarakan, 'Pintu Air Sarakan (Cirarab) must exist in flood category');
   assert.ok(sarakan.s.includes('dpuprkotang.info'), 'Must stream from dpuprkotang.info');
@@ -479,7 +469,6 @@ test('River and flood monitoring cameras: Kali Ciliwung, BKB, Cengkareng Drain &
   const alamanda = riverCams.find(c => c.n.includes('Alamanda'));
   assert.ok(alamanda, 'Jembatan Alamanda (Kali Ledug) must exist in flood category');
 
-  // Relocated street cameras are preserved in regional categories
   const bkb = cams.find(c => c.n.includes('Bendungan Hilir') && c.c === 'Jakarta Pusat');
   assert.ok(bkb, 'Bendungan Hilir relocated to Jakarta Pusat');
 

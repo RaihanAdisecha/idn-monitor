@@ -1,8 +1,5 @@
 'use strict';
-// Regression tests for the in-progress hardening pass. Every assertion below was
-// verified directly against the current source before being written.
-// evmerge.js is intentionally NOT tested here: it is already covered by
-// tests/evmerge.test.js (and the standard run includes that file via tests/*.js).
+
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
@@ -11,8 +8,6 @@ const S = require('../social');
 const H = require('../social-history');
 const GEO = require('../geocode');
 
-// A minimal topic registry: assess() walks topics x clauses and needs tp.id +
-// tp.pos. Keeping it tiny avoids pulling in the full SOC_TOPICS registry.
 const banjirReg = [{ id: 'banjir', pos: /banjir/i }];
 const reportTypeOf = (text) => A.assess(text, banjirReg).findings[0].reportType;
 
@@ -22,8 +17,7 @@ test('FEED_ONLY topics never produce a signalEligible finding', () => {
   assert.equal(A.FEED_ONLY.has('olahraga'), false, 'olahraga must not be in FEED_ONLY');
 
   const registry = feedOnly.map((id) => ({ id, pos: new RegExp(id, 'i') }));
-  // Include concrete event language + an Indonesian location so these findings
-  // would otherwise look reportable; the FEED_ONLY flag must still veto signals.
+
   const r = A.assess(
     'MBG BBM Pangan Bansos Hukum Transport Pendidikan melanda Jakarta terjadi',
     registry,
@@ -37,8 +31,7 @@ test('FEED_ONLY topics never produce a signalEligible finding', () => {
 });
 
 test('classifyScope strips diacritics so foreign place names are not read as local', () => {
-  // "kraków": after NFD + removing combining marks the word boundary matches
-  // the Krakow foreign marker, exactly like the ASCII spelling.
+
   const plain = A.classifyScope('penembakan di krakow', null);
   const diacritic = A.classifyScope('penembakan di kraków', null);
   assert.equal(diacritic.scope, plain.scope, 'diacritics must not change the scope result');
@@ -48,8 +41,7 @@ test('classifyScope strips diacritics so foreign place names are not read as loc
 });
 
 test('only years already past are treated as historical (relative to the current clock)', () => {
-  // Relative to a 2026 clock this is "tahun 2019" (historical) vs "tahun 2026"
-  // (NOT historical). Computed dynamically so the test stays valid next year too.
+
   const nowYear = new Date().getFullYear();
   const past = String(nowYear - 7);
   const thisYear = String(nowYear);
@@ -72,15 +64,13 @@ test('denied markers ("hoaks") are scoped to the same clause, not to all finding
 });
 
 test('socHashJunk strips URLs so a t.co link does not inflate the hashtag ratio', () => {
-  // socHashJunk is exported, so it can be asserted directly (no need for
-  // socAssess/socKeepX). The '#...' fragments live inside the URL and must be
-  // removed before tags are counted.
+
   assert.equal(
     S.socHashJunk('Banjir melanda Jakarta hari ini https://t.co/abc#one#two#three#four#five'),
     false,
     'a legit post with a fragment-heavy t.co link must not be junk',
   );
-  // Control: the same kind of tag density as real hashtags IS junk.
+
   assert.equal(
     S.socHashJunk('Banjir melanda Jakarta #satu #dua #tiga #empat #lima'),
     true,
@@ -88,8 +78,7 @@ test('socHashJunk strips URLs so a t.co link does not inflate the hashtag ratio'
 });
 
 test('social-history: identical text without url/code does not overwrite distinct posts', () => {
-  // social-history.js exports keyOf (not a "merge" function); keyOf is the
-  // map-key builder responsible for keeping bare-text posts distinct.
+
   const text = 'Banjir melanda Jakarta';
   const p1 = { text, created_at: '2026-11-01T01:00:00Z', author: 'alice' };
   const p2 = { text, created_at: '2026-11-02T02:00:00Z', author: 'bob' };
@@ -110,8 +99,7 @@ test('geocode aliases NTB / DIY / DKI resolve to the expected regions', () => {
 });
 
 test('real-estate listing posts are dropped from the social feed', () => {
-  // Threads listing: house for sale, transit amenities, price slang. The
-  // transport topic (KRL/TransJakarta) must NOT keep it feed-eligible.
+
   const listing = 'Yang cari rumah di Jakarta merapat !!\n\n' +
     'Lokasi rumah di Jalan Jatinegara Raya, Bali Mester, Jatinegara, punya akses ke:\n' +
     ' Stasiun KRL Jatinegara\n TransJakarta Koridor 5 & 11\n Mikrotrans JakLingko\n' +
@@ -122,8 +110,6 @@ test('real-estate listing posts are dropped from the social feed', () => {
   assert.equal(r.feedEligible, false);
   assert.equal(r.signalEligible, false);
 
-  // Deal words without a property noun, or a property noun without deal words,
-  // must not trigger listing detection.
   const incident = S.socAssess('Kebakaran rumah di Jatinegara Jakarta hari ini, damkar padamkan api');
   assert.ok(incident.topics.includes('kebakaran'), 'real incident mentioning "rumah" must survive');
   const noDeal = S.socAssess('Longsor menutup rumah warga di Sukabumi, 3KK terdampak');
@@ -139,7 +125,7 @@ test('BOM akronim Inggris (Bureau of Meteorology) bukan bahan peledak', () => {
   const r = S.socAssess('After 63 years recording Mitta Mitta\'s weather, couple wants the BOM to replace them with a weather station');
   assert.ok(!r.topics.includes('konflik'), 'BOM = akronim cuaca Australia, bukan "bom"');
   assert.equal(r.topics.length, 0);
-  // bom bahan peledak dalam bahasa Indonesia tetap terdeteksi
+
   const real = S.socAssess('Polisi menemukan bom di pasar');
   assert.ok(real.topics.includes('konflik'), 'bom literal harus tetap jadi konflik');
 });
@@ -152,11 +138,11 @@ test('geocode: street name "Bali Mester" does not outvote the Jatinegara POI', (
 });
 
 test('dating, taaruf, and commercial recommendation requests are rejected as noise/spam', () => {
-  const dating = `Hai. 
+  const dating = `Hai.
 Aku mau ngenalin temen aku nih
 Usia 29 tahun
 Asli Surabaya
-Kerja di Sidoarjo 
+Kerja di Sidoarjo
 Pekerjaan sebagai guru honorer
 Fisik dia agak gemoy tapi dia baik hati bertanggung jawab
 
@@ -184,7 +170,6 @@ Cari kriteria :
   assert.ok(r2.reasons.includes('spam'), 'service inquiry must be flagged as spam');
   assert.equal(r2.topics.length, 0);
 
-  // Legitimate labor dispute or protest by teachers must remain intact
   const protest = 'Ratusan guru honorer demo di depan kantor bupati di Surabaya menuntut gaji 6 bulan belum cair';
   const r3 = S.socAssess(protest);
   assert.ok(r3.topics.includes('pendidikan'), 'legitimate teacher protest must match pendidikan');
@@ -222,7 +207,6 @@ test('romantic confessions, dating drama, and shooting metaphors are rejected wh
   const res5 = S.socAssess(figurativePencurian);
   assert.equal(res5.topics.includes('pencurian'), false, 'figurative pencuri hati must not qualify for pencurian');
 
-  // Real shooting incidents MUST pass and remain feedEligible
   const realShooting1 = 'Pelaku begal ditembak polisi saat berusaha kabur di Bekasi';
   const resReal1 = S.socAssess(realShooting1);
   assert.ok(resReal1.topics.includes('penembakan'), 'real police shooting must match penembakan');
@@ -240,7 +224,7 @@ test('romantic confessions, dating drama, and shooting metaphors are rejected wh
 });
 
 test('disaster radar covers volcanic eruptions, storms, and tornadoes while rejecting metaphors', () => {
-  // 1. Real volcanic eruptions
+
   const lewotobi = 'Gunung Lewotobi Laki-laki kembali meletus semburkan awan panas guguran setinggi 4000 meter di Flores Timur';
   const resV1 = S.socAssess(lewotobi);
   assert.ok(resV1.topics.includes('gempa'), 'volcano eruption must map to disaster/gempa topic');
@@ -253,7 +237,6 @@ test('disaster radar covers volcanic eruptions, storms, and tornadoes while reje
   assert.equal(resV2.feedEligible, true);
   assert.ok(resV2.events.some(e => e.category === 'disaster' && e.type === 'eruption'));
 
-  // 2. Real severe storm, cyclone, and tornado (puting beliung)
   const putingBeliung = 'Angin puting beliung terjang Rancaekek Bandung, puluhan atap rumah beterbangan dan pohon tumbang';
   const resS1 = S.socAssess(putingBeliung);
   assert.ok(resS1.topics.includes('badai'), 'puting beliung must map to badai topic');
@@ -265,7 +248,6 @@ test('disaster radar covers volcanic eruptions, storms, and tornadoes while reje
   assert.ok(resS2.topics.includes('badai'), 'cyclone must map to badai topic');
   assert.equal(resS2.feedEligible, true);
 
-  // 3. Metaphors must be rejected
   const badaiAsmara = 'setelah melewati badai asmara dan drama cinta, akhirnya mereka putus juga';
   const resM1 = S.socAssess(badaiAsmara);
   assert.equal(resM1.topics.includes('badai'), false, 'metaphorical badai asmara must not qualify for badai');

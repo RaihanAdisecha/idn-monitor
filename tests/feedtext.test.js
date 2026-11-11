@@ -9,7 +9,7 @@ test('decodeEntities: named entities', () => {
 
 test('decodeEntities: numeric refs', () => {
   assert.equal(decodeEntities('&#8212; &#x2014;'), '— —');
-  assert.equal(decodeEntities('&#xD800;ok'), 'ok'); // lone surrogate dropped
+  assert.equal(decodeEntities('&#xD800;ok'), 'ok');
 });
 
 test('decodeEntities: amp decodes last, unknown stays literal', () => {
@@ -35,9 +35,7 @@ test('descFrom: GN-style headline + publisher → degenerate', () => {
 });
 
 test('descFrom: trailing outlet stripped', () => {
-  // NOTE: cleaned result must be >=40 chars per degenerate rule, so use
-  // realistic-length headlines (spec's literal short examples are <40 chars
-  // and would be rejected by the length floor).
+
   assert.equal(
     descFrom({ description: 'Hujan deras picu banjir di wilayah Jabodetabek - ANTARA' }, 'Lain'),
     'Hujan deras picu banjir di wilayah Jabodetabek'
@@ -79,7 +77,7 @@ test('descFrom: contentEncoded HTML becomes readable text', () => {
   assert.ok(out.length >= 40, 'expected >=40 chars, got: ' + out);
   assert.ok(!out.includes('<'), 'tags remain');
   assert.ok(!/kata\S*lain/.test(out) || true);
-  // no run-together across paragraph boundary
+
   assert.match(out, /pertama berita penting\. Paragraf kedua/);
 });
 
@@ -98,12 +96,11 @@ test('descFrom: degenerate description falls back to contentEncoded', () => {
 });
 
 test('descFrom: 600-char input capped at word boundary + …', () => {
-  const long = ('Kata berita panjang yang terus berlanjut tanpa henti. '.repeat(20)); // ~1000 chars
+  const long = ('Kata berita panjang yang terus berlanjut tanpa henti. '.repeat(20));
   const out = descFrom({ description: long }, 'T');
   assert.ok(out.length <= 521, 'len=' + out.length);
   assert.ok(out.endsWith('…'), 'ends with ellipsis');
-  // no mid-word cut: char before … must be end of a word (letter), and
-  // the text before … must not end inside a word — check last token is complete
+
   const body = out.slice(0, -1);
   assert.match(body, /[a-zA-Z]$/);
 });
@@ -148,7 +145,7 @@ test('newsEnglish: berita Indonesia tidak ikut terbuang', () => {
 
 test('cleanTitle: strips uncleaned source domains and suffixes without cutting compound words', () => {
   const { cleanTitle } = require('../feedtext');
-  // Outlet domain tails and hyphens
+
   assert.equal(cleanTitle('Polisi Tangkap Pengedar Narkoba - tribatanews.com', 'tribatanews.com'), 'Polisi Tangkap Pengedar Narkoba');
   assert.equal(cleanTitle('Patroli Malam di Wilayah Rawan - tribratanews.com'), 'Patroli Malam di Wilayah Rawan');
   assert.equal(cleanTitle('Kecelakaan Tol Cipali, 2 Orang Luka-Luka - tribratanews-polrescirebon.com', 'tribratanews-polrescirebon.com'), 'Kecelakaan Tol Cipali, 2 Orang Luka-Luka');
@@ -158,12 +155,10 @@ test('cleanTitle: strips uncleaned source domains and suffixes without cutting c
   assert.equal(cleanTitle('Penyelundupan Rokok Ilegal Digagalkan - Batamtimes.co'), 'Penyelundupan Rokok Ilegal Digagalkan');
   assert.equal(cleanTitle('Pelantikan Pejabat Baru - pemerintah Kabupaten Aceh Barat Daya'), 'Pelantikan Pejabat Baru');
 
-  // Reduplication and Indonesian compound word preservation
   assert.equal(cleanTitle('Anak-anak Korban Bencana Trauma, Mengaku Pura-pura Sakit - Detikcom', 'detikcom'), 'Anak-anak Korban Bencana Trauma, Mengaku Pura-pura Sakit');
   assert.equal(cleanTitle('Jalur Tol Pejagan-Pemalang Macet Parah - Radar Tegal', 'radar tegal'), 'Jalur Tol Pejagan-Pemalang Macet Parah');
   assert.equal(cleanTitle('Konflik Tambang-Sawit Diselesaikan Warga Kassi-Kassi - Tribunnews', 'tribunnews'), 'Konflik Tambang-Sawit Diselesaikan Warga Kassi-Kassi');
 
-  // Editorial prefix stripping
   assert.equal(cleanTitle('Berita Video - Evakuasi Korban Longsor Berlanjut - Kompas.com', 'kompas.com'), 'Evakuasi Korban Longsor Berlanjut');
   assert.equal(cleanTitle('Breaking News - Gunung Merapi Luncurkan Awan Panas - CNN Indonesia', 'cnn indonesia'), 'Gunung Merapi Luncurkan Awan Panas');
 });

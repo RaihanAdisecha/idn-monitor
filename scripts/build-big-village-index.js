@@ -1,7 +1,6 @@
 #!/usr/bin/env node
 'use strict';
-/* Build the compact runtime gazetteer from BIG's mapped desa/kelurahan CSV.
-   Usage: node scripts/build-big-village-index.js /path/to/indonesia_desa_kelurahan_centroids_big.csv */
+
 const fs = require('fs');
 const path = require('path');
 
@@ -32,7 +31,7 @@ function putUnique(map, code, value, label) {
   if (old !== undefined && JSON.stringify(canonicalFields(old)) !== JSON.stringify(canonicalFields(value))) {
     throw new Error(`Conflicting ${label} record for ${code}`);
   }
-  // Keep the first source spelling when differences are case-only (e.g. Grong-Grong).
+
   if (old === undefined) map.set(code, value);
 }
 

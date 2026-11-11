@@ -73,7 +73,6 @@ test('Load Test A — Loopback bind + Edge/Origin HIT simulation across stepped 
   assert.ok(ready, 'loopback 127.0.0.1 server must boot');
   assert.ok(bootOut.includes('http://127.0.0.1:' + port), 'startup log must reflect loopback BIND_HOST');
 
-  // Warm /api/nodes and / once before wave burst
   await fetch(`http://127.0.0.1:${port}/`);
   await fetch(`http://127.0.0.1:${port}/api/nodes`);
 
@@ -115,7 +114,7 @@ test('Load Test A — Loopback bind + Edge/Origin HIT simulation across stepped 
 });
 
 test('Load Test B — Origin MISS simulation: 50 mock RSS feeds (bounded concurrency), delta rev, 100 unique articles docCache, HLS burst & recovery', async () => {
-  // 1. Simulate 50 RSS sources scheduled together through rssSem (concurrency=8) + runNewsCollectOnce overlap lock
+
   let active = 0, maxSeen = 0;
   let calls = 0;
   const mockFeeds = Array.from({ length: 50 }, (_, i) => ({
@@ -135,7 +134,6 @@ test('Load Test B — Origin MISS simulation: 50 mock RSS feeds (bounded concurr
   assert.ok(maxSeen <= 8, `RSS semaphore max concurrency must stay <= 8, observed ${maxSeen}`);
   assert.equal(rssResults.filter(x => x.ok).length, 49);
 
-  // 2. Simulate 100 unique article documents entering docCache (verify byte-budget cap + eviction)
   SRV.docCache.clear();
   for (let i = 0; i < 100; i++) {
     const htmlBody = '<html><body><article><p>' + `Artikel uji ke-${i} `.repeat(400) + '</p></article></body></html>';
@@ -145,7 +143,6 @@ test('Load Test B — Origin MISS simulation: 50 mock RSS feeds (bounded concurr
   assert.ok(SRV.docCache.size <= 48, 'docCache count stays <= 48');
   assert.ok(SRV.getDocCacheBytes() <= SRV.DOC_CACHE_MAX_BYTES, 'docCache bytes stay within aggregate budget');
 
-  // Verify media resolution on mock article HTML
   const artHtml = '<html><head><meta property="og:image" content="https://mock.news/lead.jpg"></head><body><article><p>Kebakaran pasar terjadi.</p></article></body></html>';
   const mRes = await MEDIA.resolveArticleMedia({
     requestedUrl: 'https://mock.news/art-1',
@@ -157,7 +154,6 @@ test('Load Test B — Origin MISS simulation: 50 mock RSS feeds (bounded concurr
   assert.equal(mRes.hero.verified, true);
   SRV.docCache.clear();
 
-  // 3. HLS burst against mock CCTV gateway with Mac limits (maxActive=2, perHost=1, maxQueue=4) + upstream outage recovery
   let failUpstream = true;
   let releaseHold;
   let holdDone = new Promise(r => { releaseHold = r; });
@@ -212,7 +208,6 @@ test('Load Test B — Origin MISS simulation: 50 mock RSS feeds (bounded concurr
     assert.equal(r2.status, 200);
     assert.equal(r3.status, 200);
 
-    // Upstream failure -> 502, followed by recovery -> 200
     const downRes = await fetch(`http://127.0.0.1:${port}/?u=${encodeURIComponent('https://cam.example/recover.m3u8')}`);
     assert.equal(downRes.status, 502);
     failUpstream = false;

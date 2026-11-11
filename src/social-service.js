@@ -14,6 +14,7 @@ function createSocialService({
   XPOOL,
   nlpAdapter,
   cache,
+  userQueryCache,
   memo,
   makeSem,
   get,
@@ -1202,14 +1203,14 @@ function createSocialService({
     if (!x) return false;
     const id = tweetId(x.href);
     if (id && /(^|\.)(x|twitter)\.com$/i.test(x.hostname)) {
-      if (cache.has('xth:' + id)) return true;
+      if ((userQueryCache && userQueryCache.has('xth:' + id)) || cache.has('xth:' + id)) return true;
       for (const p of xHist.values()) {
         if (p && (p.id === id || tweetId(p.url) === id)) return true;
       }
       return false;
     }
     if (/(^|\.)threads\.(com|net)$/i.test(x.hostname) && /\/post\//.test(x.pathname)) {
-      if (cache.has('thth:' + x.href)) return true;
+      if ((userQueryCache && userQueryCache.has('thth:' + x.href)) || cache.has('thth:' + x.href)) return true;
       const normPath = x.pathname.replace(/\/+$/, '').toLowerCase();
       for (const p of tHist.values()) {
         if (!p || !p.url) continue;

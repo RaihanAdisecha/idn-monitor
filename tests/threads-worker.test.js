@@ -1,9 +1,5 @@
 'use strict';
-// Tests vendor/threads_worker.py with ZERO network access.
-// A stub threads_scraper.py is placed in a temp dir that also holds a copy of the
-// worker. Because running a script puts its own directory first on sys.path, the
-// stub reliably shadows the real vendor scraper. PYTHONPATH still includes
-// <repo>/vendor, and cwd is the repo root, as required by the harness.
+
 const { test, before, after } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -50,7 +46,7 @@ function pickPython() {
     try {
       const r = spawnSync(candidate, ['-c', 'print(1)'], { stdio: 'ignore' });
       if (r.status === 0) return candidate;
-    } catch { /* try the next interpreter */ }
+    } catch {  }
   }
   return null;
 }
@@ -65,7 +61,7 @@ before(() => {
   tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'sitrep-threads-'));
   logFile = path.join(tmpDir, 'calls.log');
   fs.writeFileSync(path.join(tmpDir, 'threads_scraper.py'), STUB);
-  // Read the worker as it exists right now (it is being hardened in parallel).
+
   fs.copyFileSync(path.join(VENDOR, 'threads_worker.py'), path.join(tmpDir, 'threads_worker.py'));
 });
 
@@ -100,7 +96,6 @@ function readCalls() {
   return fs.readFileSync(logFile, 'utf8').split('\n').filter(Boolean);
 }
 
-// JSON.parse rejects trailing content, which enforces "exactly one JSON value".
 function parseOne(out) {
   const obj = JSON.parse(out.trim());
   assert.ok(obj && typeof obj === 'object' && !Array.isArray(obj), 'stdout must be one JSON object');
@@ -109,10 +104,7 @@ function parseOne(out) {
 
 test('malformed JSON argv still emits one valid JSON object with ok/posts and non-empty errs',
   { skip: SKIP, timeout: 20000 }, async () => {
-    // The hardened worker falls back to an empty spec on a parse failure, so by
-    // itself it records no errs entry. Combine malformed argv with a stub whose
-    // Threads() constructor raises: the worker must STILL emit a single
-    // well-formed object, with the fatal failure recorded in errs (non-empty).
+
     const { code, out } = await runWorker('{not json', { STUB_FATAL: '1' });
     assert.equal(code, 0);
     const obj = parseOne(out);
