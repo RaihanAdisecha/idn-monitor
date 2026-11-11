@@ -3529,6 +3529,49 @@ const jinaGet = (u, ms, h, alive, prio, signal) => {
   });
 };
 
+// Shared article HTML/Jina cache (5m TTL, bounded 1MB/article, 48 unique articles keyed canonically)
+const docCache = new Map();
+const docAlias = new Map();
+const DOC_CACHE_MAX_HTML = 1 << 20;
+function docCacheGet(u) {
+  if (!u) return null;
+  const canon = docAlias.get(u) || MEDIA.canonicalArticleUrl(u) || u;
+  const e = docCache.get(canon) || docCache.get(u);
+  if (!e || Date.now() - e.at >= 300000) return null;
+  const key = docCache.has(canon) ? canon : u;
+  docCache.delete(key); docCache.set(key, e);
+  return e;
+}
+function docCacheSet(urls, entry) {
+  if (!entry || (!entry.html && !entry.jinaTxt)) return;
+  const rawList = Array.isArray(urls) ? urls.filter(Boolean) : [urls].filter(Boolean);
+  if (!rawList.length) return;
+  const keyHint = entry.finalUrl || rawList[0];
+  const canonKey = MEDIA.canonicalArticleUrl(keyHint) || keyHint;
+  const htmlClipped = typeof entry.html === 'string' && entry.html.length > DOC_CACHE_MAX_HTML
+    ? entry.html.slice(0, DOC_CACHE_MAX_HTML)
+    : (entry.html || null);
+  const payload = { html: htmlClipped, jinaTxt: entry.jinaTxt || null, finalUrl: entry.finalUrl || '', via: entry.via || '', at: Date.now() };
+  docCache.set(canonKey, payload);
+  lruCap(docCache, 48);
+  for (const u of rawList) {
+    docAlias.set(u, canonKey);
+    lruCap(docAlias, 240);
+  }
+}
+
+// Firecrawl cooldown per-URL: artikel yang memang mati tidak boleh membakar
+// credit scrape tiap retry (thumb transient cuma 15 dtk).
+const fcFailUntil = new Map();
+const FC_FAIL_TTL = 10 * 60000;
+const fcBlocked = u => {
+  const t = fcFailUntil.get(u) || 0;
+  if (t > Date.now()) return true;
+  if (t) fcFailUntil.delete(u);
+  return false;
+};
+const fcFailMark = u => { if (u) { fcFailUntil.set(u, Date.now() + FC_FAIL_TTL); lruCap(fcFailUntil, 500); } };
+
 const mediaCacheKey = canon => 'v' + PIPELINE_VERSION + ':' + canon;
 function mediaCacheGet(u, canon) {
   const cUrl = canon || urlToCanon.get(u) || MEDIA.canonicalArticleUrl(u);
@@ -3600,20 +3643,27 @@ async function resolvePlayableVideos(html, finalUrl, title, seed = []) {
 }
 
 function formatThumbResponse(mediaRes) {
+  const hero = mediaRes && mediaRes.hero;
+  const bodyFallback = (!hero || !hero.verified) && Array.isArray(mediaRes && mediaRes.bodyImages)
+    ? mediaRes.bodyImages.find(b => b && b.verified && b.url && b.width >= 360)
+    : null;
+  const chosen = (hero && hero.verified) ? hero : bodyFallback;
+  const status = (hero && hero.verified) ? (hero.status || 'verified')
+    : (bodyFallback ? 'verified' : ((hero && hero.status) || 'no_candidates'));
   return {
-    img: (mediaRes.hero && mediaRes.hero.url) || '',
-    w: (mediaRes.hero && mediaRes.hero.width) || 0,
-    h: (mediaRes.hero && mediaRes.hero.height) || 0,
+    img: (chosen && chosen.url) || '',
+    w: (chosen && chosen.width) || 0,
+    h: (chosen && chosen.height) || 0,
     src: mediaRes.canonicalUrl || mediaRes.requestedUrl || '',
     canonicalUrl: mediaRes.canonicalUrl || '',
-    source: (mediaRes.hero && mediaRes.hero.source) || 'none',
-    method: (mediaRes.hero && mediaRes.hero.method) || 'none',
-    aspectRatio: (mediaRes.hero && mediaRes.hero.aspectRatio) || 0,
-    mime: (mediaRes.hero && mediaRes.hero.mime) || '',
-    bytes: (mediaRes.hero && mediaRes.hero.bytes) || 0,
-    verified: Boolean(mediaRes.hero && mediaRes.hero.verified),
-    status: (mediaRes.hero && mediaRes.hero.status) || 'no_candidates',
-    transient: Boolean(mediaRes.transientFailure),
+    source: (chosen && chosen.source) || 'none',
+    method: (chosen && (chosen.method || (bodyFallback ? 'body_fallback' : ''))) || 'none',
+    aspectRatio: (chosen && chosen.aspectRatio) || 0,
+    mime: (chosen && chosen.mime) || '',
+    bytes: (chosen && chosen.bytes) || 0,
+    verified: Boolean(chosen && (chosen.verified === true || bodyFallback)),
+    status,
+    transient: Boolean(!chosen && mediaRes.transientFailure),
     videos: Array.isArray(mediaRes.videos) ? mediaRes.videos : [],
     schemaVersion: PIPELINE_VERSION,
     diagnostics: mediaRes.diagnostics || null,
@@ -3634,6 +3684,13 @@ async function thumbRun(u) {
   const canon = MEDIA.canonicalArticleUrl(article) || article;
   const hitA = mediaCacheGet(u, canon);
   if (hitA) return formatThumbResponse(hitA);
+
+  // Two-way in-flight symmetry: wait if /api/read is already extracting this article
+  if (readBusy.has(canon)) {
+    try { await readBusy.get(canon); } catch (e) {}
+    const hitAfter = mediaCacheGet(u, canon);
+    if (hitAfter) return formatThumbResponse(hitAfter);
+  }
 
   // Reuse readCache jika artikel sudah pernah diekstrak
   const rHit = getReadCache(canon);
@@ -3670,52 +3727,79 @@ async function thumbFetchAndResolve(u, article, canon, wireIt) {
   let doc = null;
   let jinaMd = null;
   let upstreamStatus = 'ok';
+  const cachedDoc = docCacheGet(canon) || docCacheGet(article) || docCacheGet(u);
+  if (cachedDoc) {
+    if (cachedDoc.html) doc = { html: cachedDoc.html, finalUrl: cachedDoc.finalUrl || article, via: cachedDoc.via || 'doc-cache' };
+    if (cachedDoc.jinaTxt) jinaMd = cachedDoc.jinaTxt;
+  }
   let artHost = '';
   try { artHost = new URL(article).hostname; } catch (e) {}
   const isWafHost = CF_WAF_HOST_RE.test(artHost);
-  const directP = (isWafHost
-    ? sleep(250).then(() => tryDocFetch(article, 6000, {}, false, 'direct'))
-    : tryDocFetch(article, 7000, {}, false, 'direct'));
-  const fastBotP = tryDocFetch(article, 6000, { 'user-agent': RD_BOT_UAS[0] }, false, 'bot');
-  // Prevent unhandledRejection when early fast-path resolves before loser settles
-  directP.catch(() => {});
-  fastBotP.catch(() => {});
-  let fast = await Promise.race([
-    (isWafHost ? fastBotP : directP).catch(() => null),
-    sleep(1800).then(() => 'slow')
-  ]);
-  if (fast && fast !== 'slow') {
-    doc = fast;
-    try { thumbAc.abort(); } catch {}
-  } else {
-    const jobs = [directP, fastBotP];
-    jobs.push((async () => {
-      for (const bua of RD_BOT_UAS.slice(1, 5)) {
-        if (thumbAc.signal.aborted) break;
-        try { return await tryDocFetch(article, 4500, { 'user-agent': bua }, false, 'bot'); }
-        catch (e) {}
+  if (!doc && !jinaMd) {
+    const directP = (isWafHost
+      ? sleep(250).then(() => tryDocFetch(article, 6000, {}, false, 'direct'))
+      : tryDocFetch(article, 7000, {}, false, 'direct'));
+    const fastBotP = tryDocFetch(article, 6000, { 'user-agent': RD_BOT_UAS[0] }, false, 'bot');
+    // Prevent unhandledRejection when early fast-path resolves before loser settles
+    directP.catch(() => {});
+    fastBotP.catch(() => {});
+    let fast = await Promise.race([
+      (isWafHost ? fastBotP : directP).catch(() => null),
+      sleep(1800).then(() => 'slow')
+    ]);
+    if (fast && fast !== 'slow') {
+      doc = fast;
+      try { thumbAc.abort(); } catch {}
+    } else {
+      const jobs = [directP, fastBotP];
+      jobs.push((async () => {
+        for (const bua of RD_BOT_UAS.slice(1, 5)) {
+          if (thumbAc.signal.aborted) break;
+          try { return await tryDocFetch(article, 4500, { 'user-agent': bua }, false, 'bot'); }
+          catch (e) {}
+        }
+        throw new Error('bot gagal');
+      })());
+      for (const av of rdAmpVariants(article).slice(0, 2)) {
+        jobs.push(tryDocFetch(av, 4500, { 'user-agent': RD_BOT_UAS[0] }, false, 'amp'));
       }
-      throw new Error('bot gagal');
-    })());
-    for (const av of rdAmpVariants(article).slice(0, 1)) {
-      jobs.push(tryDocFetch(av, 4500, { 'user-agent': RD_BOT_UAS[0] }, false, 'amp'));
+      for (const px of RD_PROXIES.slice(0, CUSTOM_PROXY ? 2 : 1)) {
+        jobs.push(tryDocFetch(px(article), 5000, {}, true, 'proxy'));
+      }
+      for (const j of jobs) j.catch(() => {});
+      doc = await Promise.any(jobs).catch(() => null);
+      try { thumbAc.abort(); } catch {}
     }
-    for (const px of RD_PROXIES.slice(0, CUSTOM_PROXY ? 2 : 1)) {
-      jobs.push(tryDocFetch(px(article), 5000, {}, true, 'proxy'));
-    }
-    for (const j of jobs) j.catch(() => {});
-    doc = await Promise.any(jobs).catch(() => null);
-    try { thumbAc.abort(); } catch {}
-  }
 
-  if (!doc) {
-    try {
-      const { r } = await jinaGet('https://r.jina.ai/' + article, 12000, { accept: 'text/plain' });
-      if (r.ok) {
-        const txt = await mediaText(r, 2 << 20);
-        if (txt && !BOT_CHALLENGE_RE.test(txt.slice(0, 5000))) jinaMd = txt;
-      }
-    } catch (e) {}
+    if (!doc) {
+      try {
+        const { r } = await jinaGet('https://r.jina.ai/' + article, 9000, { accept: 'text/plain' });
+        if (r.ok) {
+          const txt = await mediaText(r, 2 << 20);
+          if (txt && !BOT_CHALLENGE_RE.test(txt.slice(0, 5000))) jinaMd = txt;
+        }
+      } catch (e) {}
+    }
+    const FC_KEY = process.env.FIRECRAWL_API_KEY || CFG.firecrawl_key || '';
+    if (!doc && !jinaMd && FC_KEY && !fcBlocked(article)) {
+      let fcOk = false;
+      try {
+        const r = await get('https://api.firecrawl.dev/v1/scrape', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', authorization: 'Bearer ' + FC_KEY },
+          body: JSON.stringify({ url: article, formats: ['html'], onlyMainContent: false, timeout: 8000 })
+        }, 9000);
+        if (r.ok) {
+          const j = await r.json();
+          const html = j && j.data && j.data.html;
+          if (html && String(html).length > 500 && !BOT_CHALLENGE_RE.test(String(html).slice(0, 30000))) {
+            doc = { html: String(html).slice(0, 3e6), finalUrl: article, via: 'firecrawl' };
+            fcOk = true;
+          }
+        }
+      } catch (e) {}
+      if (!fcOk) fcFailMark(article);
+    }
   }
 
   if (!doc && !jinaMd) upstreamStatus = 'upstream_blocked_or_failed';
@@ -3723,22 +3807,58 @@ async function thumbFetchAndResolve(u, article, canon, wireIt) {
   const finalCanon = MEDIA.canonicalArticleUrl(targetFinal) || canon;
   const rssImgs = wireIt ? (wireIt.rssImgs || (wireIt.rssImg ? [wireIt.rssImg] : [])) : [];
 
-  const mediaRes = await MEDIA.resolveArticleMedia({
+  if (doc || jinaMd) {
+    docCacheSet([u, article, canon, finalCanon], {
+      html: doc ? doc.html : null,
+      jinaTxt: jinaMd || null,
+      finalUrl: targetFinal,
+      via: doc ? doc.via : 'jina',
+    });
+  }
+
+  let mediaRes = await MEDIA.resolveArticleMedia({
     requestedUrl: u,
     canonicalUrl: finalCanon,
     html: doc ? doc.html : null,
     jinaMarkdown: jinaMd,
     rssImgs,
-    mode: 'hero',
+    mode: 'full',
     method: doc ? doc.via : (jinaMd ? 'jina' : (rssImgs.length ? 'rss' : 'none')),
     wireTitle: (wireIt && wireIt.title) || '',
     probeFn: probeImage,
     reuseTracker: assetReuse,
     upstreamStatus,
   });
-  if (!doc && !jinaMd && !mediaRes.hero.verified) {
+  // If direct HTML was a thin JS shell (no_candidates), rescue via Jina before giving up
+  if (!mediaRes.hero.verified && !(mediaRes.bodyImages && mediaRes.bodyImages.length) && mediaRes.hero.status === 'no_candidates' && doc && !jinaMd) {
+    try {
+      const { r } = await jinaGet('https://r.jina.ai/' + targetFinal, 10000, { accept: 'text/plain' });
+      if (r.ok) {
+        const txt = await mediaText(r, 2 << 20);
+        if (txt && !BOT_CHALLENGE_RE.test(txt.slice(0, 5000))) {
+          jinaMd = txt;
+          docCacheSet([u, article, canon, finalCanon], { html: doc.html, jinaTxt: jinaMd, finalUrl: targetFinal, via: doc.via });
+          mediaRes = await MEDIA.resolveArticleMedia({
+            requestedUrl: u,
+            canonicalUrl: finalCanon,
+            html: doc.html,
+            jinaMarkdown: jinaMd,
+            rssImgs,
+            mode: 'full',
+            method: 'jina',
+            wireTitle: (wireIt && wireIt.title) || '',
+            probeFn: probeImage,
+            reuseTracker: assetReuse,
+            upstreamStatus,
+          });
+        }
+      }
+    } catch (e) {}
+  }
+  mediaRes.mode = 'full';
+  if ((!doc && !jinaMd && !mediaRes.hero.verified) || (mediaRes.hero.status === 'no_candidates' && !(mediaRes.bodyImages && mediaRes.bodyImages.length))) {
     mediaRes.transientFailure = true;
-    mediaRes.hero.status = 'upstream_blocked';
+    if (!doc && !jinaMd) mediaRes.hero.status = 'upstream_blocked';
   }
   mediaRes.videos = await resolvePlayableVideos(doc ? doc.html : '', targetFinal, (wireIt && wireIt.title) || '');
   mediaCacheSet([u, article, canon, finalCanon], mediaRes);
@@ -4079,17 +4199,22 @@ async function cctvFetch(url, ms, headers){
    tidak bakar credit tiap refresh. */
 async function cctvFirecrawl(url){
   const FC_KEY = process.env.FIRECRAWL_API_KEY || CFG.firecrawl_key || '';
-  if (!FC_KEY) return '';
+  if (!FC_KEY || fcBlocked(url)) return '';
+  let ok = false;
   try {
     const r = await get('https://api.firecrawl.dev/v1/scrape', {
       method: 'POST',
       headers: { 'content-type': 'application/json', authorization: 'Bearer ' + FC_KEY },
       body: JSON.stringify({ url, formats: ['html'], onlyMainContent: false, timeout: 30000 })
     }, 40000);
-    if (!r.ok) return '';
-    const j = await r.json();
-    return (j && j.data && j.data.html) || '';
-  } catch (e) { return ''; }
+    if (r.ok) {
+      const j = await r.json();
+      const h = (j && j.data && j.data.html) || '';
+      if (h) { ok = true; return h; }
+    }
+  } catch (e) {}
+  if (!ok) fcFailMark(url);
+  return '';
 }
 async function cctvBpjtFetch(){
   // halaman ~1MB dan bisa lambat — timeout longgar, direct dulu baru proxy
@@ -4682,29 +4807,40 @@ async function rdFinish(d, url, canonUrl, html, jinaMd, via, wireIt) {
   const rssImgs = rdWireRssImgs(url).concat(canonUrl && canonUrl !== url ? rdWireRssImgs(canonUrl) : []);
   const upstreamStatus = (via === 'wire-fallback' || via === 'meta') ? 'upstream_blocked_or_failed' : 'ok';
 
+  const resolvedCanon = canonUrl || MEDIA.canonicalArticleUrl(url) || url;
+  const cachedMedia = mediaCacheGet(url, resolvedCanon);
+  const reuseFullMedia = Boolean(
+    cachedMedia && cachedMedia.schemaVersion === PIPELINE_VERSION && cachedMedia.mode === 'full' &&
+    cachedMedia.canonicalUrl && !cachedMedia.transientFailure &&
+    ((cachedMedia.hero && cachedMedia.hero.verified) || (Array.isArray(cachedMedia.bodyImages) && cachedMedia.bodyImages.length))
+  );
+
   const mediaP = !/youtube\.com|youtu\.be/i.test(url)
-    ? MEDIA.resolveArticleMedia({
-        requestedUrl: url,
-        canonicalUrl: canonUrl || MEDIA.canonicalArticleUrl(url) || url,
-        html: html || null,
-        jinaMarkdown: jinaMd || null,
-        rssImgs,
-        mode: 'full',
-        method: via === 'wire-fallback' ? 'rss' : via,
-        wireTitle: (wireIt && wireIt.title) || d.title || '',
-        probeFn: probeImage,
-        reuseTracker: assetReuse,
-        upstreamStatus,
-      })
+    ? (reuseFullMedia
+        ? Promise.resolve(cachedMedia)
+        : MEDIA.resolveArticleMedia({
+            requestedUrl: url,
+            canonicalUrl: resolvedCanon,
+            html: html || null,
+            jinaMarkdown: jinaMd || null,
+            rssImgs,
+            mode: 'full',
+            method: via === 'wire-fallback' ? 'rss' : via,
+            wireTitle: (wireIt && wireIt.title) || d.title || '',
+            probeFn: probeImage,
+            reuseTracker: assetReuse,
+            upstreamStatus,
+          }))
     : Promise.resolve(null);
 
   const [, mediaRes] = await Promise.all([hydP, mediaP]);
 
   if (mediaRes) {
+    mediaRes.mode = 'full';
     d.img = (mediaRes.hero && mediaRes.hero.url) || '';
     d.imgVerified = Boolean(mediaRes.hero && mediaRes.hero.verified);
     d.imgStatus = (mediaRes.hero && mediaRes.hero.status) || 'no_candidates';
-    d.canonicalUrl = mediaRes.canonicalUrl || canonUrl || url;
+    d.canonicalUrl = mediaRes.canonicalUrl || resolvedCanon;
     d.media = {
       schemaVersion: mediaRes.schemaVersion,
       canonicalUrl: mediaRes.canonicalUrl,
@@ -4712,7 +4848,7 @@ async function rdFinish(d, url, canonUrl, html, jinaMd, via, wireIt) {
       bodyImages: mediaRes.bodyImages,
       diagnostics: mediaRes.diagnostics,
     };
-    mediaCacheSet([url, canonUrl, d.url, d.final].filter(Boolean), mediaRes);
+    if (!reuseFullMedia) mediaCacheSet([url, canonUrl, d.url, d.final].filter(Boolean), mediaRes);
   } else {
     d.img = '';
     d.imgVerified = false;
@@ -4801,6 +4937,9 @@ async function rdRead(raw, bg, forceFresh = false) {
   await rdAssertPublic(target);
 
   const canon = MEDIA.canonicalArticleUrl(target) || target;
+  if (thumbBusy.has(canon)) {
+    try { await Promise.race([thumbBusy.get(canon), sleep(8000)]); } catch (e) {}
+  }
   const cacheHit = getReadCache(canon, raw);
   if (cacheHit && !(forceFresh && (cacheHit.wireFallback || cacheHit.upstreamBlocked || cacheHit.isFallback))) return cacheHit;
 
@@ -4849,6 +4988,7 @@ async function rdRead(raw, bg, forceFresh = false) {
     const fin = async (d, url, html, jinaTxt, via) => {
       const m0 = Date.now();
       const finCanon = MEDIA.canonicalArticleUrl(url) || canon;
+      if (html || jinaTxt) docCacheSet([raw, target, finCanon, url].filter(Boolean), { html, jinaTxt, finalUrl: url, via });
       const r = await rdFinish(d, url, finCanon, html, jinaTxt, via, wireIt);
       const playable = (r.videos || []).some(v => v.kind !== 'probe') || (r.blocks || []).some(b => b.k === 'v' && b.v && b.v.kind !== 'probe');
       if (r.thin && playable) r.videoPage = true;
@@ -4875,6 +5015,28 @@ async function rdRead(raw, bg, forceFresh = false) {
     let targetHost = '';
     try { targetHost = new URL(target).hostname; } catch (e) {}
     const isWafHost = CF_WAF_HOST_RE.test(targetHost);
+
+    // Reuse HTML/Jina already downloaded by /api/thumb or prior extraction before racing network
+    if (!forceFresh) {
+      const docHit = docCacheGet(canon) || docCacheGet(target) || docCacheGet(raw);
+      if (docHit) {
+        try {
+          if (docHit.html) {
+            const dCached = evaluateHtml(docHit.html, docHit.finalUrl || target);
+            fetchMs = Date.now() - t0;
+            return await fin(dCached, docHit.finalUrl || target, docHit.html, docHit.jinaTxt || null, docHit.via || 'doc-cache');
+          }
+          if (docHit.jinaTxt) {
+            const dJ = rdJinaMd(docHit.jinaTxt, docHit.finalUrl || target, extractOpts);
+            const qJ = dJ.extraction && dJ.extraction.quality;
+            if (dJ.ok && qJ && !qJ.isChallengeOrError && qJ.isOnTopic && qJ.isFullArticle) {
+              fetchMs = Date.now() - t0;
+              return await fin(dJ, docHit.finalUrl || target, null, docHit.jinaTxt, 'jina-cache');
+            }
+          }
+        } catch (_) {}
+      }
+    }
 
     const jobs = [];
     const raceAc = new AbortController();
@@ -4972,7 +5134,8 @@ async function rdRead(raw, bg, forceFresh = false) {
     if (win) { fetchMs = Date.now() - t0; return await fin(win.d, win.url, win.html, win.jinaTxt, win.via || 'race'); }
 
     const FC_KEY = process.env.FIRECRAWL_API_KEY || CFG.firecrawl_key || '';
-    if (FC_KEY && left() > 16000) {
+    if (FC_KEY && left() > 16000 && !fcBlocked(target)) {
+      let fcOk = false;
       try {
         const r = await get('https://api.firecrawl.dev/v1/scrape', {
           method: 'POST',
@@ -4990,10 +5153,12 @@ async function rdRead(raw, bg, forceFresh = false) {
             if (!d.byline && md.author) d.byline = md.author;
             if (!d.time && md['article:published_time']) d.time = md['article:published_time'];
             fetchMs = Date.now() - t0;
+            fcOk = true;
             return await fin(d, target, String(html), null, 'firecrawl');
           }
         }
       } catch (e) { lastErr = e; attempts.push({ via: 'firecrawl', err: String(e && e.message || e).slice(0, 90) }); }
+      if (!fcOk) fcFailMark(target);
     }
 
     const tryDoc = async (u, ms, via) => {
@@ -5396,13 +5561,24 @@ async function descForUrl(reqUrl) {
       return ds;
     }
   }
-  // 2. Cek apakah ada di feed Newswire RSS memori
+  // 2. Cek apakah ada di feed Newswire RSS memori atau HTML cache milik thumb/reader
   for (const testU of [target, canon, reqUrl]) {
     const wireIt = rdWireFind(testU);
     if (wireIt && wireIt.desc && wireIt.desc.length >= 26 && !BOT_CHALLENGE_RE.test(wireIt.desc)) {
       descRemember([reqUrl, target, canon], wireIt.desc);
       return wireIt.desc;
     }
+  }
+  const docHit = docCacheGet(canon) || docCacheGet(target) || docCacheGet(reqUrl);
+  if (docHit && docHit.html) {
+    try {
+      const extDoc = rdExtract(docHit.html, docHit.finalUrl || target);
+      const dsDoc = extDoc && (extDoc.desc || (extDoc.paras && extDoc.paras[0])) || '';
+      if (dsDoc && dsDoc.length >= 26 && !BOT_CHALLENGE_RE.test(dsDoc)) {
+        descRemember([reqUrl, target, canon], dsDoc);
+        return dsDoc;
+      }
+    } catch (_) {}
   }
   const host = new URL(target).hostname;
   // Semua jalur jaringan di bawah satu gerbang global: ribuan pengunjung yang
@@ -5664,9 +5840,14 @@ async function buildNewsPayload() {
         const pl = ev.pl;
         const info = resolvedMap.get(i.url);
         const mHit = info && info.mHit;
-        const heroUrl = (mHit && mHit.hero && mHit.hero.verified && mHit.hero.url && !dupImgs.has(rdImgKey(mHit.hero.url))) ? mHit.hero.url : '';
+        const primaryHero = (mHit && mHit.hero && mHit.hero.verified && mHit.hero.url && !dupImgs.has(rdImgKey(mHit.hero.url))) ? mHit.hero.url : '';
+        const bodyHero = (!primaryHero && mHit && Array.isArray(mHit.bodyImages))
+          ? ((mHit.bodyImages.find(b => b && b.verified && b.url && b.width >= 360 && !dupImgs.has(rdImgKey(b.url))) || {}).url || '')
+          : '';
+        const heroUrl = primaryHero || bodyHero;
         const imgVerified = Boolean(heroUrl);
-        const imgRejected = Boolean(mHit && !mHit.transientFailure && !imgVerified);
+        const heroRejected = Boolean(mHit && !mHit.transientFailure && !imgVerified && mHit.hero && mHit.hero.status === 'rejected');
+        const imgRejected = heroRejected;
         const { rssImg: _ri, rssImgs: _ris, ...pubItem } = i;
         outItems.push({
           ...pubItem,
@@ -6438,6 +6619,11 @@ module.exports = {
   decodeGNews,
   mediaCacheGet,
   mediaCacheSet,
+  docCache,
+  docCacheGet,
+  docCacheSet,
+  fcBlocked,
+  fcFailMark,
   getReadCache,
   setReadCache,
   assetReuse,

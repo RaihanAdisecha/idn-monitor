@@ -911,3 +911,90 @@ test('social trending eliminates 0 0 clutter, unifies Swiss canted chips, preven
   assert.ok(html.includes('function socCountFor(q, kind)') && html.includes('all.filter(q => socCountFor(q, me) > 0)'), 'qchips must filter strictly to active non-zero platform topics');
   assert.ok(html.includes('function renderAllQchips()'), 'frontend must synchronize X & Threads chip bars together');
 });
+
+test('shared docCache and full mediaCache eliminate double fetch between Terbaru and Reader while keeping list items text-only', async () => {
+  const fs = require('fs');
+  const path = require('path');
+  const SRV = require('../server');
+  const serverJs = fs.readFileSync(path.join(__dirname, '../server.js'), 'utf8');
+  const html = fs.readFileSync(path.join(__dirname, '../public/index.html'), 'utf8');
+
+  const sampleUrl = 'https://contoh-berita.id/peristiwa/banjir-bandang-garut-2026';
+  const bodyImg = 'https://cdn.contoh-berita.id/uploads/banjir-garut-foto-1.jpg';
+  const fullHtml = `<!doctype html><html><head>
+    <title>Banjir Bandang Terjang Tiga Kecamatan di Garut</title>
+    <meta property="og:site_name" content="Contoh Berita">
+    <meta name="description" content="Banjir bandang menerjang tiga kecamatan di Kabupaten Garut dan merendam puluhan rumah warga.">
+  </head><body><article>
+    <p>Hujan deras yang mengguyur wilayah hulu menyebabkan sungai meluap dan memicu banjir bandang di tiga kecamatan Kabupaten Garut sejak dini hari tadi.</p>
+    <figure><img src="${bodyImg}" width="900" height="600" alt="Banjir Garut"><figcaption>Petugas BPBD mengevakuasi warga terdampak banjir di Garut.</figcaption></figure>
+    <p>Tim gabungan BPBD bersama relawan setempat telah mendirikan posko pengungsian sementara dan menyalurkan bantuan logistik kepada ratusan warga terdampak banjir.</p>
+  </article></body></html>`;
+
+  // Populate shared docCache + pre-verified full mediaRes (bodyImages without hero), simulating /api/thumb
+  SRV.docCacheSet([sampleUrl], { html: fullHtml, finalUrl: sampleUrl, via: 'direct' });
+  const docHit = SRV.docCacheGet(sampleUrl);
+  assert.ok(docHit && docHit.html === fullHtml, 'docCache must retain downloaded HTML across endpoints');
+
+  const mediaRes = {
+    schemaVersion: SRV.PIPELINE_VERSION,
+    requestedUrl: sampleUrl,
+    canonicalUrl: sampleUrl,
+    mode: 'full',
+    hero: { url: '', source: 'none', method: 'none', width: 0, height: 0, aspectRatio: 0, bytes: 0, mime: '', verified: false, status: 'no_candidates', fingerprint: '', caption: '' },
+    bodyImages: [{ url: bodyImg, cap: 'Evakuasi BPBD', width: 900, height: 600, aspectRatio: 1.5, mime: 'image/jpeg', bytes: 24000, fingerprint: 'fp-garut-1', source: 'body', verified: true, pos: 1 }],
+    transientFailure: false,
+    videos: [],
+    diagnostics: {},
+  };
+  SRV.mediaCacheSet([sampleUrl], mediaRes);
+
+  // rdFinish must reuse pre-verified full mediaRes directly without triggering extra network probes
+  const draft = {
+    ok: true,
+    url: sampleUrl,
+    final: sampleUrl,
+    title: 'Banjir Bandang Terjang Tiga Kecamatan di Garut',
+    site: 'Contoh Berita',
+    desc: 'Banjir bandang menerjang tiga kecamatan di Kabupaten Garut.',
+    paras: ['Hujan deras mengguyur wilayah hulu.', 'Tim gabungan mengevakuasi warga.'],
+    videos: [],
+    blocks: [{ k: 'p', t: 'Hujan deras mengguyur wilayah hulu.' }],
+  };
+  const finished = await SRV.rdFinish(draft, sampleUrl, sampleUrl, docHit.html, null, 'direct', null);
+  assert.equal(finished.media.bodyImages.length, 1);
+  assert.equal(finished.media.bodyImages[0].url, bodyImg);
+
+  // Contracts: server & UI share caches two-way cleanly (bounded docCache) and grid list cards remain thumbnail-free
+  assert.ok(serverJs.includes('if (thumbBusy.has(canon))') && serverJs.includes('docCacheGet(canon)'), 'rdRead must await in-flight thumb and reuse docCache');
+  assert.ok(serverJs.includes('if (readBusy.has(canon))') && serverJs.includes('DOC_CACHE_MAX_HTML = 1 << 20'), 'thumb must await in-flight rdRead and cap docCache HTML at 1MB per canonical article');
+  assert.ok(serverJs.includes('reuseFullMedia'), 'rdFinish must reuse pre-verified full mediaCache from /api/thumb');
+  assert.ok(html.includes('function pickVerifiedMediaImg(d)') && html.includes('rdCache.set(h.url, article)'), 'frontend must cache /api/read fallback and keep Terbaru parity with Reader bodyImages');
+  assert.ok(html.includes("else if (!d.transient && d.status === 'rejected')"), 'fetchThumbInfo must only lock leadImgRejected on explicit rejected status');
+  const newsHtmlBlock = html.slice(html.indexOf('function newsHtml(h, full){'), html.indexOf('const dayKey ='));
+  assert.ok(!newsHtmlBlock.includes('<img'), 'regular Wire list items must remain text-only without thumbnails');
+});
+
+test('Firecrawl per-URL cooldown and bounded thumbBusy wait prevent retry storms', async () => {
+  const fs = require('fs');
+  const path = require('path');
+  const SRV = require('../server');
+  const serverJs = fs.readFileSync(path.join(__dirname, '../server.js'), 'utf8');
+
+  // Behavior: fcFailMark blocks the URL for the cooldown window; fcBlocked expires cleanly
+  const deadUrl = 'https://mati-total.id/artikel/timeout-selamanya';
+  assert.equal(SRV.fcBlocked(deadUrl), false, 'unmarked URL must not be blocked');
+  SRV.fcFailMark(deadUrl);
+  assert.equal(SRV.fcBlocked(deadUrl), true, 'failed URL must be blocked during cooldown');
+  SRV.fcBlocked('https://lain.id/artikel/lain'); // unrelated URL stays free
+  assert.equal(SRV.fcBlocked('https://lain.id/artikel/lain'), false);
+
+  // Contract: cooldown applied at all three Firecrawl call sites (thumb, reader, cctv catalog)
+  const fcCalls = serverJs.match(/api\.firecrawl\.dev\/v1\/scrape/g) || [];
+  assert.equal(fcCalls.length, 3, 'expected exactly 3 Firecrawl call sites');
+  assert.equal((serverJs.match(/fcBlocked\(/g) || []).length, 3, 'every Firecrawl site must check fcBlocked');
+  assert.equal((serverJs.match(/fcFailMark\(/g) || []).length >= 3, true, 'every Firecrawl site must mark failures');
+
+  // Contract: rdRead waits on in-flight thumb with a timeout, not forever
+  assert.ok(serverJs.includes('Promise.race([thumbBusy.get(canon), sleep(8000)])'), 'thumbBusy wait must be bounded at 8s');
+});

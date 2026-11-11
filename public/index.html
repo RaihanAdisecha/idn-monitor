@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="dark">
-<title>SITREP // LIVE · Indonesia OSINT</title>
+<title>SITREP // IDN</title>
 <meta name="description" content="Console OSINT: wire berita, X live, CCTV Jakarta, peta insiden, dan pemantauan demo, kebakaran, banjir, bencana, serta insiden di seluruh Indonesia. Auto-sync 2 menit.">
 <link rel="icon" type="image/svg+xml" href="favicon.svg?v=2">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -5634,7 +5634,7 @@ function qchipsHtml(queries, trending, active, me, other){
             `<span class="qp-sep">·</span>` +
             `<span class="qp-stat${me === 'th' ? ' on' : ''}${nt ? '' : ' zr'}" title="${nt} post di Threads">${ic('threads')}${nt}</span>` +
           `</div>` +
-          `<span class="qp-tot">${nx + nt} POSTS</span>` +
+          `<span class="qp-tot">${nx + nt} ${nx + nt === 1 ? 'POST' : 'POSTS'}</span>` +
         `</div>` +
       `</div>` +
     `</button>`;
@@ -6103,10 +6103,27 @@ function attachLeadVideo(url, video){
 // Semua gambar Lead Wire wajib melewati canonical media resolver di backend (/api/thumb).
 // Frontend tidak pernah mengizinkan RSS image mentah mem-bypass validasi backend.
 const thumbPending = new Map();   // url -> Promise<string[]>
+function pickVerifiedMediaImg(d){
+  if (!d) return '';
+  if (d.img && d.imgVerified !== false) return d.img;
+  if (d.imgStatus !== 'rejected' && d.media && Array.isArray(d.media.bodyImages)) {
+    const b = d.media.bodyImages.find(x => x && x.verified && x.url && x.width >= 360);
+    if (b) return b.url;
+  }
+  return '';
+}
 function fetchThumbInfo(url, h){
   if (h && Array.isArray(h.videos) && h.videos.length) rememberLeadVideos([url, h.canonicalUrl], h.videos);
   const hit = leadThumbs.get(url);
   if (Array.isArray(hit)) return Promise.resolve(hit);
+  const rdHit = rdCache.get(url);
+  if (rdHit && rdHit.ok) {
+    const rdPick = pickVerifiedMediaImg(rdHit);
+    if (rdPick) {
+      leadThumbs.set(url, [rdPick]);
+      return Promise.resolve([rdPick]);
+    }
+  }
   const needVideoProbe = !leadVideos.has(url) && isVideoLikeUrl(url);
   if (leadImgRejected.has(url) && !needVideoProbe) return Promise.resolve([]);
   let p = thumbPending.get(url);
@@ -6128,7 +6145,7 @@ function fetchThumbInfo(url, h){
               if (d.img && d.verified !== false) {
                 imgs.push(d.img);
                 leadImgRejected.delete(url);
-              } else if (!d.transient) {
+              } else if (!d.transient && d.status === 'rejected') {
                 leadImgRejected.add(url);
                 if (leadImgRejected.size > 300) leadImgRejected.delete(leadImgRejected.keys().next().value);
               }
@@ -6173,6 +6190,10 @@ async function resolveLeadImage(h, isStale){
         let article = rdCache.get(h.url) || null;
         if (!article) {
           article = await getJson(API + '/api/read?u=' + encodeURIComponent(h.url) + '&bg=1', 18000, 0);
+          if (article && article.ok && !article.wireFallback && !article.upstreamBlocked && !article.isFallback) {
+            rdCache.set(h.url, article);
+            if (rdCache.size > 80) rdCache.delete(rdCache.keys().next().value);
+          }
         }
         if (article && article.ok) {
           rdSyncWireDesc(article, h.url);
@@ -6180,9 +6201,10 @@ async function resolveLeadImage(h, isStale){
             ? article.videos
             : (Array.isArray(article.blocks) ? article.blocks.filter(b => b && b.k === 'v' && b.v).map(b => b.v) : []);
           if (avs.length) rememberLeadVideos([h.url, article.url, article.final, article.canonicalUrl], avs);
-          if (!leadImgRejected.has(h.url) && article.img && article.imgVerified === true) {
-            imageUrl = await tryLoad(article.img);
-          } else if (article.imgStatus === 'rejected' || article.imgStatus === 'no_candidates') {
+          const verifiedCandidate = !leadImgRejected.has(h.url) ? pickVerifiedMediaImg(article) : '';
+          if (verifiedCandidate) {
+            imageUrl = await tryLoad(verifiedCandidate);
+          } else if (article.imgStatus === 'rejected') {
             leadImgRejected.add(h.url);
           }
         }
@@ -6677,9 +6699,9 @@ function rdSyncWireDesc(d, fallbackUrl) {
   const urls = [fallbackUrl, d.url, d.final, d.canonicalUrl].filter(u => typeof u === 'string' && DESC_URL_RE.test(u));
   if (!urls.length) return;
 
-  // Backfill gambar hero HANYA jika hero kanonik backend terverifikasi; hapus jika ditolak backend
-  const rdImg = (d.img && d.imgVerified !== false) ? d.img : '';
-  const rdRejected = !rdImg && (d.imgStatus === 'rejected' || d.imgStatus === 'no_candidates');
+  // Backfill gambar hero HANYA jika hero/body kanonik backend terverifikasi; hapus jika ditolak backend
+  const rdImg = (d.img && d.imgVerified !== false) ? d.img : pickVerifiedMediaImg(d);
+  const rdRejected = !rdImg && d.imgStatus === 'rejected';
   const rdVids = Array.isArray(d.videos) && d.videos.length
     ? d.videos
     : (Array.isArray(d.blocks) ? d.blocks.filter(b => b && b.k === 'v' && b.v).map(b => b.v) : []);
