@@ -12,7 +12,7 @@ Real-time situation dashboard for Indonesia: incident news, social signals, disa
 - **Live TV dock** — floating mini-player with an international channel lineup, draggable and dockable to screen edges
 - **Markets** — stock/index quotes with trend chips
 - **24h retention** — incidents and history persist across restarts via `data/` state
-- **Globe** — 3D view of geolocated incidents from the last 24h, each point linked back to its news/social source
+- **Globe** — 3D view of geolocated incidents from the last 24h, each point linked back to its news/social source. Auto-focuses on breaking incidents (volcanoes and M≥5 quakes ranked first) with a toast announcement for every jump
 
   <table><tr>
     <td><img src="docs/globe.jpg" alt="3D globe with 24h incident points"></td>
