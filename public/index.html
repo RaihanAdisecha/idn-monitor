@@ -833,86 +833,180 @@ a{color:inherit;text-decoration:none;text-underline-offset:2px}
 .tgl:hover{color:var(--text2)}
 .tgl[aria-pressed="true"]{background:var(--text);color:#161616;border-color:var(--text)}
 
-/* ============================================================ X FEED (SWISS INDEX REGISTER - CANTED BLADES) */
-.qchips{
-  --cant:10px;
-  display:flex;align-items:stretch;gap:0;height:32px;padding:0;margin:0;
-  border-bottom:1px solid rgba(255,255,255,.08);
-  overflow-x:auto;overflow-y:hidden;scrollbar-width:none;
-  background:#101014;
-  -webkit-mask-image:linear-gradient(90deg,#000 calc(100% - 24px),transparent);
-  mask-image:linear-gradient(90deg,#000 calc(100% - 24px),transparent);
-}
+/* ============================================================ X FEED (TACTICAL SHINGLE PANEL DECK) */
+.qchips{display:flex;align-items:center;gap:2px;padding:4px 12px 4px 4px;border-bottom:1px solid var(--border);overflow-x:auto;scrollbar-width:none;
+  -webkit-mask-image:linear-gradient(90deg,#000 calc(100% - 20px),transparent);mask-image:linear-gradient(90deg,#000 calc(100% - 20px),transparent)}
 .qchips::-webkit-scrollbar{display:none}
-.qc{
-  --cat:#8d8d98;
-  position:relative;flex:none;display:inline-flex;align-items:center;gap:6px;
-  height:32px;margin:0;padding:0 15px 0 12px;border:none;border-radius:0;
-  background:transparent;color:#7e7e8c;cursor:pointer;white-space:nowrap;user-select:none;
-  transition:background .12s,color .12s;
-  z-index:1;
+.qc-sep{flex:none;align-self:center;width:1px;height:28px;background:var(--border2);margin:0 7px 0 5px}
+
+/* Tactical Shingle Panel Deck (Chamfered Card Corner + Subdued Badge + Full-Width Center) */
+.qc-shingles{display:flex;align-items:center;gap:3px;flex:none;padding:0 2px}
+.qc-panel{
+  position:relative;flex:none;min-width:142px;height:58px;
+  background:rgba(255,255,255,.05);
+  clip-path:polygon(8px 0, 100% 0, 100% 100%, 0 100%, 0 8px);
+  padding:1px;border:0;
+  cursor:pointer;white-space:nowrap;opacity:.88;
+  box-shadow:0 2px 8px rgba(0,0,0,.5);
+  transition:box-shadow .16s,opacity .16s,background .16s;
 }
-.qc:not(:first-child){
-  margin-left:calc(-1 * var(--cant));
-  padding-left:calc(11px + var(--cant) * .48);
+.qc-panel::before,.qc-panel::after{display:none !important}
+
+.qc-panel-inner{
+  width:100%;height:100%;
+  background:linear-gradient(180deg,#15161a 0%,#0e0f12 100%);
+  clip-path:polygon(7.5px 0, 100% 0, 100% 100%, 0 100%, 0 7.5px);
+  padding:1px 9px 4px;
+  display:flex;flex-direction:column;justify-content:space-between;
 }
-.qc:first-child{
-  clip-path:polygon(0 0, 100% 0, calc(100% - var(--cant)) 100%, 0 100%);
+.qc-panel.qc-rest{opacity:.76}
+
+/* Inactive panels have subdued borders and lower visual emphasis */
+.qc-panel:not([aria-pressed="true"]):hover{
+  opacity:1;
+  z-index:35 !important;
+  background:var(--cat-bdr);
+  box-shadow:0 4px 16px rgba(0,0,0,.7),0 0 10px var(--cat-glow);
 }
-.qc:not(:first-child):not(:last-child){
-  clip-path:polygon(var(--cant) 0, 100% 0, calc(100% - var(--cant)) 100%, 0 100%);
+
+/* Active panel: Subtle colored edge illumination */
+.qc-panel[aria-pressed="true"]{
+  opacity:1;
+  z-index:40 !important;
+  background:var(--cat-bdr) !important;
+  box-shadow:0 0 14px var(--cat-glow), 0 4px 20px rgba(0,0,0,.85) !important;
 }
-.qc:last-child{
-  clip-path:polygon(var(--cant) 0, 100% 0, 100% 100%, 0 100%);
-  padding-right:16px;
+.qc-panel[aria-pressed="true"]:hover{
+  box-shadow:0 4px 20px rgba(0,0,0,.85) !important;
 }
-.qc:only-child{
-  clip-path:none;margin-left:0;padding:0 14px;
+.qc-panel[aria-pressed="true"] .qc-panel-inner{
+  background:linear-gradient(180deg,#181a20 0%,#111216 100%);
 }
-.qc:not(:last-child)::before{
-  content:"";position:absolute;top:0;bottom:0;right:0;width:var(--cant);
-  background:linear-gradient(to bottom right,transparent calc(50% - .65px),rgba(255,255,255,.13) 50%,transparent calc(50% + .65px));
-  pointer-events:none;z-index:2;
+
+/* Master Command Pillar: Semua — tanpa frame; permukaannya sendiri yang jadi bentuk */
+.qc-all{
+  position:relative;flex:none;min-width:142px;height:58px;
+  background:#0e0f12;
+  clip-path:polygon(0 0, calc(100% - 8px) 0, 100% 8px, 100% 100%, 0 100%);
+  padding:0;
+  cursor:pointer;white-space:nowrap;opacity:.88;
+  transition:opacity .16s;
+  --cat-c:#ffffff;
+  --cat-bg:rgba(255,255,255,.08);
+  --cat-bdr:rgba(255,255,255,.22);
+  --cat-glow:rgba(255,255,255,.18);
 }
-.qc:hover{color:#d8d8e4;background:rgba(255,255,255,.03)}
-.qc.qc-hot{background:rgba(255,255,255,.018);color:#b2b2c0}
-.qc.qc-hot.hot-both{background:rgba(255,255,255,.03)}
-.qc .qc-pip{width:5px;height:5px;flex:none;background:var(--cat)}
-.qc .qc-idx{
-  font:600 7.5px/1 var(--mono);color:#5a5a68;letter-spacing:.08em;
-  transition:color .12s;
+.qc-all .qc-panel-inner{
+  clip-path:polygon(0 0, calc(100% - 8px) 0, 100% 8px, 100% 100%, 0 100%);
+  padding:2px 10px 5px;
 }
-.qc .qc-idx::after{content:"//";margin-left:3px;opacity:.38}
-.qc .qc-lbl{font:500 11px/1 var(--disp);letter-spacing:-.01em}
-.qc.qc-hot .qc-lbl{font-weight:600;color:#dedee8}
-.qc .qc-wire{
-  font:700 7px/1 var(--mono);letter-spacing:.08em;text-transform:uppercase;
-  color:var(--cat);padding:1.5px 4px;
-  border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.03);
+.qc-all .qp-head .qp-meta{margin-right:4px}
+.qc-all .qall-idx{
+  border-radius:2px;
+  letter-spacing:.08em;
+  font-weight:900;
+  background:rgba(255,255,255,.08);
+  border:1px solid rgba(255,255,255,.1);
+  color:#f5f5f7;
 }
-.qc .qc-n{
-  font:500 9.5px/1 var(--mono);color:#6e6e7e;font-variant-numeric:tabular-nums;
-  margin-left:2px;transition:color .12s;
+.qc-all:not([aria-pressed="true"]):hover{opacity:1;z-index:35 !important}
+.qc-all[aria-pressed="true"]{opacity:1;z-index:40 !important}
+.qc-all[aria-pressed="true"] .qc-panel-inner{background:linear-gradient(180deg,#1c1e24 0%,#131418 100%)}
+
+/* SECTION 1: Top Header - Notched Chamfered Index Left, Wire + SOS Gray Right */
+.qp-head{display:flex;align-items:center;justify-content:space-between;width:100%;line-height:1}
+.qp-idx{
+  font-family:var(--disp);
+  font-weight:800;
+  font-size:7.5px;
+  line-height:1;
+  letter-spacing:.04em;
+  background:var(--cat-bg);
+  border:1px solid var(--cat-bdr);
+  color:var(--cat-c);
+  padding:2px 5px;
+  border-radius:7px 0 0 2px;
+  display:inline-flex;
+  align-items:center;
 }
-.qc[aria-pressed="true"]{
-  color:#f4f4f7;background:rgba(255,255,255,.06);
-  box-shadow:inset 0 -2px 0 var(--cat,#f4f4f7);
-  z-index:3;
+.qc-rest .qp-idx{opacity:.72}
+.qp-meta{display:inline-flex;align-items:center}
+.qp-src{
+  font:700 7px/1 var(--mono);
+  letter-spacing:.07em;
+  text-transform:uppercase;
+  padding:1.5px 4px;
+  border-radius:2px;
+  border:1px solid rgba(255,255,255,.09);
+  color:#8e8e98;
 }
-.qc[aria-pressed="true"]::before{
-  background:linear-gradient(to bottom right,transparent calc(50% - .65px),rgba(255,255,255,.32) 50%,transparent calc(50% + .65px));
+
+/* SECTION 2: Main Title - Full Width Center (Subtle Edge Glow on Hover Only) */
+.qp-mid{
+  background:#00000000;
+  border-radius:3px;
+  padding:3px 6px;
+  margin:2px 0;
+  width:100%;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  border:1px solid rgba(255,255,255,.06);
+  box-shadow:inset 0 1px 2px rgba(0,0,0,.95);
+  overflow:hidden;
+  transition:border-color .16s,box-shadow .16s;
 }
-.qc[aria-pressed="true"] .qc-idx{color:#9a9aa8}
-.qc[aria-pressed="true"] .qc-lbl{color:#fff;font-weight:600}
-.qc[aria-pressed="true"] .qc-n{color:#d0d0dc}
-.qc:focus-visible{outline:1px solid rgba(255,255,255,.32);outline-offset:-1px;z-index:4}
-.qc.qc-sk{cursor:default;pointer-events:none;opacity:.6}
-.qc-sk-pill{
-  display:block;border-radius:0;
-  background:linear-gradient(90deg,#19191d 20%,#292930 48%,#19191d 76%);
+.qc-panel:not([aria-pressed="true"]):hover .qp-mid,
+.qc-all:not([aria-pressed="true"]):hover .qp-mid{
+  border-color:var(--cat-bdr);
+  box-shadow:inset 0 0 3px var(--cat-glow), inset 0 1px 2px rgba(0,0,0,.9);
+}
+.qc-panel[aria-pressed="true"]:hover .qp-mid,
+.qc-all[aria-pressed="true"]:hover .qp-mid{
+  border-color:rgba(255,255,255,.06) !important;
+  box-shadow:inset 0 1px 2px rgba(0,0,0,.95) !important;
+}
+.qp-title{
+  font-family:var(--disp);
+  font-size:11.5px;
+  font-weight:800;
+  line-height:1.1;
+  letter-spacing:.05em;
+  text-transform:uppercase;
+  color:#f5f5f7;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  text-align:center;
+  width:100%;
+}
+
+/* SECTION 3: Bottom Metadata Strip - Subtle divider, Logo X & Threads */
+.qp-foot{
+  display:flex;align-items:center;justify-content:space-between;
+  width:100%;padding-top:3px;border-top:1px solid rgba(255,255,255,.07);
+  font:500 8.5px/1 var(--mono);letter-spacing:.02em;color:var(--text3);
+}
+.qp-foot .qp-stats{display:flex;align-items:center;gap:5px}
+.qp-foot .qp-stat{display:inline-flex;align-items:center;gap:2.5px;opacity:.55}
+.qp-foot .qp-stat.on{opacity:1;color:var(--text)}
+.qp-foot .qp-stat.zr{opacity:.25}
+.qp-foot .qp-sep{opacity:.35;font-size:7px}
+.qp-foot .ic{width:9px;height:9px;flex:none}
+.qp-foot .qp-tot{font:600 7px/1 var(--mono);letter-spacing:.05em;color:#ffffff;opacity:.6;text-transform:uppercase}
+
+/* Quick Chips Skeleton Placeholder */
+.qc-panel-sk{cursor:default;opacity:.65;pointer-events:none}
+.qc-panel-sk .qc-sk-pill{
+  display:block;border-radius:2px;
+  background:linear-gradient(90deg,#191919 20%,#28282b 48%,#191919 76%);
   background-size:220% 100%;
   animation:nw-shimmer 1.35s ease-in-out infinite;
 }
+.qc-panel-sk .qc-sk-idx{width:22px;height:11px}
+.qc-panel-sk .qc-sk-tag{width:36px;height:9px}
+.qc-panel-sk .qc-sk-title{height:12px;margin:auto}
+.qc-panel-sk .qc-sk-foot{width:64px;height:8px}
 .tw{
   position:relative;display:grid;grid-template-columns:40px minmax(0,1fr);gap:12px;
   padding:15px 14px 13px;border-bottom:1px solid var(--border);transition:background .12s;
@@ -5487,6 +5581,12 @@ const TOPIC_COLOR_MAP = {
   'serangan siber':'#c8f04b', 'akun dibajak':'#c8f04b', siber:'#c8f04b', hukum:'#a78bfa', korupsi:'#a78bfa', insiden:'#8d8d8d'
 };
 const topicColor = q => TOPIC_COLOR_MAP[String(q).toLowerCase()] || '#38bdf8';
+function hexToRgba(hex, a){
+  let c = String(hex || '').replace('#', '');
+  if (c.length === 3) c = c.split('').map(x => x + x).join('');
+  const num = parseInt(c || '38bdf8', 16);
+  return `rgba(${(num >> 16) & 255}, ${(num >> 8) & 255}, ${num & 255}, ${a})`;
+}
 function socCountFor(q, kind){
   const list = kind === 'x' ? xPosts : tPosts;
   if (list.length) {
@@ -5505,40 +5605,81 @@ function qchipsHtml(queries, trending, active, me, other){
   const vis = all.filter(q => socCountFor(q, me) > 0);
   const hot = vis.filter(q => tr.includes(q)).sort((a, b) => tr.indexOf(a) - tr.indexOf(b));
   const restActive = vis.filter(q => !tr.includes(q)).sort((a, b) => socCountFor(b, me) - socCountFor(a, me));
-  const meTot = me === 'x' ? xPosts.length : tPosts.length;
-  const allLbl = me === 'x' ? 'X' : 'Threads';
-  const semuaBtn = `<button class="qc qc-all" type="button" data-q="" aria-pressed="${active === ''}" style="--cat:#f4f4f7;" title="Semua ${allLbl} · ${meTot} post">${`<span class="qc-idx">ALL</span><span class="qc-lbl">Semua</span><span class="qc-n">${meTot}</span>`}</button>`;
 
-  if (!all.length) {
-    return semuaBtn + [54, 62, 48, 58, 44].map(w =>
-      `<div class="qc qc-sk" aria-hidden="true"><span class="qc-sk-pill" style="width:${w}px;height:10px"></span></div>`
-    ).join('');
-  }
-
-  const blade = (q, idx, isHot) => {
-    const cnt = socCountFor(q, me);
-    const otherCnt = socCountFor(q, other);
+  const panel = (q, idx, isHot) => {
+    const nx = socCountFor(q, 'x'), nt = socCountFor(q, 'th');
     const trData = socTrends.get(q);
     const isWire = !!(trData && trData.src && trData.src.includes('news'));
     const isSocial = !!(trData && trData.src && (trData.src.includes('social') || trData.src.includes('x')));
-    const hotCls = isHot ? ((isWire && isSocial) ? ' qc-hot hot-both' : isWire ? ' qc-hot hot-wire' : ' qc-hot') : '';
+    const hotCls = isHot ? ((isWire && isSocial) ? ' hot hot-both' : isWire ? ' hot hot-wire' : ' hot') : ' qc-rest';
+    const srcTag = isHot ? (isWire && isSocial ? 'WIRE + SOS' : isWire ? 'WIRE' : 'SOS') : 'SOS';
+    const rankNum = isHot && trData && trData.rank ? trData.rank : (idx + 1);
+    const rankStr = '#' + String(rankNum).padStart(2, '0');
+    const z = Math.max(1, 50 - idx);
     const col = topicColor(q);
-    const rankNum = isHot ? String((trData && trData.rank) || (idx + 1)).padStart(2, '0') : '';
-    const srcTxt = isWire && isSocial ? 'Wire + Sosial 24j' : isWire ? '24h Newswire' : 'Lonjakan Sosial';
-    const tip = `${topicLabel(q)} · ${cnt} post (${allLbl})${otherCnt ? ' · ' + otherCnt + ' di ' + (other === 'x' ? 'X' : 'Threads') : ''}${isHot ? ' · ' + srcTxt : ''}`;
+    const bgSubdued = hexToRgba(col, 0.16);
+    const bdrSubdued = hexToRgba(col, 0.22);
+    const glow = hexToRgba(col, 0.45);
 
-    return `<button class="qc${hotCls}" type="button" data-q="${esc(q)}" aria-pressed="${q === active}" style="--cat:${col};" title="${esc(tip)}">` +
-      `<i class="qc-pip" aria-hidden="true"></i>` +
-      (isHot ? `<span class="qc-idx">${rankNum}</span>` : '') +
-      `<span class="qc-lbl">${esc(topicLabel(q))}</span>` +
-      (isHot && isWire ? `<span class="qc-wire">WIRE</span>` : '') +
-      `<span class="qc-n">${cnt}</span>` +
+    return `<button class="qc qc-panel${hotCls}" type="button" data-q="${esc(q)}" aria-pressed="${q === active}" style="z-index:${z};--cat-c:${col};--cat-bg:${bgSubdued};--cat-bdr:${bdrSubdued};--cat-glow:${glow};" title="Rank ${rankStr} · ${srcTag} · X: ${nx} · Threads: ${nt}">` +
+      `<div class="qc-panel-inner">` +
+        `<div class="qp-head">` +
+          `<span class="qp-idx">${rankStr}</span>` +
+          `<span class="qp-meta"><span class="qp-src">${srcTag}</span></span>` +
+        `</div>` +
+        `<div class="qp-mid"><span class="qp-title">${esc(topicLabel(q))}</span></div>` +
+        `<div class="qp-foot">` +
+          `<div class="qp-stats">` +
+            `<span class="qp-stat${me === 'x' ? ' on' : ''}${nx ? '' : ' zr'}" title="${nx} post di X">${ic('x')}${nx}</span>` +
+            `<span class="qp-sep">·</span>` +
+            `<span class="qp-stat${me === 'th' ? ' on' : ''}${nt ? '' : ' zr'}" title="${nt} post di Threads">${ic('threads')}${nt}</span>` +
+          `</div>` +
+          `<span class="qp-tot">${nx + nt} POSTS</span>` +
+        `</div>` +
+      `</div>` +
     `</button>`;
   };
 
+  const allTot = xPosts.length + tPosts.length;
+  const totLabel = allTot > 0 ? `${allTot}` : '<span class="qc-sk-pill" style="width:24px;height:7px;display:inline-block"></span>';
+  const semuaBtn = `<button class="qc qc-panel qc-all" type="button" data-q="" aria-pressed="${active === ''}" title="Semua Feed · ${allTot} Posts">` +
+    `<div class="qc-panel-inner">` +
+      `<div class="qp-head">` +
+        `<span class="qp-idx qall-idx">ALL</span>` +
+        `<span class="qp-meta"><span class="qp-src">STREAM</span></span>` +
+      `</div>` +
+      `<div class="qp-mid"><span class="qp-title">SEMUA</span></div>` +
+      `<div class="qp-foot">` +
+        `<div class="qp-stats">` +
+          `<span class="qp-stat${me === 'x' ? ' on' : ''}" title="${xPosts.length} post di X">${ic('x')}${xPosts.length}</span>` +
+          `<span class="qp-sep">·</span>` +
+          `<span class="qp-stat${me === 'th' ? ' on' : ''}" title="${tPosts.length} post di Threads">${ic('threads')}${tPosts.length}</span>` +
+        `</div>` +
+        `<span class="qp-tot">${totLabel}</span>` +
+      `</div>` +
+    `</div>` +
+  `</button>`;
+
+  if (!all.length) {
+    const skPanel = (w) => `<div class="qc qc-panel qc-panel-sk">` +
+      `<div class="qc-panel-inner">` +
+        `<div class="qp-head">` +
+          `<span class="qc-sk-pill qc-sk-idx"></span>` +
+          `<span class="qp-meta"><span class="qc-sk-pill qc-sk-tag"></span></span>` +
+        `</div>` +
+        `<div class="qp-mid"><span class="qc-sk-pill qc-sk-title" style="width:${w}%;"></span></div>` +
+        `<div class="qp-foot"><span class="qc-sk-pill qc-sk-foot"></span></div>` +
+      `</div>` +
+    `</div>`;
+
+    return semuaBtn +
+      '<i class="qc-sep" aria-hidden="true"></i>' +
+      '<div class="qc-shingles">' + [60, 75, 55, 68, 62].map(skPanel).join('') + '</div>';
+  }
+
   return semuaBtn +
-    hot.map((q, i) => blade(q, i, true)).join('') +
-    restActive.map((q, i) => blade(q, i, false)).join('');
+    (hot.length ? '<i class="qc-sep" aria-hidden="true"></i><div class="qc-shingles">' + hot.map((q, i) => panel(q, i, true)).join('') + '</div>' : '') +
+    (restActive.length ? '<i class="qc-sep" aria-hidden="true"></i><div class="qc-shingles">' + restActive.map((q, i) => panel(q, hot.length + i, false)).join('') + '</div>' : '');
 }
 function socApply(d){
   if (!d) return;

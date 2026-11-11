@@ -905,9 +905,9 @@ test('social trending eliminates 0 0 clutter, unifies Swiss canted chips, preven
   assert.ok(serverJs.includes('const restReserve = Math.min(8, rest.length);'), 'threads() must reserve slots for starved rest topics');
   assert.ok(serverJs.includes('let newsHeatRev = 0;') && serverJs.includes('newsHeatRev +'), 'socialMetaFp must track newsHeatRev');
 
-  // 4. Frontend Swiss Canted Index Register and zero-zero omission
-  assert.ok(!html.includes('.qc-panel{') && !html.includes('.qc-idle{'), 'legacy 58px card panels and idle 0-0 chips must be removed');
-  assert.ok(html.includes('.qchips{') && html.includes('clip-path:polygon(var(--cant) 0, 100% 0, calc(100% - var(--cant)) 100%, 0 100%);'), 'qchips must use interlocking Swiss canted blades');
+  // 4. Frontend unified .qc-panel shingle deck across all active topics and zero-zero omission
+  assert.ok(html.includes('.qc-panel{') && !html.includes('.qc-idle{') && !html.includes('restZero'), 'all active chips must use unified .qc-panel shingles with zero 0-0 idle items');
+  assert.ok(html.includes('restActive.map((q, i) => panel(q, hot.length + i, false))'), 'remaining active topics must render with the same .qc-panel shingle builder');
   assert.ok(html.includes('function socCountFor(q, kind)') && html.includes('all.filter(q => socCountFor(q, me) > 0)'), 'qchips must filter strictly to active non-zero platform topics');
   assert.ok(html.includes('function renderAllQchips()'), 'frontend must synchronize X & Threads chip bars together');
 });
