@@ -2,6 +2,7 @@
 
 const { spawn } = require('child_process');
 const crypto = require('crypto');
+const fs = require('fs');
 
 function makeLane(max, perHost, maxQueue = Infinity) {
   let n = 0, cancelled = 0; const per = new Map(); const q = [];
@@ -218,6 +219,9 @@ function createGateway(d) {
       if (/\/api\/frame\.jpe?g|\/preview\.jpe?g|\.(?:jpe?g|png|webp)(?:\?|#|$)/i.test(u.pathname)) {
         u.searchParams.delete('t');
         u.searchParams.delete('v');
+        return u.href;
+      }
+      if (/(^|\.)dsdajakarta\.id$/i.test(u.hostname) || /(^|\.)dsdadki\.web\.id$/i.test(u.hostname)) {
         return u.href;
       }
     } catch {}
@@ -513,7 +517,7 @@ function createGateway(d) {
   const upstreamOf = pxUrl => { try { return new URL(pxUrl, 'http://x').searchParams.get('u') || pxUrl; } catch (e) { return pxUrl; } };
 
   let ffmpegOk = null;
-  const ffbin = d.ffmpeg || process.env.FFMPEG_PATH || 'ffmpeg';
+  const ffbin = d.ffmpeg || process.env.FFMPEG_PATH || (process.platform === 'darwin' && fs.existsSync('/opt/homebrew/bin/ffmpeg') ? '/opt/homebrew/bin/ffmpeg' : 'ffmpeg');
   function detectFfmpeg() {
     if (ffmpegOk !== null) return Promise.resolve(ffmpegOk);
     return new Promise(ok => {
@@ -548,6 +552,34 @@ function createGateway(d) {
         throw new Error('snap ' + r.status);
       }
       const ct = String(r.headers.get('content-type') || '').toLowerCase();
+      if (ct.includes('multipart/x-mixed-replace')) {
+        const reader = r.body && r.body.getReader ? r.body.getReader() : null;
+        if (!reader) throw new Error('stream mjpeg tidak dapat dibaca');
+        const chunks = [];
+        let totalLen = 0;
+        try {
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            chunks.push(value);
+            totalLen += value.length;
+            const b = Buffer.concat(chunks, totalLen);
+            const start = b.indexOf(Buffer.from([0xff, 0xd8]));
+            if (start !== -1) {
+              const end = b.indexOf(Buffer.from([0xff, 0xd9]), start + 2);
+              if (end !== -1 && (end + 2 - start) >= 1024) {
+                try { reader.cancel(); } catch (e) {}
+                return b.slice(start, end + 2);
+              }
+            }
+            if (totalLen > (2 << 20)) { try { reader.cancel(); } catch (e) {} break; }
+          }
+        } catch (e) {
+          try { reader.cancel(); } catch (err) {}
+          throw e;
+        }
+        throw new Error('mjpeg frame tidak ditemukan');
+      }
       const buf = Buffer.from(await r.arrayBuffer());
       if (buf.length < 128 || buf.length > (4 << 20)) throw new Error('snap kosong');
       const isJpeg = buf[0] === 0xff && buf[1] === 0xd8;
@@ -562,11 +594,21 @@ function createGateway(d) {
       const txt = e.buf.toString('utf8');
       const lines = txt.split('\n').map(s => s.trim()).filter(s => s && s[0] !== '#');
       if (!lines.length) throw new Error('playlist kosong');
-      if (/#EXT-X-STREAM-INF/.test(txt)) { cur = upstreamOf(lines[0]); continue; }
-      const seg = upstreamOf(lines[lines.length - 1]);
+      if (/#EXT-X-STREAM-INF/.test(txt)) { cur = new URL(upstreamOf(lines[0]), cur).href; continue; }
+      const mapMatch = txt.match(/#EXT-X-MAP:URI="([^"]+)"/);
+      let initBuf = null;
+      if (mapMatch) {
+        try {
+          const initUrl = new URL(upstreamOf(mapMatch[1]), cur).href;
+          const ie = await getBuffered(initUrl);
+          if (ie && ie.status === 200 && ie.buf) initBuf = ie.buf;
+        } catch (e) {}
+      }
+      const seg = new URL(upstreamOf(lines[lines.length - 1]), cur).href;
       const s = await getBuffered(seg);
-      const segBuf = (s && (s.buf || s.snapPrefix)) || null;
+      let segBuf = (s && (s.buf || s.snapPrefix)) || null;
       if (!s || s.status !== 200 || !segBuf) throw new Error('segmen ' + (s ? s.status : 502));
+      if (initBuf) segBuf = Buffer.concat([initBuf, segBuf]);
       return jpegFrom(segBuf);
     }
     throw new Error('terlalu dalam');

@@ -589,6 +589,7 @@ function cctvHeaders(u) {
   if (/(^|\.)bpjt\.pu\.go\.id$/i.test(mh)) return { 'user-agent': UA, referer: 'https://bpjt.pu.go.id/' };
   if (/(^|\.)jakarta\.go\.id$|(^|\.)balitower\.co\.id$/i.test(mh)) return { 'user-agent': UA, referer: 'https://smartcity.jakarta.go.id/', origin: 'https://smartcity.jakarta.go.id' };
   if (/(^|\.)dpuprkotang\.info$/i.test(mh)) return { 'user-agent': UA, referer: 'https://cctv.dpuprkotang.info/' };
+  if (/(^|\.)dsdajakarta\.id$|(^|\.)dsdadki\.web\.id$/i.test(mh)) return { 'user-agent': UA, referer: 'https://poskobanjirdsda.jakarta.go.id/' };
   return { 'user-agent': UA };
 }
 
@@ -655,7 +656,7 @@ seedStaticCctvAllowlist();
 const alive = () => memo('alive', 150000, async () => {
   const cams = camList(), res = new Array(cams.length).fill(false); let i = 0;
   await Promise.all(Array.from({ length: 12 }, async () => { while (i < cams.length) { const k = i++;
-    if (/(jakcctv\.jakarta\.go\.id|pantaucctv\.com|molecool\.id|dpuprkotang\.info|\.mp4(\?|$))/i.test(cams[k].s)) { res[k] = true; continue; }
+    if (/(jakcctv\.jakarta\.go\.id|pantaucctv\.com|molecool\.id|dpuprkotang\.info|dsdajakarta\.id|balitower\.co\.id|\.mp4(\?|$))/i.test(cams[k].s)) { res[k] = true; continue; }
     try { const r = await get(cams[k].s, { headers: { referer: 'https://smartcity.jakarta.go.id/' } }, 6000);
       res[k] = r.ok && (await r.text()).includes('#EXTM3U'); } catch (e) {} } }));
   return { alive: res, at: Date.now() };
