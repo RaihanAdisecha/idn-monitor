@@ -110,6 +110,34 @@ function createCctvCatalog({
     return out;
   }
   const cctvBpjt = () => memo('cctv:bpjt', 1800000, cctvBpjtFetch, v => v.length > 0);
+  async function cctvTrafik() {
+    let d = null;
+    try {
+      d = JSON.parse(await cctvFetch('https://trafik.live/assets/asset-cctv-UZ32Z6W6.json', 20000));
+    } catch (e) {}
+    if (!d || !Array.isArray(d.cams)) return [];
+    const out = [];
+    for (const cam of d.cams) {
+      if (!Array.isArray(cam.views) || !cam.views.length) continue;
+      const primary = cam.views[0];
+      const streamUrl = primary[1];
+      if (!streamUrl || !/m3u8/i.test(streamUrl)) continue;
+      const embedUrl = primary[2] || '';
+      const la = +cam.lat, lo = +cam.lng;
+      out.push({
+        n: String(cam.name || 'CCTV') + (cam.sub ? ' · ' + cam.sub : ''),
+        s: streamUrl,
+        e: embedUrl,
+        la: isFinite(la) ? la : null,
+        lo: isFinite(lo) ? lo : null,
+        c: idRegion(la, lo) || 'Jakarta',
+        src: 'trafik'
+      });
+    }
+    return out;
+  }
+  const cctvTrafikMemo = () => memo('cctv:trafik', 1800000, cctvTrafik, v => v.length > 0);
+
   async function cctvBekasi() {
     let d = null;
     try { d = JSON.parse(await cctvFetch('https://eofficev2.bekasikota.go.id/backupcctv/m3/list.json', 20000)); } catch (e) {}
@@ -262,7 +290,7 @@ function createCctvCatalog({
   }
   const cctvReportedDead = s => GW.reportedDead(s);
   const cctvCatalog = () => memo('cctvcat', 300000, async () => {
-    const rs = await Promise.allSettled([cctvBpjt(), cctvBekasi(), cctvJogja(), cctvMolecool()]);
+    const rs = await Promise.allSettled([cctvBpjt(), cctvBekasi(), cctvJogja(), cctvMolecool(), cctvTrafikMemo()]);
     const bpjt = [], jogja = [], other = [];
     for (const r of rs) if (r.status === 'fulfilled') for (const c of r.value)
       (c.src === 'bpjt' ? bpjt : c.src === 'jogja' ? jogja : other).push(c);

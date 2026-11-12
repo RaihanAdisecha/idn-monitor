@@ -1789,6 +1789,11 @@ a{color:inherit;text-decoration:none;text-underline-offset:2px}
   font:400 14px/24px var(--mono)!important;
 }
 #map .leaflet-bar a:hover{background:#2a2a2a!important}
+.leaflet-bar a.leaflet-control-locate{display:flex;align-items:center;justify-content:center;line-height:normal!important}
+.leaflet-bar a.leaflet-control-locate.loc-active{color:var(--accent,#ff2d55)!important}
+.leaflet-user-loc{position:relative;width:16px;height:16px;border-radius:50%;background:#007aff;border:2px solid #fff;box-shadow:0 0 8px rgba(0,122,255,.8)}
+.leaflet-user-pulse{position:absolute;top:-6px;left:-6px;width:24px;height:24px;border-radius:50%;background:rgba(0,122,255,.35);animation:locPulse 2s infinite ease-out;pointer-events:none}
+@keyframes locPulse{0%{transform:scale(.5);opacity:1}100%{transform:scale(2.2);opacity:0}}
 #map .leaflet-popup-content-wrapper{
   background:rgba(16,18,24,.74);
   -webkit-backdrop-filter:blur(20px) saturate(1.4);
@@ -8894,6 +8899,51 @@ function ensureMap(){
   ttFlowLayer = L.tileLayer(ttTileUrl('flow'), { opacity: .5, className: 'tt-flow-pane', maxNativeZoom: 19, maxZoom: 19 });
   ttIncTileLayer = L.tileLayer(ttTileUrl('incidents'), { opacity: .9, maxNativeZoom: 19, maxZoom: 19 });
   L.control.zoom({ position:'bottomright' }).addTo(map);
+  if (!map._userLocCtrl && typeof L.Control === 'function') {
+    let uMarker = null, uAccCircle = null;
+    const LocCtrl = L.Control.extend({
+      options: { position: 'bottomright' },
+      onAdd: function(){
+        const c = L.DomUtil.create('div', 'leaflet-bar');
+        const a = L.DomUtil.create('a', 'leaflet-control-locate', c);
+        a.href = '#'; a.title = 'Lokasi saat ini'; a.setAttribute('aria-label', 'Lokasi saat ini');
+        a.innerHTML = '<svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor"><path d="M8 1.5a6.5 6.5 0 1 0 0 13 6.5 6.5 0 0 0 0-13zM0 8a8 8 0 1 1 16 0A8 8 0 0 1 0 8z"/><circle cx="8" cy="8" r="3.2"/></svg>';
+        L.DomEvent.disableClickPropagation(a);
+        L.DomEvent.on(a, 'click', function(ev){
+          L.DomEvent.preventDefault(ev);
+          if (!navigator.geolocation) { alert('Browser tidak mendukung geolokasi.'); return; }
+          a.classList.add('loc-active');
+          navigator.geolocation.getCurrentPosition(
+            pos => {
+              a.classList.remove('loc-active');
+              const lat = pos.coords.latitude, lng = pos.coords.longitude, acc = pos.coords.accuracy || 0;
+              map.setView([lat, lng], Math.max(map.getZoom(), 14));
+              if (!uMarker) {
+                uMarker = L.marker([lat, lng], {
+                  icon: L.divIcon({ className:'', html:'<div class="leaflet-user-loc"><div class="leaflet-user-pulse"></div></div>', iconSize:[16,16], iconAnchor:[8,8] }),
+                  zIndexOffset: 1000
+                }).addTo(map).bindPopup('Lokasi Anda saat ini (akurasi ~' + Math.round(acc) + 'm)');
+              } else {
+                uMarker.setLatLng([lat, lng]).setPopupContent('Lokasi Anda saat ini (akurasi ~' + Math.round(acc) + 'm)');
+              }
+              if (!uAccCircle) {
+                uAccCircle = L.circle([lat, lng], { radius: acc, color:'#007aff', weight:1, opacity:.4, fillOpacity:.08 }).addTo(map);
+              } else {
+                uAccCircle.setLatLng([lat, lng]).setRadius(acc);
+              }
+            },
+            err => {
+              a.classList.remove('loc-active');
+              alert('Gagal mendeteksi lokasi: ' + (err.message || 'Izin ditolak'));
+            },
+            { enableHighAccuracy: true, timeout: 10000, maximumAge: 30000 }
+          );
+        });
+        return c;
+      }
+    });
+    map._userLocCtrl = new LocCtrl().addTo(map);
+  }
   if (typeof L.heatLayer === 'function') {
     heat = L.heatLayer([], { radius: 38, blur: 24, maxZoom: 13, max: 1, minOpacity: .2,
       gradient: { 0.15:'#3d0d0f', 0.35:'#6e1418', 0.55:'#9c181e', 0.75:'#c11c24', 0.9:'#e02830', 1:'#ff4d54' } });
